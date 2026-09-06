@@ -1,0 +1,52 @@
+<!-- @dsCard group="Components" viewport="700x1900" subtitle="Post (board/wall/inbox), locked, queue, event tiles, join code, thread, pending" name="Cards" -->
+<!-- Specimen script body only (the HTML scaffolding loads styles.css, React 18 UMD, Babel, lucide 0.460.0, dev-loader.js). -->
+<script type="text/babel">
+function Demo(){
+  const [rx,setRx]=useState({'🔥':12,'😂':4});const [mine,setMine]=useState('🔥');
+  const react=e=>{setRx(r=>{const n={...r};if(mine){n[mine]=Math.max(0,(n[mine]||0)-1)}if(mine!==e){n[e]=(n[e]||0)+1}return n});setMine(m=>m===e?null:e)};
+  const [q,setQ]=useState('pending');const [sel,setSel]=useState(true);
+  return <div className="g" style={{gap:20}}>
+    <div className="st" style={{width:328}}>
+      <span className="lbl">PostCard · board</span>
+      <PostCard text="Whoever brought the speaker to the bus: legend." sender={{level:'hint',hints:{section:'ESN Ankara'}}} time="2m" reactions={rx} myReaction={mine} onReact={react} onReply={()=>{}} onMore={()=>{}} entering/>
+      <span className="lbl">PostCard · inbox</span>
+      <PostCard text="you're the reason the karaoke didn't die at 1am 🎤" sender={{level:'anonymous'}} time="1h" source="National Platform" onMore={()=>{}} actions={[{label:'Approve to wall',icon:'Check'},{label:'Keep private'}]}/>
+      <span className="lbl">PostCard · wall</span>
+      <PostCard text="Otobüse hoparlörü getiren: efsane." sender={{level:'named',name:'Deniz Aksoy'}} time="Nov 14" approvedFromBoard large/>
+      <span className="lbl">LockedCard</span>
+      <LockedCard level="hint" hints={{country:'Italy'}} length={164} time="3h" source="National Platform"/>
+      <LockedCard level="anonymous" length={41} time="5h"/>
+      <span className="lbl">LockedCard · unlocked (stage 1)</span>
+      <LockedCard unlocked level="anonymous" text="okay your playlist carried the whole bus home" time="5h" source="National Platform 2026"/>
+    </div>
+    <div className="st" style={{width:328}}>
+      <span className="lbl">QueueCard</span>
+      <QueueCard index={3} text="Shoutout to the kitchen crew, dinner was unreal" sender={{level:'anonymous'}} time="12s" state={q} onApprove={()=>{setQ('approved');setTimeout(()=>setQ('pending'),900)}} onReject={()=>{setQ('rejected');setTimeout(()=>setQ('pending'),900)}}/>
+      <span className="lbl">QueueCard · selectable</span>
+      <QueueCard index={4} text="Bus back to the hotel leaves at 02:00 sharp" sender={{level:'named',name:'Ece Kara'}} time="40s" selectable selected={sel} onSelect={()=>setSel(s=>!s)}/>
+      <span className="lbl">EventCard · single night · live / upcoming / archived</span>
+      <EventCard name="Ankara Karaoke" status="live" cover="var(--cover-lime)" coverSoft="var(--cover-lime-soft)" day="03" month={10} timeRange="21:00–01:00" scope="ESN Ankara" memberCount={64} postCount={188}/>
+      <EventCard name="İzmir Welcome Night" status="upcoming" cover="var(--cover-azure)" coverSoft="var(--cover-azure-soft)" day="22" month={11} timeRange="20:00" scope="ESN İzmir" memberCount={48} compact/>
+      <EventCard name="Boğaziçi Pub Quiz" status="archived" cover="var(--cover-tangerine)" coverSoft="var(--cover-tangerine-soft)" day="17" month={9} scope="ESN Boğaziçi" postCount={73} compact/>
+      <span className="lbl">EventCard · multi-day · live / upcoming / archived</span>
+      <EventCard name="National Platform 2026" status="live" cover="var(--cover-magenta)" coverSoft="var(--cover-magenta-soft)" day="14" dayEnd="16" month={11} timeRange="Fri–Sun" scope="National" memberCount={212} postCount={340}/>
+      <EventCard name="Cappadocia Trip" status="upcoming" cover="var(--cover-azure)" coverSoft="var(--cover-azure-soft)" day="30" dayEnd="2" month={11} monthEnd={12} scope="ESN Ankara" memberCount={38} compact/>
+      <EventCard name="Regional Platform" status="archived" cover="var(--cover-lime)" coverSoft="var(--cover-lime-soft)" day="4" dayEnd="6" month={4} scope="National" postCount={512} compact/>
+      <span className="lbl">EventCard · same event, locale="en" then locale="tr" — month, pill and lang switch together</span>
+      <EventCard locale="en" name="National Platform 2026" status="upcoming" cover="var(--cover-magenta)" coverSoft="var(--cover-magenta-soft)" day="14" dayEnd="16" month={11} scope="National" memberCount={212} compact/>
+      <EventCard locale="tr" name="National Platform 2026" status="upcoming" cover="var(--cover-magenta)" coverSoft="var(--cover-magenta-soft)" day="14" dayEnd="16" month={11} scope="Ulusal" memberCount={212} compact/>
+      <span className="lbl">ThreadBubble</span>
+      <div className="st" style={{gap:8,padding:12,border:'1px solid var(--border)',borderRadius:'var(--r-card)'}}>
+        <ThreadBubble text="hey, that one was about you 👀" sender={{level:'hint',hints:{letter:'D'}}} time="22:14"/>
+        <ThreadBubble text="who is this??" mine time="22:15"/>
+        <ThreadBubble system text="Deniz revealed themselves"/>
+        <ThreadBubble text="ok fine it was me" sender={{level:'named',name:'Deniz Aksoy'}} time="22:16"/>
+      </div>
+      <span className="lbl">JoinCodeBlock</span>
+      <JoinCodeBlock code="K7Q4ZM" eventColorSoft="var(--cover-azure-soft)"/>
+      <span className="lbl">PendingState</span>
+      <div style={{padding:'4px 12px'}}><PendingState title="You're in the queue" subtitle="An admin checks every profile by hand, so everyone here is real." steps={[{label:'Profile sent',done:true},{label:'Admin review',current:true,description:'Usually within a day'},{label:"You're in"}]} note="We'll let you know. Nothing to do until then."/></div>
+    </div>
+  </div>;
+}
+</script>

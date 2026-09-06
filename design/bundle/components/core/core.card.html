@@ -1,0 +1,17 @@
+<!-- @dsCard group="Components" viewport="700x640" subtitle="Buttons, icon buttons, inputs, chips, switch, tabs, toasts, avatars, status pills" name="Core" -->
+<!-- Specimen script body only. -->
+<script type="text/babel">
+function Demo(){
+  const [tab,setTab]=useState('board');const [mode,setMode]=useState('approve_first');const [on,setOn]=useState(true);const [v,setV]=useState('Where you\'re from, what you\'re into');const [sel,setSel]=useState('anyone');
+  return <div className="st" style={{gap:18}}>
+    <div className="g" style={{alignItems:'center'}}><Button size="lg" icon="PenLine">Write on the wall</Button><Button>Approve to wall</Button><Button variant="secondary">Keep private</Button><Button variant="ghost" size="sm">Cancel</Button><Button variant="danger" size="sm" icon="Trash2">Delete</Button><Button variant="event" icon="Radio">Join board</Button><Button loading>Send</Button><Button disabled>Send</Button></div>
+    <div className="g" style={{alignItems:'center'}}><IconButton icon="ArrowLeft" label="Back"/><IconButton icon="ListChecks" label="Queue" variant="outline" badge={7}/><IconButton icon="Share" label="Share" variant="filled"/><IconButton icon="Projector" label="Projector" variant="event"/><IconButton icon="PenLine" label="Write" variant="filled" size="lg"/>
+      <span style={{width:12}}/><Avatar name="Şeyma Kaya" size="lg"/><Avatar name="Deniz" size="md"/><Avatar name="Ahmet" size="sm"/><Avatar name="İrem" size="xs"/>
+      <span style={{width:12}}/><StatusPill status="live"/><StatusPill status="upcoming"/><StatusPill status="archived"/><StatusPill status="pending"/><StatusPill status="rejected"/><StatusPill status="onwall"/></div>
+    <div className="g"><div style={{width:300}}><Input label="One-line bio" value={v} onChange={setV} maxLength={80}/></div><div style={{width:300}}><Input label="Join code" placeholder="6 characters" hint="On the event screen or QR" inputStyle={{font:'var(--display-md)',letterSpacing:'.1em',textTransform:'uppercase'}}/></div></div>
+    <div className="g" style={{alignItems:'center'}}>{['anyone','named','nobody'].map(k=><Chip key={k} selected={sel===k} onClick={()=>setSel(k)}>{{anyone:'Anyone',named:'Named only',nobody:'Nobody'}[k]}</Chip>)}<Chip icon="MapPin">ESN İzmir</Chip><Chip tone="outline" icon="Flag" size="sm">Türkiye</Chip><Chip tone="event" icon="Radio" size="sm">From National Platform</Chip><Chip tone="live" icon="Radio" size="sm">Live now</Chip></div>
+    <div className="g" style={{alignItems:'center'}}><div style={{width:320}}><Tabs value={tab} onChange={setTab} items={[{id:'board',label:'Board'},{id:'queue',label:'Queue',count:7,hot:true},{id:'people',label:'People',count:212}]}/></div><div style={{width:300}}><Tabs variant="segmented" value={mode} onChange={setMode} items={[{id:'approve_first',label:'Approve first'},{id:'post_immediately',label:'Post immediately'}]}/></div></div>
+    <div className="g" style={{alignItems:'center'}}><div style={{width:300}}><Switch checked={on} onChange={setOn} label="Inbox" description="Someone writes to you"/></div><Toast message="On your wall" action="View"/><Toast tone="warn" message="This might not be delivered"/><Toast tone="live" icon="ArrowUp" message="3 new posts" action="Show"/></div>
+  </div>;
+}
+</script>

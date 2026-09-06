@@ -1,0 +1,16 @@
+<!-- @dsCard group="Components" viewport="700x400" subtitle="1920×1080 dark board view at 35% — event color bar, lg sender, 72–96px text" name="Projector" -->
+<!-- Specimen script body only. -->
+<script type="text/babel">
+function Demo(){
+  return <div style={{width:1920,height:1080,transform:'scale(.35)',transformOrigin:'0 0',marginBottom:-1080*.65,marginRight:-1920*.65,overflow:'hidden'}} data-theme="projector">
+    <div style={{'--event':'var(--cover-lime)',padding:'72px 96px',display:'flex',flexDirection:'column',gap:64,height:'100%',overflow:'hidden',boxSizing:'border-box'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span style={{font:'var(--projector-title)',textTransform:'uppercase',letterSpacing:'var(--display-tracking)'}}>National Platform 2026</span>
+        <span style={{display:'inline-flex',alignItems:'center',gap:18,font:'var(--projector-meta)',textTransform:'uppercase',color:'var(--live)'}}><span style={{width:22,height:22,borderRadius:'50%',background:'var(--live)',animation:'live-pulse var(--dur-pulse) ease-out infinite'}}/>Live · 212</span>
+      </div>
+      <ProjectorPost text="Whoever brought the speaker to the bus: legend." sender={{level:'hint',hints:{section:'ESN Ankara'}}} time="22:41" reactions={{'🔥':31,'😂':8}}/>
+      <ProjectorPost text="Kim o ceketli?" sender={{level:'named',name:'Deniz Aksoy'}} time="22:39" reactions={{'👀':44,'😳':6}}/>
+    </div>
+  </div>;
+}
+</script>

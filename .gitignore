@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# app (Expo) — see app/.gitignore for the rest
+app/node_modules/
+app/.expo/
+app/dist/
+app/web-build/
+app/expo-env.d.ts
+
+# backend (Spring Boot) — placeholders until step 9
+backend/target/
+backend/build/
+backend/.gradle/

@@ -1,0 +1,34 @@
+:root {
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif-condensed, sans-serif;
+  --font-body: "Figtree", "Helvetica Neue", Arial, sans-serif;
+
+  /* Display — Barlow Condensed, tight, uppercase optional. Big numbers, event names, headers. */
+  --display-xl: 800 64px/0.92 var(--font-display);
+  --display-lg: 800 44px/0.95 var(--font-display);
+  --display-md: 700 32px/1 var(--font-display);
+  --display-sm: 700 24px/1.05 var(--font-display);
+  --display-tracking: -0.01em;
+  --display-caps-tracking: 0.02em;
+
+  /* Body — Figtree */
+  --title: 600 20px/1.25 var(--font-body);
+  --title-sm: 600 17px/1.3 var(--font-body);
+  --body: 400 16px/1.45 var(--font-body);
+  --body-strong: 600 16px/1.45 var(--font-body);
+  --body-sm: 400 14px/1.4 var(--font-body);
+  --body-sm-strong: 600 14px/1.4 var(--font-body);
+  --caption: 500 12px/1.3 var(--font-body);
+  --caption-caps: 700 11px/1.2 var(--font-body);
+  --caption-caps-tracking: 0.08em;
+  --meta-nums: "tnum" 1, "cv11" 1; /* tabular numerals for times, counts, codes */
+
+  /* Post text — the hero of every card. Slightly larger than body. */
+  --post: 500 18px/1.35 var(--font-body);
+  --post-lg: 500 22px/1.3 var(--font-body);
+
+  /* Projector — read from 15 m. Starting sizes for a 1080p screen. */
+  --projector-post: 700 72px/1.1 var(--font-body);
+  --projector-post-short: 700 96px/1.05 var(--font-body);
+  --projector-meta: 700 40px/1.1 var(--font-display);
+  --projector-title: 800 120px/0.9 var(--font-display);
+}

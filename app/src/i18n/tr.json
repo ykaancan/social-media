@@ -1,0 +1,127 @@
+{
+  "_meta": { "locale": "tr", "register": "sen (samimi), sıcak", "brand": "[BRAND]" },
+  "common": {
+    "next": "İleri", "back": "Geri", "done": "Tamam", "cancel": "Vazgeç", "save": "Kaydet", "delete": "Sil", "report": "Şikâyet et", "block": "Engelle",
+    "copy": "Kopyala", "copied": "Kopyalandı", "share": "Paylaş", "more": "Daha fazla", "close": "Kapat", "retry": "Tekrar dene", "you": "Sen",
+    "blockName": "{name} kişisini engelle",
+    "justNow": "şimdi", "minutesShort": "{n}dk", "hoursShort": "{n}sa", "daysShort": "{n}g"
+  },
+  "anon": {
+    "anonymous": "Anonim", "hint": "İpucu", "named": "İsimli",
+    "anonymousSub": "İz yok", "hintSub": "İpuçlarını seç", "namedSub": "İsim + fotoğraf",
+    "showThem": "Görsünler", "section": "Section", "country": "Ülke", "letter": "İlk harf", "preview": "Görecekleri",
+    "fromSomeone": "Birinden", "revealMyself": "Kendimi göster", "revealed": "{name} kendini gösterdi"
+  },
+  "onboarding": {
+    "splashTitle": "Söyle. İsmin karışmasın.",
+    "splashSub": "Gerçek etkinliklerde gerçek insanlara anonim notlar.",
+    "signUp": "Kayıt ol", "logIn": "Giriş yap",
+    "profileTitle": "Profilini oluştur", "name": "İsim", "photo": "Fotoğraf", "section": "Section'ın", "country": "Ülke", "bio": "Tek satırlık bio",
+    "bioPlaceholder": "Nerelisin, nelerden hoşlanırsın",
+    "pendingTitle": "Sıradasın", "pendingSub": "Bir admin her profili tek tek kontrol ediyor; buradaki herkes gerçek.",
+    "stepSent": "Profil gönderildi", "stepReview": "Admin incelemesi", "stepReviewDesc": "Genelde bir gün içinde", "stepIn": "İçeridesin",
+    "pendingNote": "Sana haber vereceğiz. O zamana kadar yapman gereken bir şey yok.",
+    "approvedTitle": "İçeridesin", "approvedSub": "Kod ya da QR ile ilk etkinliğine katıl.",
+    "previewName": "Adın", "previewSection": "Section · Ülke", "previewBio": "Kendinle ilgili tek satır"
+  },
+  "tabs": { "events": "Etkinlikler", "inbox": "Gelen kutusu", "threads": "Sohbetler", "profile": "Profil" },
+  "wall": {
+    "title": "Duvar", "empty": "Duvarda henüz bir şey yok.", "emptyOwner": "Gelen kutundan bir mesajı onayla, buraya düşsün.",
+    "writeOnWall": "Duvara yaz", "inbox": "Gelen kutusu", "inboxCount": "Gelen kutusu ({n})", "approvedFromBoard": "Panodan onaylandı", "from": "Kaynak:",
+    "onWallCount": "Duvarda {n}"
+  },
+  "inbox": {
+    "title": "Gelen kutusu", "empty": "Henüz mesaj yok. Bir etkinliğe katıl, gör.",
+    "approveToWall": "Duvara al", "keepPrivate": "Gizli tut", "replyPrivately": "Özelden yanıtla",
+    "onWall": "Duvarında", "keptPrivate": "Gizli tutuldu", "deleted": "Silindi",
+    "locked": "Kilitli", "unlock": "Kilidi aç", "chars": "karakter", "fromSomeoneAt": "şuradaki birinden:",
+    "takeOffWall": "Duvardan kaldır", "blockSender": "Göndereni engelle"
+  },
+  "events": {
+    "title": "Etkinlikler", "live": "Canlı", "upcoming": "Yaklaşan", "archived": "Arşiv", "national": "Ulusal",
+    "join": "Etkinliğe katıl", "joinCode": "Katılım kodu", "enterCode": "6 karakterlik kodu gir", "scanQr": "QR tara", "create": "Etkinlik oluştur",
+    "name": "Etkinlik adı", "namePlaceholder": "İzmir Welcome Night", "scope": "Kimler için", "starts": "Başlangıç", "ends": "Bitiş", "coverColor": "Kapak rengi",
+    "boardMode": "Pano modu", "approveFirst": "Önce onayla", "approveFirstDesc": "Odaya yazılanlar seni bekler", "postImmediately": "Hemen yayınla", "postImmediatelyDesc": "Yazılanlar anında çıkar",
+    "coModerators": "Yardımcı moderatörler", "addCoModerator": "Moderatör ekle", "board": "Pano", "people": "Kişiler", "queue": "Sıra",
+    "members": "{n} kişi", "posts": "{n} gönderi", "closeBoard": "Panoyu kapat", "closed": "Bu pano kapandı", "qrPlaceholder": "QR kod",
+    "projector": "Projeksiyon modu",
+    "joinTitle": "Etkinliğe katıl", "codeHint": "Organizatöre sor ya da kapıdaki QR'ı tara.",
+    "codeNotFound": "Bu kodda bir etkinlik yok. Kodu veren kişiyle bir kontrol et.",
+    "alreadyIn": "{name} etkinliğine zaten katıldın.", "youreIn": "İçeridesin",
+    "boardLive": "Pano canlı. Selam ver.",
+    "boardOpens": "Pano {date} açılıyor. O zamana kadar Yaklaşan'da duracak.",
+    "openEvent": "Etkinliği aç", "scanTitle": "QR tara", "scanHint": "Kamera · etkinliğin QR'ına tut",
+    "enterCodeInstead": "Bunun yerine kodu gir",
+    "createTitle": "Etkinlik oluştur", "mySection": "Section'ım · {name}",
+    "endAfterStart": "Bitiş, başlangıçtan sonra olmalı.",
+    "multiDay": "Çok günlük. Pano baştan sona açık kalır.",
+    "oneNight": "Tek gece. Çok günlük olsun istersen bitişi başka bir güne al.",
+    "approveFirstLong": "Odaya yazılanları kimse görmeden önce sen ya da bir yardımcı moderatör onaylar.",
+    "postImmediatelyLong": "Gönderiler geldikçe çıkar. Yine de gizleyebilirsin.",
+    "preview": "Önizleme", "moderators": "Moderatörler",
+    "searchJoinedMods": "Katılan üyelerde ara",
+    "onlyJoinedCanModerate": "Sadece {name} etkinliğine katılanlar moderatörlük yapabilir.",
+    "noOneJoined": "Bu isimde katılan kimse yok.",
+    "modsNote": "Yardımcı moderatörler aynı sırayı görür, onaylayıp reddedebilir. Pano ayarlarını değiştiremezler.",
+    "creator": "Kurucu", "coModerator": "Yardımcı moderatör", "remove": "{name} kişisini çıkar",
+    "boardControls": "Pano kontrolleri",
+    "modeWaits": "Odaya yazılanlar seni bekler.", "modeImmediate": "Gönderiler geldikçe çıkar.",
+    "stillWaiting": "Bekleyen {n} gönderi için hâlâ karar vermen gerekiyor.",
+    "endsLabel": "Bitiş", "noEnd": "Bitiş yok",
+    "endsNote": "Pano bu saatte kendi kendine kapanır. Gönderiler okunabilir kalır.",
+    "closeBoardNow": "Panoyu şimdi kapat", "closeConfirmTitle": "Pano kapatılsın mı?",
+    "closeConfirmBody": "Bundan sonra kimse yazamaz. Panoda olan her şey okunabilir kalır.",
+    "closeConfirmBodyWaiting": "Bundan sonra kimse yazamaz, bekleyen {n} gönderi de yayınlanmaz. Panoda olan her şey okunabilir kalır."
+  },
+  "section": {
+    "title": "Section", "members": "{n} üye", "room": "Oda", "roomSoon": "Yakında",
+    "searchPlaceholder": "Section ya da ülke ara",
+    "tagNote": "Section'lar birer etiket, yönetim değil. Seninki sadece nereden geldiğini gösterir.",
+    "noneFound": "Bu isimde bir section yok. En yakınını seç; sonra Ayarlar'dan değiştirebilirsin."
+  },
+  "board": {
+    "empty": "Burası sessiz. Bir şey söyle.", "newPosts": "{n} yeni gönderi", "show": "Göster",
+    "toTheRoom": "Odaya", "toAPerson": "Birine", "inQueue": "Sırada", "notPublished": "Yayınlanmadı", "hidden": "Moderatör gizledi",
+    "hide": "Gönderiyi gizle", "react": "Tepki ver", "reply": "Özelden yanıtla"
+  },
+  "queue": {
+    "title": "Sıra", "approve": "Onayla", "reject": "Reddet", "select": "Seç", "approveAll": "Hepsini onayla ({n})", "empty": "Sıra boş.", "waiting": "{n} bekliyor"
+  },
+  "composer": {
+    "toThisWall": "Bu duvara", "toThisBoard": "Bu panoya", "toPerson": "{name} kişisine",
+    "placeholderWall": "{name} için bir şey yaz", "placeholderBoard": "Odaya bir şey yaz",
+    "send": "Gönder", "sent": "Gönderildi", "sentToQueue": "Gönderildi. Moderatör onaylayınca çıkar.", "sentToInbox": "Gelen kutusuna gitti. Herkese açılıp açılmayacağına o karar verir.",
+    "screeningWarning": "Bu iletilmeyebilir", "screeningDetail": "Filtremiz işaretledi. Yine de gönderebilirsin; son kararı sunucu verir.",
+    "yourCard": "Kartın", "postAs": "Nasıl görüneceksin", "replyAs": "Yanıtta nasıl görüneceksin", "replyingTo": "Şuna yanıt veriyorsun",
+    "toWall": "{name} kişisinin duvarına",
+    "goesToInbox": "Gelen kutusuna gider. Herkese açılıp açılmayacağına o karar verir.",
+    "goesToInboxWall": "Önce {name} kişisinin gelen kutusuna gider. Duvarına çıkıp çıkmayacağına o karar verir.",
+    "approveFirstHint": "Bu panoda gönderiler önce onaylanıyor. Bir moderatör yayına alacak.",
+    "pickPersonFirst": "Önce bir kişi seç", "searchJoined": "Katılan kişilerde ara", "noOneHere": "Bu isimde kimse yok.",
+    "threadNote": "Özel bir sohbet başlatır. Sadece ikiniz görürsünüz. İstersen sonra kendini gösterirsin, kimse seni zorlayamaz."
+  },
+  "thread": {
+    "title": "Sohbet", "requests": "İstekler", "placeholder": "Yanıtla…", "revealConfirm": "Bu sohbette ismin ve fotoğrafın görünsün mü? Geri alamazsın.",
+    "revealDesc": "Adını ve fotoğrafını görürler. Burada geri alınamaz.",
+    "blocked": "Bu kişiyi engelledin"
+  },
+  "settings": {
+    "title": "Ayarlar", "whoCanWrite": "Bana kim yazabilir", "anyone": "Herkes", "namedOnly": "Sadece isimliler", "nobody": "Kimse",
+    "blocked": "Engellenenler", "mutedWords": "Sessize alınan kelimeler", "addWord": "Kelime ekle", "notifications": "Bildirimler",
+    "notifInbox": "Gelen kutusu", "notifInboxDesc": "Biri sana yazınca", "notifThreads": "Sohbetler", "notifBoard": "Panoda bahsedilme",
+    "language": "Dil", "mySection": "Section'ım", "deleteAccount": "Hesabı sil", "deleteConfirm": "Her şey silinsin mi? Duvarın, gelen kutun ve sohbetlerin de gider. Geri dönüşü yok."
+  },
+  "dates": { "monthsShort": ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"], "rangeSeparator": "–" },
+  "status": { "live": "Canlı", "upcoming": "Yaklaşan", "archived": "Arşiv", "pending": "Sırada", "rejected": "Yayınlanmadı", "onwall": "Duvarda" },
+  "report": {
+    "title": "Şikâyet", "reason": "Sorun ne?", "sent": "İletildi. Kimin gönderdiğini sadece admin görür.",
+    "threadNote": "Sohbetin tamamı admin'e gider. Kimin şikâyet ettiğini sadece admin görür.",
+    "reasons": {
+      "harassment": "Taciz ya da zorbalık",
+      "hate": "Nefret ya da ayrımcılık",
+      "sexual": "Cinsel içerik",
+      "identity": "Birinin kimliğini ifşa ediyor",
+      "spam": "Spam"
+    }
+  }
+}

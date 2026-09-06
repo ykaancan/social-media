@@ -1,0 +1,35 @@
+/* Projector mode — the only dark theme in stage 1. Scope: add data-theme="projector"
+   to the root of the projector view. Event color becomes the accent; everything else is ink. */
+[data-theme="projector"] {
+  --bg: var(--ink-950);
+  --bg-sunken: #000000;
+  --surface: var(--ink-900);
+  --surface-raised: var(--ink-800);
+  --surface-muted: var(--ink-900);
+  --border: var(--ink-800);
+  --border-strong: var(--ink-700);
+  --text: #fafafa;
+  --text-2: var(--ink-300);
+  --text-3: var(--ink-500);
+  --text-inverse: var(--ink-950);
+  --primary: #fafafa;
+  --primary-hover: var(--ink-100);
+  --primary-press: var(--ink-200);
+  --on-primary: var(--ink-950);
+  --anon-anonymous: #fafafa;
+  --anon-anonymous-bg: var(--ink-800);
+  --anon-hint: oklch(0.82 0.1 295);
+  --anon-hint-bg: oklch(0.3 0.06 295);
+  --locked-bg: var(--ink-900);
+  --locked-border: var(--ink-600);
+  --locked-hatch: repeating-linear-gradient(135deg, transparent 0 10px, rgba(250, 250, 250, 0.05) 10px 12px);
+  color-scheme: dark;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Base element defaults for anything that links styles.css */
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: var(--body); -webkit-font-smoothing: antialiased; }
+a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--ink-600); }

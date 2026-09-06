@@ -1,0 +1,87 @@
+:root {
+  /* Ink scale — pure neutral, zero chroma. Primary IS ink. */
+  --ink-0: #ffffff;
+  --ink-50: #f4f4f4;
+  --ink-100: #e9e9e9;
+  --ink-200: #d4d4d4;
+  --ink-300: #b3b3b3;
+  --ink-400: #8a8a8a;
+  --ink-500: #6b6b6b;
+  --ink-600: #505050;
+  --ink-700: #383838;
+  --ink-800: #262626;
+  --ink-900: #171717;
+  --ink-950: #0b0b0b;
+
+  /* Semantic surfaces & text (light app theme) */
+  --bg: var(--ink-0);
+  --bg-sunken: var(--ink-50);
+  --surface: var(--ink-0);
+  --surface-raised: var(--ink-0);
+  --surface-muted: var(--ink-50);
+  --border: var(--ink-100);
+  --border-strong: var(--ink-200);
+  --text: var(--ink-900);
+  --text-2: var(--ink-500);
+  --text-3: var(--ink-400);
+  --text-inverse: var(--ink-0);
+
+  /* Primary = ink */
+  --primary: var(--ink-900);
+  --primary-hover: var(--ink-800);
+  --primary-press: var(--ink-950);
+  --on-primary: var(--ink-0);
+  --focus-ring: 0 0 0 3px rgba(23, 23, 23, 0.18);
+
+  /* Event cover colors — the only saturated color in the app. One per event.
+     All share L 0.68 / C 0.19; only hue moves. Ink text sits on all of them. */
+  --cover-magenta: oklch(0.68 0.19 350);
+  --cover-coral: oklch(0.68 0.19 25);
+  --cover-tangerine: oklch(0.72 0.19 60);
+  --cover-amber: oklch(0.8 0.17 90);
+  --cover-lime: oklch(0.78 0.19 130);
+  --cover-mint: oklch(0.76 0.15 170);
+  --cover-azure: oklch(0.68 0.17 240);
+  --cover-violet: oklch(0.64 0.19 295);
+  /* Soft tints of the same hues, for chips / rows tied to an event */
+  --cover-magenta-soft: oklch(0.95 0.04 350);
+  --cover-coral-soft: oklch(0.95 0.04 25);
+  --cover-tangerine-soft: oklch(0.96 0.04 60);
+  --cover-amber-soft: oklch(0.97 0.05 90);
+  --cover-lime-soft: oklch(0.96 0.05 130);
+  --cover-mint-soft: oklch(0.96 0.04 170);
+  --cover-azure-soft: oklch(0.95 0.03 240);
+  --cover-violet-soft: oklch(0.95 0.04 295);
+  --on-cover: var(--ink-950);
+  /* The current event's color. Screens set this once; components read it. */
+  --event: var(--cover-magenta);
+  --event-soft: var(--cover-magenta-soft);
+
+  /* Status */
+  --live: oklch(0.72 0.19 145);
+  --live-soft: oklch(0.95 0.06 145);
+  --danger: oklch(0.6 0.22 27);
+  --danger-soft: oklch(0.95 0.04 27);
+  --warning: oklch(0.8 0.16 80);
+  --warning-soft: oklch(0.97 0.05 80);
+  --success: var(--live);
+
+  /* Anonymity — constant across events; never reuse cover colors here */
+  --anon-anonymous: var(--ink-900);
+  --anon-anonymous-bg: var(--ink-100);
+  --anon-hint: oklch(0.5 0.16 295);
+  --anon-hint-bg: oklch(0.95 0.04 295);
+  --anon-named: var(--ink-900);
+  --anon-named-bg: transparent;
+
+  /* Locked card */
+  --locked-bg: var(--ink-50);
+  --locked-border: var(--ink-300);
+  --locked-hatch: repeating-linear-gradient(135deg, transparent 0 10px, rgba(23, 23, 23, 0.04) 10px 12px);
+  --locked-blur: 7px;
+
+  /* Elevation — flat by default; only sheets and toasts float */
+  --shadow-sheet: 0 -12px 40px rgba(11, 11, 11, 0.16);
+  --shadow-toast: 0 8px 24px rgba(11, 11, 11, 0.22);
+  --shadow-fab: 0 6px 18px rgba(11, 11, 11, 0.24);
+}

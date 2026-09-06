@@ -1,0 +1,15 @@
+<!-- @dsCard group="Components" viewport="700x300" subtitle="Sender badge at each level, hint chips, and the composer selector" name="Anonymity" -->
+<!-- Specimen script body only. -->
+<script type="text/babel">
+function Demo(){
+  const [lvl,setLvl]=useState('hint');const [hf,setHf]=useState({section:true,letter:true});
+  return <div className="g" style={{gap:28}}>
+    <div className="st" style={{gap:14,width:300}}>
+      <div className="st" style={{gap:8}}><span className="lbl">anonymous</span><AnonymityBadge level="anonymous"/><span className="lbl">hint</span><AnonymityBadge level="hint" hints={{section:'ESN İzmir',country:'Türkiye',letter:'Ş'}}/><span className="lbl">named</span><AnonymityBadge level="named" name="Şeyma Kaya"/></div>
+      <div className="st" style={{gap:6}}><span className="lbl">sizes sm / md / lg</span><AnonymityBadge size="sm" level="hint" hints={{letter:'D'}}/><AnonymityBadge size="md" level="anonymous"/><AnonymityBadge size="lg" level="hint" hints={{section:'ESN Ankara'}}/></div>
+      <div className="g" style={{gap:6}}><HintChip kind="section" value="ESN İzmir"/><HintChip kind="country" value="Italy"/><HintChip kind="letter" value="S"/><HintChip size="sm" kind="section" value="ESN Ankara"/></div>
+    </div>
+    <div style={{width:328}}><AnonymitySelector value={lvl} onChange={setLvl} hintFields={hf} onHintFieldsChange={setHf} me={{name:'Şeyma',section:'ESN İzmir',country:'Türkiye'}}/></div>
+  </div>;
+}
+</script>

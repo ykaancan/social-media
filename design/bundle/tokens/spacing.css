@@ -1,0 +1,35 @@
+:root {
+  /* 4-px base */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  --screen-x: 16px;       /* horizontal screen inset on mobile */
+  --card-pad: 16px;
+  --stack-gap: 12px;      /* gap between cards in a feed */
+  --tap-min: 44px;        /* minimum hit target */
+  --thumb-zone: 96px;     /* bottom safe area reserved for primary actions */
+
+  /* Radius — medium-rounded (10) everywhere; pills for chips & buttons */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+  --r-card: var(--r-lg);
+  --r-input: var(--r-md);
+  --r-button: var(--r-pill);
+  --r-chip: var(--r-pill);
+  --r-sheet: 20px 20px 0 0;
+
+  --border-w: 1px;
+  --border-w-strong: 2px;
+}
