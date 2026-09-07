@@ -2,7 +2,7 @@
   "_meta": { "locale": "tr", "register": "sen (samimi), sıcak", "brand": "[BRAND]" },
   "common": {
     "next": "İleri", "back": "Geri", "done": "Tamam", "cancel": "Vazgeç", "save": "Kaydet", "delete": "Sil", "report": "Şikâyet et", "block": "Engelle",
-    "copy": "Kopyala", "copied": "Kopyalandı", "share": "Paylaş", "more": "Daha fazla", "close": "Kapat", "retry": "Tekrar dene", "you": "Sen",
+    "copy": "Kopyala", "copied": "Kopyalandı", "share": "Paylaş", "more": "Daha fazla", "close": "Kapat", "retry": "Tekrar dene", "you": "Sen", "loading": "Yükleniyor",
     "blockName": "{name} kişisini engelle",
     "justNow": "şimdi", "minutesShort": "{n}dk", "hoursShort": "{n}sa", "daysShort": "{n}g"
   },
@@ -14,19 +14,36 @@
   },
   "onboarding": {
     "splashTitle": "Söyle. İsmin karışmasın.",
-    "splashSub": "Gerçek etkinliklerde gerçek insanlara anonim notlar.",
-    "signUp": "Kayıt ol", "logIn": "Giriş yap",
+    "splashSub": "Değişim öğrencileri için anonim notlar, gerçekten bulunduğun etkinliklerde.",
+    "signUp": "Kayıt ol", "logIn": "Giriş yap", "signUpSub": "İki alan, neredeyse içeridesin.", "logInSub": "Seni yeniden görmek güzel.",
+    "email": "E-posta", "emailPlaceholder": "the.real.you@uni.edu",
+    "password": "Şifre", "passwordPlaceholderNew": "Sadece senin tahmin edebileceğin bir şey", "passwordPlaceholder": "Şifren", "passwordHint": "En az 8 karakter.",
+    "phone": "Telefon", "phonePlaceholder": "+90 …", "phoneHint": "İsteğe bağlı. Yukarıdakini unuttuğun gün lazım olur.",
+    "forgotPassword": "Şifremi unuttum", "resetSent": "Adres kayıtlıysa sıfırlama bağlantısı gönderildi",
+    "continue": "Devam", "haveAccount": "Zaten üye misin? Giriş yap", "noAccount": "İlk kez mi geldin? Kayıt ol",
+    "errorEmailInUse": "Bu e-postayla açılmış bir hesap var. Giriş yap.",
+    "errorCredentials": "Bu e-posta ve şifre eşleşmiyor.",
+    "errorNetwork": "Sunucuya ulaşılamadı. Bağlantını kontrol edip tekrar dene.",
+    "errorGeneric": "Bir şeyler ters gitti. Tekrar dene.",
     "profileTitle": "Profilini oluştur", "name": "İsim", "photo": "Fotoğraf", "section": "Section'ın", "country": "Ülke", "bio": "Tek satırlık bio",
     "bioPlaceholder": "Nerelisin, nelerden hoşlanırsın",
+    "photoHint": "Gerçek yüzün olsun. Bir admin bir kez bakıyor.",
+    "photoPermission": "Fotoğraf seçmek için telefonunun ayarlarından fotoğraf erişimine izin ver.",
+    "namePlaceholder": "Seni nasıl tanıyorlar", "pickSection": "Section'ını seç",
+    "sectionHint": "Bir etiket, bir engel değil. Section'ların admin'i yok.", "countryFromSection": "Section'ından geliyor",
+    "wallPreview": "Duvar başlığın", "sendForApproval": "Onaya gönder",
     "pendingTitle": "Sıradasın", "pendingSub": "Bir admin her profili tek tek kontrol ediyor; buradaki herkes gerçek.",
-    "stepSent": "Profil gönderildi", "stepReview": "Admin incelemesi", "stepReviewDesc": "Genelde bir gün içinde", "stepIn": "İçeridesin",
-    "pendingNote": "Sana haber vereceğiz. O zamana kadar yapman gereken bir şey yok.",
-    "approvedTitle": "İçeridesin", "approvedSub": "Kod ya da QR ile ilk etkinliğine katıl.",
+    "stepSent": "Profil gönderildi", "stepReview": "Admin incelemesi", "stepReviewDesc": "Bir insan adına ve fotoğrafına bakar. Bot yok, hayalet yok.",
+    "stepIn": "İçeridesin", "stepInDesc": "Sana bir bildirim gönderiyoruz. Sonra etkinliklere katılabilirsin.",
+    "pendingNote": "Haber vereceğiz. O zamana kadar yapacak bir şey yok. Uygulamayı kapatabilirsin.", "logOut": "Çıkış yap",
+    "rejectedTitle": "Onaylanmadı", "rejectedNote": "Bir admin profilini onaylamadı. Düzenleyip tekrar gönder.", "editProfile": "Profili düzenle",
+    "approvedTitle": "Onaylandın", "approvedSub": "Hoş geldin. Kod ya da QR ile ilk etkinliğine katıl.",
+    "coachTitle": "Başlamak için bir etkinliğe katıl", "coachBody": "Her etkinliğin 6 karakterlik bir kodu ve kapıda bir QR'ı var. Organizatöre sor.", "coachDismiss": "Anladım",
     "previewName": "Adın", "previewSection": "Section · Ülke", "previewBio": "Kendinle ilgili tek satır"
   },
   "tabs": { "events": "Etkinlikler", "inbox": "Gelen kutusu", "threads": "Sohbetler", "profile": "Profil" },
   "wall": {
-    "title": "Duvar", "empty": "Duvarda henüz bir şey yok.", "emptyOwner": "Gelen kutundan bir mesajı onayla, buraya düşsün.",
+    "title": "Duvar", "myWall": "Duvarım", "empty": "Duvarda henüz bir şey yok.", "emptyOwner": "Onayladığın mesajlar burada görünür. Gelen kutundan birini onayla.",
     "writeOnWall": "Duvara yaz", "inbox": "Gelen kutusu", "inboxCount": "Gelen kutusu ({n})", "approvedFromBoard": "Panodan onaylandı", "from": "Kaynak:",
     "onWallCount": "Duvarda {n}"
   },
@@ -39,7 +56,8 @@
   },
   "events": {
     "title": "Etkinlikler", "live": "Canlı", "upcoming": "Yaklaşan", "archived": "Arşiv", "national": "Ulusal",
-    "join": "Etkinliğe katıl", "joinCode": "Katılım kodu", "enterCode": "6 karakterlik kodu gir", "scanQr": "QR tara", "create": "Etkinlik oluştur",
+    "empty": "Burada henüz bir şey yok. Katıldığın ya da oluşturduğun etkinlikler bu listede görünür.",
+    "join": "Etkinliğe katıl", "joinCode": "Katılım kodu", "enterCode": "6 karakterlik kodu gir", "scanQr": "QR tara", "create": "Etkinlik oluştur", "createShort": "Oluştur",
     "name": "Etkinlik adı", "namePlaceholder": "İzmir Welcome Night", "scope": "Kimler için", "starts": "Başlangıç", "ends": "Bitiş", "coverColor": "Kapak rengi",
     "boardMode": "Pano modu", "approveFirst": "Önce onayla", "approveFirstDesc": "Odaya yazılanlar seni bekler", "postImmediately": "Hemen yayınla", "postImmediatelyDesc": "Yazılanlar anında çıkar",
     "coModerators": "Yardımcı moderatörler", "addCoModerator": "Moderatör ekle", "board": "Pano", "people": "Kişiler", "queue": "Sıra",
@@ -74,7 +92,8 @@
     "closeConfirmBodyWaiting": "Bundan sonra kimse yazamaz, bekleyen {n} gönderi de yayınlanmaz. Panoda olan her şey okunabilir kalır."
   },
   "section": {
-    "title": "Section", "members": "{n} üye", "room": "Oda", "roomSoon": "Yakında",
+    "title": "Section", "members": "{n} üye", "room": "Oda", "roomSoon": "Yakında", "andMore": "ve {n} kişi daha",
+    "note": "Section, insanların profiline koyduğu bir etikettir. Ne admin'i vardır ne de kendi panosu.",
     "searchPlaceholder": "Section ya da ülke ara",
     "tagNote": "Section'lar birer etiket, yönetim değil. Seninki sadece nereden geldiğini gösterir.",
     "noneFound": "Bu isimde bir section yok. En yakınını seç; sonra Ayarlar'dan değiştirebilirsin."
@@ -101,7 +120,7 @@
     "threadNote": "Özel bir sohbet başlatır. Sadece ikiniz görürsünüz. İstersen sonra kendini gösterirsin, kimse seni zorlayamaz."
   },
   "thread": {
-    "title": "Sohbet", "requests": "İstekler", "placeholder": "Yanıtla…", "revealConfirm": "Bu sohbette ismin ve fotoğrafın görünsün mü? Geri alamazsın.",
+    "title": "Sohbet", "requests": "İstekler", "empty": "Henüz sohbet yok. Bir gönderiyi özelden yanıtla, sohbet başlasın.", "placeholder": "Yanıtla…", "revealConfirm": "Bu sohbette ismin ve fotoğrafın görünsün mü? Geri alamazsın.",
     "revealDesc": "Adını ve fotoğrafını görürler. Burada geri alınamaz.",
     "blocked": "Bu kişiyi engelledin"
   },

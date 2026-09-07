@@ -12,6 +12,9 @@ app/.expo/
 app/dist/
 app/web-build/
 app/expo-env.d.ts
+app/.env
+app/.env.*
+!app/.env.example
 
 # backend (Spring Boot) — placeholders until step 9
 backend/target/

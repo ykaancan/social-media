@@ -2,7 +2,7 @@
   "_meta": { "locale": "en", "register": "warm, friendly, second person", "brand": "[BRAND]" },
   "common": {
     "next": "Next", "back": "Back", "done": "Done", "cancel": "Cancel", "save": "Save", "delete": "Delete", "report": "Report", "block": "Block",
-    "copy": "Copy", "copied": "Copied", "share": "Share", "more": "More", "close": "Close", "retry": "Try again", "you": "You",
+    "copy": "Copy", "copied": "Copied", "share": "Share", "more": "More", "close": "Close", "retry": "Try again", "you": "You", "loading": "Loading",
     "blockName": "Block {name}",
     "justNow": "now", "minutesShort": "{n}m", "hoursShort": "{n}h", "daysShort": "{n}d"
   },
@@ -14,19 +14,36 @@
   },
   "onboarding": {
     "splashTitle": "Say it. Keep your name out of it.",
-    "splashSub": "Anonymous notes for real people at real events.",
-    "signUp": "Sign up", "logIn": "Log in",
+    "splashSub": "Anonymous notes for exchange students, at the events you're actually at.",
+    "signUp": "Sign up", "logIn": "Log in", "signUpSub": "Two fields and you're nearly in.", "logInSub": "Good to see you again.",
+    "email": "Email", "emailPlaceholder": "the.real.you@uni.edu",
+    "password": "Password", "passwordPlaceholderNew": "Something only you'd guess", "passwordPlaceholder": "Your password", "passwordHint": "8 characters minimum.",
+    "phone": "Phone", "phonePlaceholder": "+90 …", "phoneHint": "Optional. For the day you forget the one above.",
+    "forgotPassword": "Forgot password", "resetSent": "Reset link sent, if the address exists",
+    "continue": "Continue", "haveAccount": "Already in? Log in", "noAccount": "First time here? Sign up",
+    "errorEmailInUse": "That email already has an account. Log in instead.",
+    "errorCredentials": "That email and password don't match.",
+    "errorNetwork": "Couldn't reach the server. Check your connection and try again.",
+    "errorGeneric": "Something went wrong. Try again.",
     "profileTitle": "Set up your profile", "name": "Name", "photo": "Photo", "section": "Your section", "country": "Country", "bio": "One-line bio",
     "bioPlaceholder": "Where you're from, what you're into",
+    "photoHint": "Real face, please. An admin checks it once.",
+    "photoPermission": "Allow photo access in your phone's settings to pick a picture.",
+    "namePlaceholder": "How people know you", "pickSection": "Pick your section",
+    "sectionHint": "A tag, not a gatekeeper. Sections have no admins.", "countryFromSection": "Filled from your section",
+    "wallPreview": "Your wall header", "sendForApproval": "Send for approval",
     "pendingTitle": "You're in the queue", "pendingSub": "An admin checks every profile by hand, so everyone here is real.",
-    "stepSent": "Profile sent", "stepReview": "Admin review", "stepReviewDesc": "Usually within a day", "stepIn": "You're in",
-    "pendingNote": "We'll let you know. Nothing to do until then.",
-    "approvedTitle": "You're in", "approvedSub": "Join your first event with a code or QR.",
+    "stepSent": "Profile sent", "stepReview": "Admin review", "stepReviewDesc": "A person looks at your name and photo. No bots, no ghosts.",
+    "stepIn": "You're in", "stepInDesc": "We send a notification. Then you can join events.",
+    "pendingNote": "We'll let you know. Nothing to do until then. You can close the app.", "logOut": "Log out",
+    "rejectedTitle": "Not approved", "rejectedNote": "An admin didn't approve your profile. Edit it and send it again.", "editProfile": "Edit profile",
+    "approvedTitle": "You're approved", "approvedSub": "Welcome in. Join your first event with a code or QR.",
+    "coachTitle": "Join an event to get started", "coachBody": "Every event has a 6-character code and a QR at the door. Ask the organiser.", "coachDismiss": "Got it",
     "previewName": "Your name", "previewSection": "Section · Country", "previewBio": "One line about you"
   },
   "tabs": { "events": "Events", "inbox": "Inbox", "threads": "Threads", "profile": "Profile" },
   "wall": {
-    "title": "Wall", "empty": "Nothing on the wall yet.", "emptyOwner": "Approve a message from your inbox and it lands here.",
+    "title": "Wall", "myWall": "My wall", "empty": "Nothing on the wall yet.", "emptyOwner": "Approved messages will show here. Approve one from your inbox.",
     "writeOnWall": "Write on the wall", "inbox": "Inbox", "inboxCount": "Inbox ({n})", "approvedFromBoard": "Approved from the board", "from": "From",
     "onWallCount": "{n} on the wall"
   },
@@ -39,7 +56,8 @@
   },
   "events": {
     "title": "Events", "live": "Live", "upcoming": "Upcoming", "archived": "Archived", "national": "National",
-    "join": "Join an event", "joinCode": "Join code", "enterCode": "Enter the 6-character code", "scanQr": "Scan QR", "create": "Create event",
+    "empty": "Nothing here yet. Events you join or create show up in this list.",
+    "join": "Join an event", "joinCode": "Join code", "enterCode": "Enter the 6-character code", "scanQr": "Scan QR", "create": "Create event", "createShort": "Create",
     "name": "Event name", "namePlaceholder": "İzmir Welcome Night", "scope": "Who's it for", "starts": "Starts", "ends": "Ends", "coverColor": "Cover color",
     "boardMode": "Board mode", "approveFirst": "Approve first", "approveFirstDesc": "Posts to the room wait for you", "postImmediately": "Post immediately", "postImmediatelyDesc": "Posts go up as they come",
     "coModerators": "Co-moderators", "addCoModerator": "Add co-moderator", "board": "Board", "people": "People", "queue": "Queue",
@@ -74,7 +92,8 @@
     "closeConfirmBodyWaiting": "No one can post after this, and the {n} waiting won't be published. Everything already on the board stays readable."
   },
   "section": {
-    "title": "Section", "members": "{n} members", "room": "Room", "roomSoon": "Coming later",
+    "title": "Section", "members": "{n} members", "room": "Room", "roomSoon": "Coming later", "andMore": "and {n} more",
+    "note": "A section is a tag people put on their profile. It has no admins and no board of its own.",
     "searchPlaceholder": "Search sections or countries",
     "tagNote": "Sections are tags, not admins. Yours only shows where you're from.",
     "noneFound": "No section by that name. Pick the closest one; you can change it in Settings."
@@ -101,7 +120,7 @@
     "threadNote": "Starts a private thread. Only the two of you see it. You can reveal yourself later, they can't make you."
   },
   "thread": {
-    "title": "Thread", "requests": "Requests", "placeholder": "Reply…", "revealConfirm": "Show your name and photo in this thread? You can't undo this.",
+    "title": "Thread", "requests": "Requests", "empty": "No threads yet. Reply privately to a post to start one.", "placeholder": "Reply…", "revealConfirm": "Show your name and photo in this thread? You can't undo this.",
     "revealDesc": "They see your name and photo. Can't be undone here.",
     "blocked": "You blocked this person"
   },

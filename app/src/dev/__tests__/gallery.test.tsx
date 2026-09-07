@@ -27,7 +27,9 @@ const CAPTIONS = {
   projector: 1,
   // +2: the [D1] MoreSheet thread variant, which the web has as thread-app.jsx's
   // overflow sheet rather than a card specimen.
-  patterns: 36,
+  // +15: the step-2 onboarding patterns (Screen, BottomBar x2, Wordmark x3,
+  // CoverStrip x2, PhotoPicker x2, PickerRow x4, CoachMark).
+  patterns: 51,
 };
 const TOTAL_CAPTIONS = Object.values(CAPTIONS).reduce((a, b) => a + b, 0);
 
@@ -76,7 +78,7 @@ describe('dev component gallery', () => {
     const captions = screen.getAllByTestId(CAPTION_TEST_ID);
     expect(captions).toHaveLength(TOTAL_CAPTIONS + barCaptions);
     expect(TOTAL_CAPTIONS).toBeGreaterThanOrEqual(WEB_LBL_CAPTIONS);
-    expect(TOTAL_CAPTIONS).toBe(69);
+    expect(TOTAL_CAPTIONS).toBe(84);
   });
 
   it('mirrors the web specimens the captions are copied from', async () => {

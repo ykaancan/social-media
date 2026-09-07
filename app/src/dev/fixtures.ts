@@ -181,3 +181,12 @@ export const posts = {
   thread2: 'who is this??',
   thread3: 'ok fine it was me',
 } as const;
+
+/**
+ * A stand-in "chosen photo" for the gallery's PhotoPicker specimen: a 35-byte
+ * 1x1 GIF in `--cover-magenta`, inline so the gallery needs no network and no
+ * asset. It is a swatch, not a face — stage 1 has no photo upload, and no real
+ * person's picture belongs in a fixture.
+ */
+export const photoUri =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAOpdqQAAACwAAAAAAQABAAACAkQBADs=';
