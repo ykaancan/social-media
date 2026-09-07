@@ -42,6 +42,13 @@ describe('HintChip', () => {
     await wrap(<HintChip kind="letter" />);
     expect(screen.getByTestId('hint-chip-letter').props.children).toBe('?');
   });
+
+  it('draws a DASHED border — dashed means clue, never identity', async () => {
+    await wrap(<HintChip kind="section" value="ESN İzmir" testID="chip" />);
+    const flat = Object.assign({}, ...[screen.getByTestId('chip').props.style].flat(Infinity).filter(Boolean));
+    expect(flat.borderStyle).toBe('dashed');
+    expect(flat.borderWidth).toBe(1.5);
+  });
 });
 
 describe('AnonymityBadge', () => {

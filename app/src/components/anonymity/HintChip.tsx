@@ -56,6 +56,9 @@ export function HintChip({ kind = 'section', value, size = 'md', style, testID }
           borderRadius: radius.pill,
           backgroundColor: colors.anonHintBg,
           borderWidth: s.borderWidth,
+          // The dashed stroke IS the meaning ("clue, never identity"); it was
+          // missing from the first port and rendered solid on every platform.
+          borderStyle: 'dashed',
           // color-mix(in oklch, var(--anon-hint) 45%, transparent)
           borderColor: withAlpha(colors.anonHint, 0.45),
         },
