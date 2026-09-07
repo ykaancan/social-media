@@ -17,3 +17,6 @@ app/expo-env.d.ts
 backend/target/
 backend/build/
 backend/.gradle/
+
+# IDE
+.idea/
