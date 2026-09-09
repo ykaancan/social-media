@@ -142,5 +142,61 @@
       "identity": "Reveals someone's identity",
       "spam": "Spam"
     }
+  },
+  "eventFlow": {
+    "closed": "Closed",
+    "requestError": "Couldn’t load this. Check your connection and try again.",
+    "createError": "Couldn’t create the event. Check the dates and try again.",
+    "archived": "This board is closed. You can read, not post.",
+    "qrLabel": "Event join QR code",
+    "dateTime": "Date and time (YYYY-MM-DD HH:mm)",
+    "cameraPermission": "Allow camera access to scan the event’s QR code.",
+    "allowCamera": "Allow camera",
+    "openSettings": "Open settings",
+    "cameraError": "Couldn’t read the event code. Try another QR or enter the code instead.",
+    "noUpcoming": "Nothing planned. Join with a code or create one.",
+    "searchPeople": "Search joined members",
+    "noPeople": "No joined members match your search.",
+    "joinedCount": "{n} joined · everyone here was approved by an admin",
+    "opensAt": "The board opens {date}. Until then, see who’s coming.",
+    "noPosts": "No posts yet.",
+    "created": "Event created",
+    "createdHelp": "Share the code or QR. People who join land in People; the board opens at the start time.",
+    "codeHelp": "Anyone with the code or QR can join.",
+    "shareMessage": "Join {name} in [BRAND]. Enter this event code: {code}.",
+    "colors": {
+      "magenta": "Magenta",
+      "coral": "Coral",
+      "tangerine": "Tangerine",
+      "amber": "Amber",
+      "lime": "Lime",
+      "mint": "Mint",
+      "azure": "Azure",
+      "violet": "Violet"
+    }
+  },
+  "messageFlow": {
+    "filters": {
+      "new": "New",
+      "private": "Private",
+      "approved": "On wall"
+    },
+    "empty": {
+      "private": "Messages you keep private land here.",
+      "approved": "Approved messages will show here."
+    },
+    "onWallNote": "Your private inbox view of messages published on your wall.",
+    "namedOnly": "This person accepts named messages only. Choose Named to send.",
+    "sendAnyway": "Send anyway",
+    "sendError": "Couldn’t send this message. Check your connection and try again.",
+    "actionError": "Couldn’t save that change. Try again.",
+    "markNew": "Mark as new",
+    "markedNew": "Marked as new",
+    "deleteTitle": "Delete message?",
+    "deleteBody": "It will be hidden from your inbox and wall. You can’t undo this. A report you filed will still be available to the admin.",
+    "blockTitle": "Block sender?",
+    "blockBody": "You won’t learn who an anonymous sender is. Their messages will be hidden from your inbox and wall, and they can’t write to you again. They won’t be notified.",
+    "blocked": "Blocked. They can’t write to you again.",
+    "wallClosed": "This person isn’t accepting messages."
   }
 }

@@ -40,6 +40,8 @@ type SheetId =
   | 'composer-mod'
   | 'composer-immediate'
   | 'composer-wall'
+  | 'composer-warning'
+  | 'composer-error'
   | 'section'
   | 'join'
   | 'create'
@@ -267,6 +269,14 @@ export function PatternSheets() {
         ) : null}
       </Specimen>
 
+      <Specimen label="Composer · screening warning">
+        {opener('composer-warning', 'Open · screening warning')}
+        {open === 'composer-warning' && <Composer me={me} wallOwner={people.seyma} onClose={close} onScreen={async () => ({warning: true})} onSend={close} />}
+      </Specimen>
+      <Specimen label="Composer · delivery error">
+        {opener('composer-error', 'Open · delivery error')}
+        {open === 'composer-error' && <Composer me={me} wallOwner={people.seyma} onClose={close} onSend={async () => {throw new Error('Gallery delivery failure');}} />}
+      </Specimen>
       <Specimen label="Composer · wall owner (fixed target, no tabs, no picker)">
         {opener('composer-wall', 'Open · write on a wall')}
         {open === 'composer-wall' ? (

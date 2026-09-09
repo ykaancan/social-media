@@ -36,6 +36,7 @@ export interface EventDraftInput {
 }
 
 export interface EventDraft {
+  scopeKind: EventScope;
   name: string;
   status: 'upcoming';
   cover: CoverName;
@@ -85,10 +86,11 @@ export function buildEventDraft({
   locale = 'en',
   placeholderName = translate('events.name'),
 }: EventDraftInput): EventDraft {
-  const multiDay = start.getDate() !== end.getDate() || start.getMonth() !== end.getMonth();
+  const multiDay = start.getFullYear() !== end.getFullYear() || start.getDate() !== end.getDate() || start.getMonth() !== end.getMonth();
   const weekday = (d: Date): string => d.toLocaleDateString(locale, { weekday: 'short' });
 
   return {
+    scopeKind: scope,
     name: name.trim() || placeholderName,
     status: 'upcoming',
     cover,
@@ -108,6 +110,9 @@ export function buildEventDraft({
 }
 
 export interface CreateSheetProps {
+  busy?: boolean;
+  error?: string;
+  datePicker?: React.ReactNode;
   me: { section: string };
   start: Date;
   end: Date;
@@ -127,6 +132,7 @@ export interface CreateSheetProps {
  * `onPickStart` / `onPickEnd`.
  */
 export function CreateSheet({
+  busy = false, error, datePicker,
   me,
   start,
   end,
@@ -183,7 +189,7 @@ export function CreateSheet({
   };
 
   return (
-    <Sheet title={t('events.createTitle')} onClose={onClose} style={styles.sheet} testID="create-sheet">
+    <Sheet title={t('events.createTitle')} onClose={busy ? undefined : onClose} style={styles.sheet} testID="create-sheet">
       <Input
         label={t('events.name')}
         placeholder={t('events.namePlaceholder')}
@@ -241,6 +247,7 @@ export function CreateSheet({
         ))}
       </View>
 
+      {datePicker}
       <Text variant="caption" color={colors.text2}>
         {validity}
       </Text>
@@ -256,7 +263,7 @@ export function CreateSheet({
               <Pressable
                 key={c}
                 accessibilityRole="button"
-                accessibilityLabel={c}
+                accessibilityLabel={t(`eventFlow.colors.${c}`)}
                 accessibilityState={{ selected }}
                 testID={`create-cover-${c}`}
                 onPress={() => setCover(c)}
@@ -314,12 +321,14 @@ export function CreateSheet({
         size="lg"
         full
         icon="Plus"
-        disabled={!valid}
+        disabled={!valid || busy}
+        loading={busy}
         onPress={() => onCreate(draft)}
         testID="create-submit"
       >
         {t('events.create')}
       </Button>
+      {error ? <Text accessibilityRole="alert" color={colors.danger}>{error}</Text> : null}
     </Sheet>
   );
 }

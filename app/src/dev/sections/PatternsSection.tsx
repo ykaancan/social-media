@@ -4,6 +4,11 @@ import { QueueCard } from '../../components/cards';
 import { Button, IconButton, StatusPill, Switch } from '../../components/core';
 import {
   Back,
+  MessageCard,
+  EventHeader,
+  LoadState,
+  EventDatePicker,
+  EventScanner,
   BottomBar,
   CoachMark,
   CoverStrip,
@@ -45,6 +50,8 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
   const [notif, setNotif] = useState(true);
   const [swiped, setSwiped] = useState<string | null>(null);
   const [coach, setCoach] = useState(true);
+  const [eventTool, setEventTool] = useState<'date' | 'scan' | null>(null);
+  const [eventDate, setEventDate] = useState(new Date(2026, 10, 14, 20));
 
   /** A phone-sized window, so the absolutely-positioned specimens have edges. */
   const frame = [
@@ -59,6 +66,17 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
       subtitle="HANDOFF §2.5 — the 20 recurring patterns the prototypes rebuild inline, on §4 fixtures"
       onLayout={onLayout}
     >
+      {(['new', 'private', 'approved'] as const).map(state => (
+        <Specimen key={state} label={`MessageCard · ${state}`}>
+          <MessageCard message={{id: `gallery-${state}`, text: 'Thank you for a great event.',
+            sender: {level: 'anonymous'}, createdAt: new Date().toISOString(),
+            approvedFromBoard: false, state}} onMore={() => {}} onStateChange={() => {}} />
+        </Specimen>
+      ))}
+      <Specimen label="MessageCard · public wall">
+        <MessageCard wall message={{id: 'gallery-wall', text: 'Thank you for a great event.',
+          sender: {level: 'hint', hints: {country: 'Türkiye'}}, createdAt: new Date().toISOString(), approvedFromBoard: true}} />
+      </Specimen>
       <Specimen label="Empty · plain">
         <Empty icon="Inbox" text={t('inbox.empty')} />
       </Specimen>
@@ -340,6 +358,21 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
       </Specimen>
 
       <PatternSheets />
+      <Specimen label="EventHeader · upcoming / live / archived">
+        <EventHeader name="Welcome night" status="upcoming" date="14 Nov · 20:00–23:00" scope="ESN Ankara" />
+        <EventHeader name="Welcome night" status="live" date="14 Nov · 20:00–23:00" scope="ESN Ankara" />
+        <EventHeader name="Welcome night" status="archived" date="14 Nov · 20:00–23:00" scope="ESN Ankara" />
+      </Specimen>
+      <Specimen label="LoadState · loading / failed">
+        <LoadState onRetry={() => undefined} />
+        <LoadState error onRetry={() => undefined} />
+      </Specimen>
+      <Specimen label="EventDatePicker · date then time / EventScanner · permission then camera">
+        <Button onPress={() => setEventTool('date')}>{t('events.starts')}</Button>
+        <Button onPress={() => setEventTool('scan')}>{t('events.scanQr')}</Button>
+        {eventTool === 'date' && <EventDatePicker value={eventDate} onChange={setEventDate} onClose={() => setEventTool(null)} />}
+        {eventTool === 'scan' && <><EventScanner onCode={() => setEventTool(null)} /><Button onPress={() => setEventTool(null)}>{t('common.close')}</Button></>}
+      </Specimen>
     </GallerySection>
   );
 }

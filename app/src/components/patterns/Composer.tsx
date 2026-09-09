@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from '../../i18n';
 import { useTheme } from '../../theme';
@@ -15,6 +15,7 @@ import { Text } from '../core/Text';
 import type { BoardMode } from './CreateSheet';
 import { PersonPicker, type PickerPerson } from './PersonPicker';
 import { firstName, senderFor, type MeView, type SenderView } from './ReplySheet';
+import { Note } from './Note';
 
 /** post / wall message — HANDOFF §4. */
 export const COMPOSER_MAX = 280;
@@ -22,6 +23,7 @@ export const COMPOSER_MAX = 280;
 export type ComposerTarget = 'room' | 'person';
 
 export interface ComposerPayload {
+  screeningAcknowledged?: boolean;
   text: string;
   sender: SenderView;
   target: ComposerTarget;
@@ -42,7 +44,9 @@ export interface ComposerProps {
   /** Fires on every level/hint change, so the app can remember the last choice. */
   onLevelChange?: (level: AnonymityLevel, hintFields: HintFields) => void;
   onClose: () => void;
-  onSend: (payload: ComposerPayload) => void;
+  onScreen?: (text: string) => Promise<{ warning: boolean }>;
+  onSend: (payload: ComposerPayload) => void | Promise<void>;
+  namedOnly?: boolean;
 }
 
 /**
@@ -53,10 +57,8 @@ export interface ComposerProps {
  * approve-first hint is bound to `target === 'room'`. [D9] suppresses that hint
  * for a moderator, whose room post publishes immediately in both modes.
  *
- * Deliberately absent: the pre-send screening warning (HANDOFF §7 A, a
- * `Toast tone="warn"` shown before send). Screening decides delivery
- * server-side and the bundle never designed the warning, so the screen owns it
- * rather than this component inventing a treatment.
+ * Screening uses the existing warning Note. Acknowledgement is tied to the
+ * exact draft; changing text, target or anonymity requires a fresh check.
  */
 export function Composer({
   me,
@@ -69,6 +71,8 @@ export function Composer({
   onLevelChange,
   onClose,
   onSend,
+  onScreen,
+  namedOnly = false,
 }: ComposerProps) {
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
@@ -79,19 +83,43 @@ export function Composer({
   const [level, setLevel] = useState<AnonymityLevel>(initialLevel);
   const [hintFields, setHintFields] = useState<HintFields>(initialHintFields);
   const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const [error, setError] = useState(false);
+  const [warnedDraft, setWarnedDraft] = useState<string>();
 
   const changeLevel = (next: AnonymityLevel) => {
+    if (submitting.current) return;
     setLevel(next);
     onLevelChange?.(next, hintFields);
   };
   const changeHintFields = (next: HintFields) => {
+    if (submitting.current) return;
     setHintFields(next);
     onLevelChange?.(level, next);
   };
 
   const sender = senderFor(me, level, hintFields);
   const body = text.trim();
-  const canSend = body.length > 0 && (target === 'room' || Boolean(person));
+  const canSend = body.length > 0 && body.length <= COMPOSER_MAX && (target === 'room' || Boolean(person)) &&
+    (level !== 'hint' || Object.values(hintFields).some(Boolean)) && (!namedOnly || level === 'named');
+  const draftKey = JSON.stringify([body, sender, target, person?.id]);
+  const latestDraft = useRef(draftKey);
+  latestDraft.current = draftKey;
+  const warning = warnedDraft === draftKey;
+  const submit = async () => {
+    if (submitting.current || !canSend) return;
+    submitting.current = true; setBusy(true); setError(false);
+    try {
+      if (onScreen && !warning) {
+        const result = await onScreen(body);
+        if (latestDraft.current !== draftKey) return;
+        if (result.warning) { setWarnedDraft(draftKey); return; }
+      }
+      await onSend({ text: body, sender, target, person, ...(warning ? { screeningAcknowledged: true } : {}) });
+    } catch { setError(true); }
+    finally { submitting.current = false; setBusy(false); }
+  };
 
   const title = wallOwner
     ? t('composer.toWall', { name: firstName(wallOwner.name) })
@@ -111,12 +139,13 @@ export function Composer({
   const showApproveFirstHint = target === 'room' && boardMode === 'approve_first' && !isModerator;
 
   return (
-    <Sheet title={title} onClose={onClose} style={styles.sheet} testID="composer">
+    <Sheet title={title} onClose={busy ? undefined : onClose} style={styles.sheet} testID="composer">
       {wallOwner ? null : (
         <Tabs
           variant="segmented"
           value={target}
           onChange={(id) => {
+            if (submitting.current) return;
             const next = id as ComposerTarget;
             setTarget(next);
             if (next === 'person' && !person) setPicking(true);
@@ -135,6 +164,7 @@ export function Composer({
             members={members}
             value={person}
             onPick={(m) => {
+              if (submitting.current) return;
               setPerson(m);
               setPicking(false);
             }}
@@ -144,7 +174,7 @@ export function Composer({
             accessibilityRole="button"
             accessibilityLabel={person.name}
             testID="composer-person"
-            onPress={() => setPicking(true)}
+            onPress={() => { if (!submitting.current) setPicking(true); }}
             style={[styles.personRow, { borderColor: colors.borderStrong, borderRadius: radius.md }]}
           >
             <Avatar name={person.name} src={person.avatar} size="sm" />
@@ -166,7 +196,7 @@ export function Composer({
         rows={3}
         autoFocus
         value={text}
-        onChange={setText}
+        onChange={value => { if (!submitting.current) setText(value); }}
         maxLength={COMPOSER_MAX}
         placeholder={placeholder}
         testID="composer-text"
@@ -215,15 +245,22 @@ export function Composer({
         </View>
       ) : null}
 
+      {namedOnly && <Note>{t('messageFlow.namedOnly')}</Note>}
+      {warning && <Note icon="TriangleAlert" testID="composer-screening-warning">
+        <Text variant="bodyStrong">{t('composer.screeningWarning')}</Text>
+        <Text>{t('composer.screeningDetail')}</Text>
+      </Note>}
+      {error && <Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
       <Button
         size="lg"
         full
         icon="Send"
-        disabled={!canSend}
-        onPress={() => onSend({ text: body, sender, target, person })}
+        disabled={!canSend || busy}
+        loading={busy}
+        onPress={() => { void submit(); }}
         testID="composer-send"
       >
-        {t('composer.send')}
+        {t(warning ? 'messageFlow.sendAnyway' : 'composer.send')}
       </Button>
     </Sheet>
   );

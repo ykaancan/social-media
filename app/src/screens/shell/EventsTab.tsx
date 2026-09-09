@@ -1,106 +1,93 @@
-import React from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useApi, type EventSummary } from '../../api';
 import { Avatar, Button, Text } from '../../components/core';
-import { BottomBar, CoachMark, Empty, Screen } from '../../components/patterns';
-import { useTranslation } from '../../i18n';
+import { EventCard } from '../../components/cards';
+import { BottomBar, CoachMark, Empty, Screen, JoinSheet, CreateSheet, EventDatePicker, EventScanner, LoadState, type EventDraft } from '../../components/patterns';
+import { useLocale, useTranslation } from '../../i18n';
 import type { TabScreenProps } from '../../navigation/types';
 import { useCoachMark } from '../../prefs';
 import { useSession } from '../../session';
+import { eventCard, sortEvents } from '../../events/presentation';
 
-/**
- * The Events tab — `screen === "events"` in `prototypes/onboarding-app.jsx`
- * (HANDOFF §6.1, "Events (empty)").
- *
- * There is no events API yet, so the list is honestly empty: the empty state
- * IS the screen, not a placeholder standing in for content that exists
- * somewhere. Nothing here invents a card, a count or a date (principle 4).
- */
 export function EventsTab({ navigation }: TabScreenProps<'Events'>) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { me } = useSession();
+  const api = useApi();
   const coach = useCoachMark();
-
-  // TODO(step 3): the events query goes here — `api.listMyEvents()`, grouped
-  // live / upcoming / archived (§4.4). Until it exists this screen shows the
-  // empty state unconditionally, which is the truth.
-
-  const header = (
-    <View style={styles.header}>
-      <View style={styles.headerRow}>
-        <Text variant="displayLg" upper>
-          {t('events.title')}
-        </Text>
-        <Pressable
-          testID="events-avatar"
-          accessibilityRole="button"
-          accessibilityLabel={t('tabs.profile')}
-          onPress={() => navigation.navigate('Profile')}
-        >
-          <Avatar name={me?.name ?? ''} src={me?.avatarUrl} size="sm" />
-        </Pressable>
-      </View>
-    </View>
-  );
-
-  const bottom = (
-    <>
-      {/* The bubble is pinned to the frame, not to the scrolling body, so it
-          keeps the prototype's 158px clearance above the thumb zone. It sits in
-          `bottom` because that slot is the only child of the frame that is not
-          inside the scroller. */}
-      {coach.visible ? (
-        <CoachMark
-          testID="coach-mark"
-          title={t('onboarding.coachTitle')}
-          body={t('onboarding.coachBody')}
-          dismissLabel={t('onboarding.coachDismiss')}
-          onDismiss={coach.dismiss}
-          tailOffset={60}
-          style={styles.coach}
-        />
-      ) : null}
-      <BottomBar row>
-        {/* TODO(step 3): JoinSheet / CreateSheet. Both buttons are disabled
-            until those flows exist — a button that only raises a "coming soon"
-            toast fakes a feature, and principle 4 forbids it. The design is
-            drawn and reachable; only the handler is missing. */}
-        {/* Prototype: `style={{ flex: 1 }}` on the button itself. Button's
-            `style` lands on its inner box, not on the Pressable, so the flex
-            has to live on a wrapper — same fix CoachMark uses for alignSelf. */}
-        <View style={styles.join}>
-          <Button testID="events-join" size="lg" icon="LogIn" full disabled>
-            {t('events.join')}
-          </Button>
-        </View>
-        <Button testID="events-create" size="lg" variant="secondary" icon="Plus" disabled>
-          {t('events.createShort')}
-        </Button>
-      </BottomBar>
-    </>
-  );
-
-  return (
-    <Screen header={header} bottom={bottom}>
-      <Empty testID="events-empty" icon="CalendarDays" text={t('events.empty')} style={styles.empty} />
-    </Screen>
-  );
+  const [events, setEvents] = useState<EventSummary[] | null>(null);
+  const [error, setError] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [sheet, setSheet] = useState<'join' | 'create' | null>(null);
+  const [start, setStart] = useState(() => new Date(Date.now() + 3600000));
+  const [end, setEnd] = useState(() => new Date(Date.now() + 14400000));
+  const [pick, setPick] = useState<'start' | 'end' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const [createError, setCreateError] = useState<string>();
+  const joinedId = useRef<string | null>(null);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const load = () => api.listMyEvents().then(data => { if (active) { setEvents(sortEvents(data)); setError(false); } })
+      .catch(() => { if (active) setError(true); });
+    void load();
+    const timer = setInterval(() => { void load(); }, 30000);
+    return () => { active = false; clearInterval(timer); };
+  }, [api, version]));
+  const create = async (draft: EventDraft) => {
+    if (submitting.current) return;
+    submitting.current = true; setBusy(true); setCreateError(undefined);
+    try {
+      const event = await api.createEvent({ name: draft.name, scope: draft.scopeKind, startsAt: draft.start.toISOString(),
+        endsAt: draft.end.toISOString(), cover: draft.cover, boardMode: draft.mode });
+      setSheet(null); setVersion(v => v + 1);
+      navigation.navigate('EventCode', { id: event.id, created: true });
+    } catch { setCreateError(t('eventFlow.createError')); }
+    finally { submitting.current = false; setBusy(false); }
+  };
+  return <Screen testID="events-screen" header={<View style={styles.header}>
+    <Text variant="displayLg" upper>{t('events.title')}</Text>
+    <Pressable testID="events-avatar" accessibilityRole="button" accessibilityLabel={t('tabs.profile')} onPress={() => navigation.navigate('Profile')}>
+      <Avatar name={me?.name ?? ''} src={me?.avatarUrl} size="sm" />
+    </Pressable>
+  </View>} bottom={<>
+    {coach.visible && events?.length === 0 && !sheet && <CoachMark testID="coach-mark" title={t('onboarding.coachTitle')}
+      body={t('onboarding.coachBody')} dismissLabel={t('onboarding.coachDismiss')} onDismiss={coach.dismiss} tailOffset={60} style={styles.coach} />}
+    <BottomBar row>
+      <View style={styles.join}><Button testID="events-join" size="lg" icon="LogIn" full onPress={() => setSheet('join')}>{t('events.join')}</Button></View>
+      <Button testID="events-create" size="lg" variant="secondary" icon="Plus" onPress={() => {
+        setStart(new Date(Date.now()+3600000)); setEnd(new Date(Date.now()+14400000)); setPick(null); setCreateError(undefined); setSheet('create');
+      }}>{t('events.createShort')}</Button>
+    </BottomBar>
+    {sheet === 'join' && <JoinSheet onClose={() => { setSheet(null); setVersion(v => v + 1); }}
+      renderScanner={onCode => <EventScanner onCode={onCode} />}
+      onSubmitCode={async code => {
+        const result = await api.joinEvent(code);
+        if (!result.ok) return result;
+        joinedId.current = result.event.id; setVersion(v => v + 1);
+        return { ok: true, event: eventCard(result.event, locale, t('events.national')) };
+      }} onOpenEvent={() => { setSheet(null); if (joinedId.current) navigation.navigate('EventDetail', { id: joinedId.current }); }} />}
+    {sheet === 'create' && <CreateSheet me={{ section: me?.section?.name ?? '' }} start={start} end={end}
+      busy={busy} error={createError} onClose={() => setSheet(null)} onCreate={draft => { void create(draft); }}
+      onPickStart={() => setPick('start')} onPickEnd={() => setPick('end')}
+      datePicker={pick && <EventDatePicker key={pick} value={pick === 'start' ? start : end}
+        onChange={pick === 'start' ? setStart : setEnd} onClose={() => setPick(null)} />} />}
+  </>}>
+    {error || !events ? <LoadState error={error} onRetry={() => { setError(false); setVersion(v => v + 1); }} /> : events.length === 0 ?
+      <Empty testID="events-empty" icon="CalendarDays" text={t('events.empty')} style={styles.empty} /> :
+      (['live', 'upcoming', 'archived'] as const).map(status => {
+        const group = events.filter(e => e.status === status);
+        if (!group.length && status !== 'upcoming') return null;
+        return <View key={status} style={styles.group}>
+          <Text variant="captionCaps" upper>{t(`events.${status}`)}</Text>
+          {group.map(event => <EventCard key={event.id} {...eventCard(event, locale, t('events.national'))}
+            compact={status !== 'live'} testID={`event-${event.id}`} onPress={() => navigation.navigate('EventDetail', { id: event.id })} />)}
+          {!group.length && <Text>{t('eventFlow.noUpcoming')}</Text>}
+        </View>;
+      })}
+  </Screen>;
 }
-
-const styles = StyleSheet.create({
-  // `S.header` / `S.hrow`. A tab root has no Back, so the row is the title and
-  // the owner's avatar; `Back` covers the pushed-screen version of the same box.
-  header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-  },
-  // the prototype's `padding: "88px 24px 0"` — the empty state sits lower here
-  // than Empty's own 64px, so the coach mark below it has room.
-  empty: { paddingTop: 88, paddingBottom: 0 },
-  // above BottomBar's zIndex 5, like the prototype's zIndex 6
-  coach: { position: 'absolute', left: 16, right: 16, bottom: 158, zIndex: 6 },
-  join: { flex: 1 },
-});
+const styles = StyleSheet.create({ header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  group: { gap: 12 }, empty: { paddingTop: 88, paddingBottom: 0 }, coach: { position: 'absolute', left: 16, right: 16, bottom: 158, zIndex: 6 }, join: { flex: 1 } });

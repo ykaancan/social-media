@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from '../../i18n';
 import { ink, useTheme } from '../../theme';
@@ -36,6 +36,7 @@ export type JoinResult =
   | { ok: false; reason: 'not_found' | 'already_joined'; eventName?: string };
 
 export interface JoinSheetProps {
+  renderScanner?: (onCode: (code: string) => void) => React.ReactNode;
   /** The screen resolves the code (server call in the real app). */
   onSubmitCode: (code: string) => JoinResult | Promise<JoinResult>;
   /** Called when the scan view opens, so the screen can start the camera. */
@@ -82,7 +83,7 @@ type JoinView = 'code' | 'scan' | 'done';
  * The camera itself is the screen's job — this sheet draws the frame and calls
  * `onScan` when it opens, so nothing here depends on a permission prompt.
  */
-export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSheetProps) {
+export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderScanner }: JoinSheetProps) {
   const { colors, radius, text } = useTheme();
   const { t } = useTranslation();
   const months = useMonthsShort();
@@ -91,12 +92,16 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [joined, setJoined] = useState<JoinedEvent | null>(null);
 
-  const submit = async () => {
+  const submit = async (submittedCode = code) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setError(undefined);
     setBusy(true);
     try {
-      const result = await onSubmitCode(code);
+      const result = await onSubmitCode(submittedCode);
       if (result.ok) {
         setJoined(result.event);
         setView('done');
@@ -107,7 +112,11 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
           ? t('events.alreadyIn', { name: result.eventName ?? '' })
           : t('events.codeNotFound')
       );
+    } catch {
+      setError(t('eventFlow.requestError'));
+      setView('code');
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -117,7 +126,7 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
       <Sheet title={t('events.youreIn')} onClose={onClose} testID="join-sheet">
         <EventCard {...joined} />
         <Text variant="caption" color={colors.text2}>
-          {joined.status === 'live'
+          {joined.status === 'archived' ? t('eventFlow.archived') : joined.status === 'live'
             ? t('events.boardLive')
             : t('events.boardOpens', { date: eventDateLabel(joined, months) })}
         </Text>
@@ -137,14 +146,19 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
   if (view === 'scan') {
     return (
       <Sheet title={t('events.scanTitle')} onClose={() => setView('code')} testID="join-sheet">
-        <View style={[styles.scanPanel, { backgroundColor: ink[950], borderRadius: radius.card }]}>
+        {renderScanner ? renderScanner((value) => {
+          const next = sanitizeJoinCode(value);
+          setCode(next);
+          setView('code');
+          void submit(next);
+        }) : <View style={[styles.scanPanel, { backgroundColor: ink[950], borderRadius: radius.card }]}>
           {CORNERS.map((c) => (
             <View key={c.key} style={[styles.bracket, c.style]} />
           ))}
           <Text variant="bodySm" color={ink[500]}>
             {t('events.scanHint')}
           </Text>
-        </View>
+        </View>}
         <Button size="lg" full variant="ghost" onPress={() => setView('code')} testID="join-back">
           {t('events.enterCodeInstead')}
         </Button>
@@ -153,7 +167,7 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
   }
 
   return (
-    <Sheet title={t('events.joinTitle')} onClose={onClose} testID="join-sheet">
+    <Sheet title={t('events.joinTitle')} onClose={busy ? undefined : onClose} testID="join-sheet">
       <Input
         label={t('events.joinCode')}
         value={displayJoinCode(code)}
@@ -185,6 +199,7 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent }: JoinSh
         full
         variant="secondary"
         icon="QrCode"
+        disabled={busy}
         onPress={() => {
           setView('scan');
           onScan?.();

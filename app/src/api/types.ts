@@ -1,7 +1,7 @@
 /**
- * The API contract between the app and the Spring Boot backend (step 3).
+ * The API contract between the app and the future Spring Boot backend.
  *
- * Everything the onboarding wave needs is here and nothing else; later waves
+ * Onboarding and Events are covered here; later frontend waves
  * extend this file rather than inventing a second client. The types are the
  * spec the backend implements — if the server disagrees with a comment here,
  * the comment is what was agreed, so fix the server or amend both.
@@ -265,7 +265,15 @@ export const LIMITS = {
  * Validation (server-enforced, mirrored client-side — see `LIMITS`):
  * name <= 40, bio <= 80, password >= 8, email matches /.+@.+\..+/.
  */
-export interface ApiClient {
+export interface ApiClient extends MessageApi {
+  /** Approved members only. GET /events returns joined events, never discovery. */
+  listMyEvents(): Promise<EventSummary[]>;
+  /** POST /events. Creator joins and becomes this event's moderator. */
+  createEvent(request: CreateEventRequest): Promise<EventDetail>;
+  /** POST /events/join { code }. Membership is idempotent. */
+  joinEvent(code: string): Promise<EventJoinResult>;
+  /** GET /events/:id. Membership required, including archived boards. */
+  getEvent(id: string): Promise<EventDetail>;
   /** Creates an `incomplete` account and signs it in. */
   register(req: RegisterRequest): Promise<AuthResult>;
   login(req: LoginRequest): Promise<AuthResult>;
@@ -286,3 +294,36 @@ export interface ApiClient {
    */
   onUnauthorized?(cb: () => void): void;
 }
+
+export interface CreateEventRequest {
+  name: string;
+  scope: 'section' | 'national';
+  /** ISO timestamps. Scope's section/country is derived from the creator. */
+  startsAt: string;
+  endsAt: string;
+  cover: 'magenta' | 'coral' | 'tangerine' | 'amber' | 'lime' | 'mint' | 'azure' | 'violet';
+  boardMode: 'approve_first' | 'post_immediately';
+}
+
+export interface EventSummary extends CreateEventRequest {
+  id: string;
+  status: 'live' | 'upcoming' | 'archived';
+  section?: SectionRef;
+  country: string;
+  closedAt?: string;
+  memberCount: number;
+  postCount: number;
+}
+
+export interface EventDetail extends EventSummary {
+  joinCode: string;
+  isModerator: boolean;
+  /** Complete joined roster for Stage 1. No sender identities or private fields. */
+  people: (Person & { bio?: string })[];
+}
+
+export type EventJoinResult =
+  | { ok: true; event: EventDetail }
+  | { ok: false; reason: 'not_found' | 'already_joined'; eventName?: string };
+
+import type { MessageApi } from './messages';

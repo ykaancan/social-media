@@ -20,6 +20,8 @@ export interface ReportReason {
 }
 
 export interface ReportSheetProps {
+  busy?: boolean;
+  error?: string;
   /** Optional: the thread variant reports the whole thread, not one card. */
   post?: PostPreview;
   /** Defaults to the five fixed reasons, translated. */
@@ -38,7 +40,7 @@ export interface ReportSheetProps {
  * [D6]/[D12]: nothing here says the content was removed. Reporting hides
  * nothing on its own; blocking hides, deleting soft-deletes.
  */
-export function ReportSheet({ post, reasons, threadNote = false, onClose, onReport }: ReportSheetProps) {
+export function ReportSheet({ post, reasons, threadNote = false, onClose, onReport, busy = false, error }: ReportSheetProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const [reason, setReason] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function ReportSheet({ post, reasons, threadNote = false, onClose, onRepo
     reasons ?? REPORT_REASON_IDS.map((id) => ({ id, label: t(`report.reasons.${id}`) }));
 
   return (
-    <Sheet title={t('report.title')} onClose={onClose} testID="report-sheet">
+    <Sheet title={t('report.title')} onClose={busy ? undefined : onClose} testID="report-sheet">
       {post ? (
         <PostCard text={post.text} sender={post.sender} time={post.time} source={post.source} />
       ) : null}
@@ -70,12 +72,14 @@ export function ReportSheet({ post, reasons, threadNote = false, onClose, onRepo
         </Text>
       ) : null}
 
+      {error && <Text accessibilityRole="alert" color={colors.danger}>{error}</Text>}
       <Button
         size="lg"
         full
         variant="danger"
         icon="Flag"
-        disabled={!reason}
+        disabled={!reason || busy}
+        loading={busy}
         onPress={() => reason && onReport(reason)}
         testID="report-submit"
       >

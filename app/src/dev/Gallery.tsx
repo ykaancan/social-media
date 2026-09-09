@@ -86,7 +86,7 @@ export default function Gallery() {
               <View style={styles.barTop}>
                 <Text variant="titleSm">Component gallery</Text>
                 <Text variant="caption" color={colors.text2} nums>
-                  {`49 components · ${SECTIONS.length} sections`}
+                  {`54 components · ${SECTIONS.length} sections`}
                 </Text>
               </View>
 

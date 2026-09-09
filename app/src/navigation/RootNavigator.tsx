@@ -13,6 +13,10 @@ import {
 import { useSession } from '../session';
 import { useTheme } from '../theme';
 import { Shell } from './Shell';
+import { MessagesProvider } from '../messages/MessagesProvider';
+import { EventDetailScreen } from '../screens/events/EventDetailScreen';
+import { EventCodeScreen } from '../screens/events/EventCodeScreen';
+import { EventPersonScreen } from '../screens/events/EventPersonScreen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -44,7 +48,7 @@ export function RootNavigator() {
   const status = me?.status;
 
   return (
-    <NavigationContainer>
+    <MessagesProvider key={`${me?.id ?? 'out'}:${status}`}><NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {phase === 'signedOut' || !me ? (
           <Stack.Group navigationKey="signedOut">
@@ -62,6 +66,9 @@ export function RootNavigator() {
           <Stack.Group navigationKey="approved">
             <Stack.Screen name="Shell" component={Shell} />
             <Stack.Screen name="Section" component={SectionScreen} />
+            <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+            <Stack.Screen name="EventCode" component={EventCodeScreen} />
+            <Stack.Screen name="EventPerson" component={EventPersonScreen} />
             {/* Reached from Settings later; the same screen with `edit: true`. */}
             <Stack.Screen name="ProfileSetup" component={ProfileSetup} />
           </Stack.Group>
@@ -81,6 +88,6 @@ export function RootNavigator() {
           </Stack.Group>
         )}
       </Stack.Navigator>
-    </NavigationContainer>
+    </NavigationContainer></MessagesProvider>
   );
 }

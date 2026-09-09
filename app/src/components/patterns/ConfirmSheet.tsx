@@ -6,6 +6,8 @@ import { Sheet } from '../core/Sheet';
 import { Text } from '../core/Text';
 
 export interface ConfirmSheetProps {
+  busy?: boolean;
+  error?: string;
   title: string;
   /** One or two sentences. Already translated. */
   body: string;
@@ -28,6 +30,7 @@ export interface ConfirmSheetProps {
  * hidden (block) or soft-deleted (inbox delete).
  */
 export function ConfirmSheet({
+  busy = false, error,
   title,
   body,
   action,
@@ -41,21 +44,24 @@ export function ConfirmSheet({
   const { t } = useTranslation();
 
   return (
-    <Sheet title={title} onClose={onClose} testID="confirm-sheet">
+    <Sheet title={title} onClose={busy ? undefined : onClose} testID="confirm-sheet">
       <Text variant="body" color={colors.text2}>
         {body}
       </Text>
       {preview ?? null}
+      {error && <Text accessibilityRole="alert" color={colors.danger}>{error}</Text>}
       <Button
         size="lg"
         full
         variant={danger ? 'danger' : 'primary'}
         onPress={onConfirm}
+        loading={busy}
+        disabled={busy}
         testID="confirm-action"
       >
         {action}
       </Button>
-      <Button size="lg" full variant="ghost" onPress={onClose} testID="confirm-cancel">
+      <Button size="lg" full variant="ghost" onPress={onClose} disabled={busy} testID="confirm-cancel">
         {cancelLabel ?? t('common.cancel')}
       </Button>
     </Sheet>

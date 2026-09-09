@@ -1,49 +1,32 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Text } from '../../components/core';
-import { Empty, Screen } from '../../components/patterns';
+import { useFocusEffect } from '@react-navigation/native';
+import { Text, Tabs } from '../../components/core';
+import { Empty, Screen, LoadState, MessageCard, Note } from '../../components/patterns';
 import { useTranslation } from '../../i18n';
-import type { TabScreenProps } from '../../navigation/types';
+import type { MessageState } from '../../api';
+import { useMessages } from '../../messages/MessagesProvider';
+import { MessageActions } from '../../messages/MessageActions';
+import { useMessageState } from '../../messages/useMessageState';
 
-/**
- * The Inbox tab — `renderInbox` in `prototypes/full-app.jsx` (HANDOFF §6.8),
- * at the only state it can be in today: empty.
- *
- * The prototype's New / Private / On wall filter, the cards and the per-card
- * actions [D12] arrive with the inbox API; none of them is drawn here, because
- * an empty filter bar over an empty list would imply messages exist somewhere.
- */
-export function InboxTab(_props: TabScreenProps<'Inbox'>) {
+export function InboxTab() {
   const { t } = useTranslation();
-
-  // TODO(step 4): the inbox query, the state filter [D12] and the Settings
-  // header button ("who can write to me") go here.
-
-  const header = (
-    <View style={styles.header}>
-      <View style={styles.headerRow}>
-        <Text variant="displayLg" upper>
-          {t('inbox.title')}
-        </Text>
-      </View>
-    </View>
-  );
-
-  return (
-    <Screen header={header}>
-      <Empty testID="inbox-empty" icon="Inbox" text={t('inbox.empty')} />
-    </Screen>
-  );
+  const { inbox, error, refresh } = useMessages();
+  const move = useMessageState();
+  const [filter, setFilter] = useState<MessageState>('new');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = inbox?.messages.find(message => message.id === selectedId);
+  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  return <Screen testID="inbox-screen" header={<View style={styles.header}><Text variant="displayLg" upper>{t('inbox.title')}</Text></View>}
+    bottom={selected && <MessageActions key={selected.id} message={selected} onClose={() => setSelectedId(null)} />}>
+    {error || !inbox ? <LoadState error={error} onRetry={() => { void refresh(); }} /> : <>
+      <Tabs variant="segmented" value={filter} onChange={value => setFilter(value as MessageState)} testID="inbox-filters"
+        items={(['new','private','approved'] as const).map(state => ({ id: state, label: t(`messageFlow.filters.${state}`), count: inbox.counts[state] }))} />
+      {filter === 'approved' && <Note>{t('messageFlow.onWallNote')}</Note>}
+      {inbox.messages.filter(message => message.state === filter).map(message => <MessageCard key={message.id} message={message}
+        onMore={() => setSelectedId(message.id)} onStateChange={state => { void move(message.id, state); }} />)}
+      {inbox.counts[filter] === 0 && <Empty testID="inbox-empty" icon="Inbox" text={t(filter === 'new' ? 'inbox.empty' : `messageFlow.empty.${filter}`)} />}
+    </>}
+  </Screen>;
 }
-
-const styles = StyleSheet.create({
-  // `S.header` / `S.hrow`, same box as every other tab root.
-  header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-  },
-});
+const styles = StyleSheet.create({ header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12, minHeight: 56 } });

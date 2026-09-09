@@ -22,7 +22,7 @@ export const PREF_KEYS = {
   coachMarkDismissed: 'coachMark.dismissed',
 } as const;
 
-export type PrefKey = (typeof PREF_KEYS)[keyof typeof PREF_KEYS];
+export type PrefKey = (typeof PREF_KEYS)[keyof typeof PREF_KEYS] | `anonymity.${string}`;
 
 /** Namespaced so a future library sharing AsyncStorage cannot collide. */
 const NAMESPACE = 'brand.pref.';

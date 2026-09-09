@@ -19,6 +19,9 @@ export type RootStackParamList = {
   Pending: undefined;
   Shell: NavigatorScreenParams<TabParamList> | undefined;
   Section: { id: string };
+  EventDetail: { id: string };
+  EventCode: { id: string; created?: boolean };
+  EventPerson: { id: string; personId: string };
 };
 
 /** [D2] Exactly four tabs, in this order. Profile is the owner's own wall. */

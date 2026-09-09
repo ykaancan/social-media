@@ -142,5 +142,61 @@
       "identity": "Birinin kimliğini ifşa ediyor",
       "spam": "Spam"
     }
+  },
+  "eventFlow": {
+    "closed": "Kapalı",
+    "requestError": "Yüklenemedi. Bağlantını kontrol edip tekrar dene.",
+    "createError": "Etkinlik oluşturulamadı. Tarihleri kontrol edip tekrar dene.",
+    "archived": "Bu pano kapandı. Okuyabilirsin, paylaşım yapamazsın.",
+    "qrLabel": "Etkinliğe katılma QR kodu",
+    "dateTime": "Tarih ve saat (YYYY-MM-DD HH:mm)",
+    "cameraPermission": "Etkinliğin QR kodunu taramak için kameraya erişim izni ver.",
+    "allowCamera": "Kameraya izin ver",
+    "openSettings": "Ayarları aç",
+    "cameraError": "Etkinlik kodu okunamadı. Başka bir QR dene veya kodu yaz.",
+    "noUpcoming": "Planlanmış etkinlik yok. Kodla katıl veya bir etkinlik oluştur.",
+    "searchPeople": "Katılan üyelerde ara",
+    "noPeople": "Aramana uyan katılımcı yok.",
+    "joinedCount": "{n} kişi katıldı · buradaki herkes admin onayından geçti",
+    "opensAt": "Pano {date} tarihinde açılıyor. O zamana kadar kimlerin geldiğine bak.",
+    "noPosts": "Henüz paylaşım yok.",
+    "created": "Etkinlik oluşturuldu",
+    "createdHelp": "Kodu veya QR’ı paylaş. Katılanlar Kişiler’de görünür; pano başlangıç saatinde açılır.",
+    "codeHelp": "Kodu veya QR’ı olan herkes katılabilir.",
+    "shareMessage": "[BRAND] uygulamasında {name} etkinliğine katıl. Etkinlik kodunu gir: {code}.",
+    "colors": {
+      "magenta": "Macenta",
+      "coral": "Mercan",
+      "tangerine": "Turuncu",
+      "amber": "Kehribar",
+      "lime": "Limon yeşili",
+      "mint": "Nane yeşili",
+      "azure": "Gök mavisi",
+      "violet": "Mor"
+    }
+  },
+  "messageFlow": {
+    "filters": {
+      "new": "Yeni",
+      "private": "Özel",
+      "approved": "Panoda"
+    },
+    "empty": {
+      "private": "Özel tuttuğun mesajlar burada görünür.",
+      "approved": "Onayladığın mesajlar burada görünür."
+    },
+    "onWallNote": "Panonda yayımlanan mesajların sana özel gelen kutusu görünümü.",
+    "namedOnly": "Bu kişi yalnızca isimli mesajları kabul ediyor. Göndermek için İsimli seç.",
+    "sendAnyway": "Yine de gönder",
+    "sendError": "Mesaj gönderilemedi. Bağlantını kontrol edip tekrar dene.",
+    "actionError": "Değişiklik kaydedilemedi. Tekrar dene.",
+    "markNew": "Yeni olarak işaretle",
+    "markedNew": "Yeni olarak işaretlendi",
+    "deleteTitle": "Mesajı sil?",
+    "deleteBody": "Gelen kutundan ve panondan gizlenir. Bunu geri alamazsın. Gönderdiğin şikâyet admin için erişilebilir kalır.",
+    "blockTitle": "Göndereni engelle?",
+    "blockBody": "Anonim gönderenin kim olduğunu öğrenmezsin. Mesajları gelen kutundan ve panondan gizlenir, sana tekrar yazamaz. Kendisine bildirim gitmez.",
+    "blocked": "Engellendi. Sana tekrar yazamaz.",
+    "wallClosed": "Bu kişi mesaj kabul etmiyor."
   }
 }

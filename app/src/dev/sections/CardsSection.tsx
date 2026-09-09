@@ -253,6 +253,9 @@ export function CardsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) =
       <Specimen label="JoinCodeBlock">
         <JoinCodeBlock code={events.izm.code} eventColorSoft={covers.azure.soft} />
       </Specimen>
+      <Specimen label="JoinCodeBlock · generated QR">
+        <JoinCodeBlock code={events.izm.code} generateQr eventColorSoft={covers.azure.soft} />
+      </Specimen>
 
       <Specimen label="PendingState">
         <PendingState

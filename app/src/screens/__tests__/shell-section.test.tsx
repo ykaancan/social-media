@@ -92,7 +92,7 @@ beforeEach(async () => {
 });
 
 describe('Events tab', () => {
-  it('shows the empty state, the coach mark and two actions that do not pretend to work', async () => {
+  it('shows the empty state, the coach mark and working join/create entry points', async () => {
     await signInApproved(approvedApi());
 
     await waitFor(() =>
@@ -103,10 +103,64 @@ describe('Events tab', () => {
     await waitFor(() => expect(screen.getByTestId('coach-mark')).toBeTruthy());
     expect(screen.getByText('Join an event to get started')).toBeTruthy();
 
-    // Step 3 owns both flows, so both buttons are disabled rather than toasting
-    // a promise (principle 4).
-    expect(screen.getByTestId('events-join').props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByTestId('events-create').props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByTestId('events-join').props.accessibilityState.disabled).toBe(false);
+    expect(screen.getByTestId('events-create').props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('creates an event, shows its real QR code, opens its roster and returns to the refreshed list', async () => {
+    const api = approvedApi();
+    await signInApproved(api);
+    await act(async () => { fireEvent.press(screen.getByTestId('events-create')); });
+    await act(async () => { fireEvent.changeText(screen.getByTestId('create-name'), 'Welcome night'); });
+    await act(async () => { fireEvent.press(screen.getByTestId('create-submit')); });
+    await waitFor(() => expect(screen.getByTestId('event-code-screen')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Event join QR code')).toBeTruthy());
+    const events = await api.listMyEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].memberCount).toBe(1);
+    await act(async () => { fireEvent.press(screen.getByText('Done')); });
+    await waitFor(() => expect(screen.getByTestId('event-detail')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('event-show-people')).toBeTruthy());
+    // Upcoming board's secondary action opens People.
+    await act(async () => { fireEvent.press(screen.getByTestId('event-show-people')); });
+    await waitFor(() => expect(screen.getByTestId('event-people-search')).toBeTruthy());
+    await act(async () => { fireEvent.changeText(screen.getByTestId('event-people-search'), 'DENİZ'); });
+    await waitFor(() => expect(screen.getByTestId('event-person-u1')).toBeTruthy());
+    await act(async () => { fireEvent.press(screen.getByTestId('event-person-u1')); });
+    await waitFor(() => expect(screen.getByTestId('event-person-screen')).toBeTruthy());
+    await act(async () => { fireEvent.press(screen.getByLabelText('Back')); });
+    await act(async () => { fireEvent.press(screen.getByLabelText('Back')); });
+    await waitFor(() => expect(screen.getByTestId(`event-${events[0].id}`)).toBeTruthy());
+  });
+
+  it('keeps the join form usable after an invalid code or network failure', async () => {
+    const api = approvedApi();
+    await signInApproved(api);
+    await act(async () => { fireEvent.press(screen.getByTestId('events-join')); });
+    await act(async () => { fireEvent.changeText(screen.getByTestId('join-code'), 'ZZZ-ZZZ'); });
+    await act(async () => { fireEvent.press(screen.getByTestId('join-submit')); });
+    await waitFor(() => expect(screen.getByText('No event with that code. Check it with whoever shared it.')).toBeTruthy());
+    jest.spyOn(api, 'joinEvent').mockRejectedValueOnce(new ApiError('network'));
+    await act(async () => { fireEvent.press(screen.getByTestId('join-submit')); });
+    await waitFor(() => expect(screen.getByText('Couldn’t load this. Check your connection and try again.')).toBeTruthy());
+    expect(screen.getByTestId('join-submit').props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('joins another member’s event and opens the joined detail', async () => {
+    const api = approvedApi();
+    await api.register({ email: 'organizer@example.com', password: 'password123' });
+    await api.submitProfile({ name: 'Organizer', sectionId: 'izmir' }); await api.me();
+    const event = await api.createEvent({ name: 'İzmir meetup', scope: 'section', cover: 'azure', boardMode: 'approve_first',
+      startsAt: new Date(Date.now()+3600000).toISOString(), endsAt: new Date(Date.now()+7200000).toISOString() });
+    await api.logout();
+    await signInApproved(api);
+    await act(async () => { fireEvent.press(screen.getByTestId('events-join')); });
+    await act(async () => { fireEvent.changeText(screen.getByTestId('join-code'), event.joinCode); });
+    await act(async () => { fireEvent.press(screen.getByTestId('join-submit')); });
+    await waitFor(() => expect(screen.getByTestId('join-open')).toBeTruthy());
+    expect((await api.getEvent(event.id)).memberCount).toBe(2);
+    await act(async () => { fireEvent.press(screen.getByTestId('join-open')); });
+    await waitFor(() => expect(screen.getByTestId('event-detail')).toBeTruthy());
   });
 
   it('hides the coach mark on "Got it" and remembers it', async () => {
@@ -172,8 +226,8 @@ describe('Profile tab', () => {
       screen.getByText('Approved messages will show here. Approve one from your inbox.'),
     ).toBeTruthy();
 
-    // Nothing counts approved messages yet, so nothing claims to.
-    expect(screen.queryByText(/on the wall/)).toBeNull();
+    // The approved count comes from the inbox query.
+    expect(screen.getByText(/0 on the wall/)).toBeTruthy();
   });
 });
 
@@ -260,4 +314,36 @@ describe('Section screen', () => {
     await waitFor(() => expect(screen.getByTestId('section-roster')).toBeTruthy());
     expect(screen.queryByTestId('section-error')).toBeNull();
   });
+});
+
+
+it('keeps the New badge, inbox filters and owner wall synchronized', async () => {
+  const api = approvedApi();
+  const session = await signInApproved(api);
+  const ownerId = session().me!.id;
+  await waitFor(() => expect(screen.getByTestId('events-empty')).toBeTruthy());
+  await act(async () => {
+    const event = await api.createEvent({name:'Message test',scope:'section',cover:'coral',boardMode:'approve_first',
+      startsAt:new Date(Date.now()+3600000).toISOString(),endsAt:new Date(Date.now()+7200000).toISOString()});
+    await api.register({email:'sender@example.com',password:'password123'});
+    await api.submitProfile({name:'Sender',sectionId:'izmir'}); await api.me(); await api.joinEvent(event.joinCode);
+    await api.sendWallMessage({eventId:event.id,recipientId:ownerId,text:'A real test message',anonymityLevel:'anonymous',allowedHints:{}});
+    await api.login({email:'deniz@example.com',password:'sekizkarakter'});
+  });
+  await fireEvent.press(screen.getByTestId('tab-inbox'));
+  await waitFor(() => expect(screen.getByTestId('message-message-1')).toBeTruthy());
+  expect(within(screen.getByTestId('tab-inbox')).getByText('1')).toBeTruthy();
+  await fireEvent.press(within(screen.getByTestId('message-message-1')).getByText('Approve to wall'));
+  await waitFor(() => expect(screen.queryByTestId('message-message-1')).toBeNull());
+  expect(within(screen.getByTestId('tab-inbox')).queryByText('1')).toBeNull();
+  await fireEvent.press(screen.getByTestId('tab-profile'));
+  await waitFor(() => expect(screen.getByText('A real test message')).toBeTruthy());
+  expect(screen.getByText(/1 on the wall/)).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('tab-inbox'));
+  await fireEvent.press(screen.getByRole('tab',{name:'On wall'}));
+  await fireEvent.press(within(screen.getByTestId('message-message-1')).getByText('Keep private'));
+  await waitFor(() => expect(screen.queryByTestId('message-message-1')).toBeNull());
+  await fireEvent.press(screen.getByTestId('tab-profile'));
+  await waitFor(() => expect(screen.getByTestId('profile-empty')).toBeTruthy());
+  expect(screen.queryByText('A real test message')).toBeNull();
 });

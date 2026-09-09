@@ -736,3 +736,29 @@ describe('ControlsSheet', () => {
     expect(onCloseBoard).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('Composer delivery screening', () => {
+  it('requires acknowledgement for the exact draft and screens edited text again', async () => {
+    const onScreen = jest.fn(async () => ({warning:true}));
+    const onSend = jest.fn();
+    await wrap(<Composer me={ME} wallOwner={MEMBERS[0]} onClose={() => {}} onScreen={onScreen} onSend={onSend} />);
+    await fireEvent.changeText(screen.getByTestId('composer-text'), 'First draft');
+    await fireEvent.press(screen.getByTestId('composer-send'));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByTestId('composer-screening-warning')).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('composer-text'), 'Edited draft');
+    await fireEvent.press(screen.getByTestId('composer-send'));
+    expect(onScreen).toHaveBeenCalledTimes(2);
+    expect(onSend).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('composer-send'));
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({text:'Edited draft',screeningAcknowledged:true}));
+  });
+  it('keeps the draft when delivery fails', async () => {
+    await wrap(<Composer me={ME} wallOwner={MEMBERS[0]} onClose={() => {}} onSend={async () => {throw new Error('offline');}} />);
+    await fireEvent.changeText(screen.getByTestId('composer-text'), 'Keep my draft');
+    await fireEvent.press(screen.getByTestId('composer-send'));
+    expect(screen.getByTestId('composer-text').props.value).toBe('Keep my draft');
+    expect(screen.getByText(t('messageFlow.sendError'))).toBeTruthy();
+  });
+});

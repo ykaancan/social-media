@@ -1,4 +1,5 @@
 import {
+  type CreateEventRequest, type EventSummary, type EventDetail, type EventJoinResult,
   ApiError,
   type ApiClient,
   type AuthResult,
@@ -19,7 +20,7 @@ interface ErrorBody {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   /**
    * Auth endpoints answer 401 with "wrong password", not "session expired", so
@@ -40,6 +41,30 @@ function joinUrl(base: string, path: string): string {
  * `types.ts`.
  */
 export class HttpApi implements ApiClient {
+  getInbox(): Promise<import('./messages').InboxSnapshot> { return this.request('/me/inbox'); }
+  getWall(eventId: string, personId: string): Promise<import('./messages').WallSnapshot> {
+    return this.request(`/events/${encodeURIComponent(eventId)}/people/${encodeURIComponent(personId)}/wall`);
+  }
+  screenMessage(text: string): Promise<{ warning: boolean }> { return this.request('/messages/screen', { method: 'POST', body: { text } }); }
+  sendWallMessage(body: import('./messages').SendWallMessage): Promise<{ accepted: true }> { return this.request('/messages/wall', { method: 'POST', body }); }
+  updateInboxMessage(id: string, state: import('./messages').MessageState): Promise<import('./messages').InboxMessage> {
+    return this.request(`/me/inbox/${encodeURIComponent(id)}/state`, { method: 'PUT', body: { state } });
+  }
+  deleteInboxMessage(id: string): Promise<void> { return this.request(`/me/inbox/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+  reportMessage(id: string, reason: import('./messages').ReportReason): Promise<void> {
+    return this.request(`/messages/${encodeURIComponent(id)}/report`, { method: 'POST', body: { reason } });
+  }
+  blockMessage(id: string): Promise<void> { return this.request(`/messages/${encodeURIComponent(id)}/block`, { method: 'POST' }); }
+  listMyEvents(): Promise<EventSummary[]> { return this.request('/events'); }
+  createEvent(body: CreateEventRequest): Promise<EventDetail> {
+    return this.request('/events', { method: 'POST', body });
+  }
+  joinEvent(code: string): Promise<EventJoinResult> {
+    return this.request('/events/join', { method: 'POST', body: { code } });
+  }
+  getEvent(id: string): Promise<EventDetail> {
+    return this.request(`/events/${encodeURIComponent(id)}`);
+  }
   private readonly baseUrl: string;
   private tokens: Tokens | null = null;
   private unauthorized: (() => void) | undefined;

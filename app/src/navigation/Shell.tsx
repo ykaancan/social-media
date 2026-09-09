@@ -3,6 +3,7 @@ import React from 'react';
 import { TabBar, type TabId } from '../components/patterns';
 import { EventsTab, InboxTab, ProfileTab, ThreadsTab } from '../screens';
 import type { TabParamList } from './types';
+import { useMessages } from '../messages/MessagesProvider';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -25,15 +26,15 @@ const ROUTE: Record<TabId, keyof TabParamList> = {
  * The bar itself is the design system's `TabBar` pattern — the navigator only
  * tells it which tab is current and listens for the change.
  *
- * `badges` is deliberately absent: nothing counts `new` inbox messages or
- * unread threads yet, and principle 4 forbids showing a number we do not have.
- * A later wave passes the real counts.
+ * The Inbox badge counts only actual new messages. Thread counts arrive in Step 6.
  */
 function ShellTabBar({ state, navigation }: BottomTabBarProps) {
+  const { inbox } = useMessages();
   const current = state.routes[state.index]?.name as keyof TabParamList;
 
   return (
     <TabBar
+      badges={inbox ? { inbox: inbox.counts.new } : undefined}
       value={TAB_ID[current] ?? 'events'}
       onChange={(id) => {
         const target = ROUTE[id];

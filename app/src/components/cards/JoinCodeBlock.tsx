@@ -1,4 +1,5 @@
 import React from 'react';
+import QRCode from 'react-native-qrcode-svg';
 import { Image, Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useTranslation } from '../../i18n';
@@ -7,6 +8,8 @@ import { Button } from '../core/Button';
 import { Text } from '../core/Text';
 
 export interface JoinCodeBlockProps {
+  /** Encode the actual join code. The gallery can still show the unconfigured variant. */
+  generateQr?: boolean;
   /** 6 alphanumerics; rendered "K7Q 4ZM". */
   code?: string;
   /** A generated QR image. Without it a labelled placeholder is shown. */
@@ -65,6 +68,7 @@ function Hatch() {
 
 /** Join code + QR, shown to the creator and on the event detail screen. */
 export function JoinCodeBlock({
+  generateQr = false,
   code = '',
   qrSrc,
   eventColorSoft,
@@ -117,11 +121,11 @@ export function JoinCodeBlock({
 
       <View
         accessible
-        accessibilityLabel={L.qrPlaceholder}
+        accessibilityLabel={generateQr ? t('eventFlow.qrLabel') : L.qrPlaceholder}
         style={[styles.qr, { borderRadius: radius.md, borderColor: colors.borderStrong }]}
       >
-        <Hatch />
-        {qrSrc ? (
+        {!generateQr && <Hatch />}
+        {generateQr && code ? <QRCode value={code} size={148} quietZone={14} /> : qrSrc ? (
           <Image
             source={{ uri: qrSrc }}
             resizeMode="contain"
