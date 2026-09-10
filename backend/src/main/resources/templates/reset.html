@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Choose a new password</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0;
+               display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+        main { width: 100%; max-width: 22rem; padding: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+        label { display: block; font-size: .875rem; margin: 1rem 0 .25rem; }
+        input { width: 100%; box-sizing: border-box; padding: .625rem; font-size: 1rem;
+                border: 1px solid #8888; border-radius: .375rem; background: transparent; color: inherit; }
+        button { width: 100%; margin-top: 1.5rem; padding: .75rem; font-size: 1rem;
+                 border: 0; border-radius: .375rem; background: #1f2937; color: #fff; cursor: pointer; }
+        p.hint { font-size: .8125rem; opacity: .7; }
+        p.error { font-size: .875rem; color: #b91c1c; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Choose a new password</h1>
+    <p class="hint">This link works once and expires one hour after it was requested.</p>
+    <p class="error" th:if="${error}" th:text="${error}">Something was wrong.</p>
+    <form method="post" action="/reset">
+        <input type="hidden" name="token" th:value="${token}">
+        <label for="password">New password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password"
+               th:attr="minlength=${minLength}" required>
+        <label for="confirm">Repeat it</label>
+        <input id="confirm" name="confirm" type="password" autocomplete="new-password"
+               th:attr="minlength=${minLength}" required>
+        <button type="submit">Set password</button>
+    </form>
+</main>
+</body>
+</html>

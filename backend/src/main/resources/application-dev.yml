@@ -1,0 +1,21 @@
+# Local development against backend/docker-compose.yml.
+# `./gradlew bootRun` activates this profile automatically.
+spring:
+  thymeleaf:
+    cache: false
+  jpa:
+    properties:
+      hibernate.format_sql: true
+
+brand:
+  jwt:
+    # DEV ONLY. Base64 of a readable phrase, committed on purpose so a fresh
+    # clone starts. Production sets BRAND_JWT_SECRET to a real random 32+ bytes.
+    secret: ${BRAND_JWT_SECRET:YnJhbmQtbG9jYWwtZGV2ZWxvcG1lbnQtc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZA==}
+  mail:
+    enabled: false
+
+logging:
+  level:
+    app.brand: DEBUG
+    org.flywaydb: INFO

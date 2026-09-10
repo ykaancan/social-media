@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[BRAND] admin</title>
+<!--
+  [B11] The whole admin surface: one static file, no framework, no build step.
+  The backend copies it to static/admin/ and serves it at /admin/, so every fetch
+  below is same-origin and the API base is just "".
+
+  This is deliberately plain. It is not a designed screen (brief 4.9) and it must
+  not grow a design system: /design is the app's, and nothing here is shared with
+  it. The reports queue (step B-5) is the next section on this page.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 24px; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  label { display: block; font-size: 12px; opacity: .7; margin-bottom: 4px; }
+  input, select, button { font: inherit; padding: 6px 10px; }
+  button { cursor: pointer; }
+  button[disabled] { cursor: default; opacity: .5; }
+  form.login { max-width: 320px; display: grid; gap: 12px; }
+  .scroll { overflow-x: auto; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; min-width: 900px; }
+  th, td { border-bottom: 1px solid rgba(128,128,128,.35); padding: 8px; text-align: left; vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+  td.actions { white-space: nowrap; }
+  td.actions button { margin-right: 6px; }
+  img.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; display: block; }
+  .noavatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(128,128,128,.25); }
+  .muted { opacity: .6; }
+  .error { color: #b00020; min-height: 20px; margin: 12px 0 0; }
+  .status { min-height: 20px; margin: 12px 0 0; opacity: .7; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<section id="loginView">
+  <h1>[BRAND] admin</h1>
+  <form class="login" id="loginForm">
+    <div>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" id="loginButton">Sign in</button>
+  </form>
+  <p class="error" id="loginError"></p>
+</section>
+
+<section id="adminView" hidden>
+  <div class="row">
+    <h1>[BRAND] admin</h1>
+    <span class="spacer"></span>
+    <span class="muted" id="who"></span>
+    <button type="button" id="logout">Log out</button>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="filter">Status</label>
+      <select id="filter">
+        <option value="pending" selected>Pending</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+        <option value="banned">Banned</option>
+        <option value="incomplete">Incomplete</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <button type="button" id="reload">Reload</button>
+    </div>
+  </div>
+
+  <p class="error" id="error"></p>
+  <p class="status" id="status"></p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Photo</th><th>Name</th><th>Section</th><th>Bio</th>
+        <th>Email</th><th>Phone</th><th>Submitted</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  </div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  var ACCESS = 'brand.admin.accessToken';
+  var REFRESH = 'brand.admin.refreshToken';
+
+  var el = function (id) { return document.getElementById(id); };
+  var loginView = el('loginView'), adminView = el('adminView');
+
+  function tokens() {
+    return { access: sessionStorage.getItem(ACCESS), refresh: sessionStorage.getItem(REFRESH) };
+  }
+  function storeTokens(t) {
+    sessionStorage.setItem(ACCESS, t.accessToken);
+    sessionStorage.setItem(REFRESH, t.refreshToken);
+  }
+  function clearTokens() {
+    sessionStorage.removeItem(ACCESS);
+    sessionStorage.removeItem(REFRESH);
+  }
+
+  /* Every non-2xx body is {code, message, field?} [B14]; the code is what we show. */
+  function ApiError(code, message, status) {
+    this.code = code || 'unknown';
+    this.message = message || '';
+    this.status = status;
+  }
+  ApiError.prototype = Object.create(Error.prototype);
+
+  function readError(response) {
+    return response.json().then(function (body) {
+      return new ApiError(body && body.code, body && body.message, response.status);
+    }, function () {
+      return new ApiError('unknown', '', response.status);
+    });
+  }
+
+  function request(path, options, retried) {
+    var opts = options || {};
+    var headers = { 'Accept': 'application/json' };
+    var access = tokens().access;
+    if (access) { headers['Authorization'] = 'Bearer ' + access; }
+    if (opts.body) { headers['Content-Type'] = 'application/json'; }
+
+    return fetch(path, { method: opts.method || 'GET', headers: headers, body: opts.body })
+      .then(function (response) {
+        if (response.status === 401 && !retried && tokens().refresh) {
+          /* The app's rule too: spend the refresh token at most once per 401. */
+          return refresh().then(function () {
+            return request(path, opts, true);
+          });
+        }
+        if (!response.ok) { return readError(response).then(function (e) { throw e; }); }
+        if (response.status === 204) { return null; }
+        return response.json();
+      });
+  }
+
+  function refresh() {
+    return fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ refreshToken: tokens().refresh })
+    }).then(function (response) {
+      if (!response.ok) {
+        clearTokens();
+        showLogin('Your session ended. Sign in again.');
+        return readError(response).then(function (e) { throw e; });
+      }
+      return response.json().then(storeTokens);
+    });
+  }
+
+  /* ------------------------------------------------------------- sign in */
+
+  el('loginForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    el('loginError').textContent = '';
+    el('loginButton').disabled = true;
+
+    fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ email: el('email').value.trim(), password: el('password').value })
+    }).then(function (response) {
+      if (!response.ok) { return readError(response).then(function (e) { throw e; }); }
+      return response.json();
+    }).then(function (auth) {
+      if (!auth.me || auth.me.role !== 'super_admin') {
+        /* Said plainly: a real account, simply not an admin one. */
+        throw new ApiError('not_an_admin',
+          'This account is not an admin. Ask the super admin to promote it.', 403);
+      }
+      storeTokens(auth.tokens);
+      el('password').value = '';
+      showAdmin(auth.me);
+    }).catch(function (error) {
+      el('loginError').textContent = error.code === 'not_an_admin'
+        ? error.message
+        : (error.status === 401 ? 'Wrong email or password.' : 'Sign in failed (' + error.code + ').');
+    }).then(function () {
+      el('loginButton').disabled = false;
+    });
+  });
+
+  el('logout').addEventListener('click', function () {
+    var refreshToken = tokens().refresh;
+    clearTokens();
+    fetch('/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: refreshToken })
+    }).catch(function () { /* signing out locally is what matters */ });
+    showLogin('');
+  });
+
+  function showLogin(message) {
+    adminView.hidden = true;
+    loginView.hidden = false;
+    el('loginError').textContent = message || '';
+  }
+
+  function showAdmin(me) {
+    loginView.hidden = true;
+    adminView.hidden = false;
+    el('who').textContent = (me && (me.name || me.email)) || '';
+    load();
+  }
+
+  /* -------------------------------------------------------------- queue */
+
+  el('filter').addEventListener('change', load);
+  el('reload').addEventListener('click', load);
+
+  function load() {
+    el('error').textContent = '';
+    el('status').textContent = 'Loading...';
+    request('/admin/api/users?status=' + encodeURIComponent(el('filter').value))
+      .then(render)
+      .catch(function (error) {
+        el('status').textContent = '';
+        if (error.status === 401) { showLogin('Your session ended. Sign in again.'); return; }
+        el('error').textContent = 'Could not load the list (' + error.code + ').';
+      });
+  }
+
+  function render(rows) {
+    var body = el('rows');
+    body.textContent = '';
+    el('status').textContent = rows.length === 1 ? '1 account' : rows.length + ' accounts';
+
+    rows.forEach(function (user) {
+      var tr = document.createElement('tr');
+
+      var photo = document.createElement('td');
+      if (user.avatarUrl) {
+        var img = document.createElement('img');
+        img.className = 'avatar';
+        img.src = user.avatarUrl;
+        img.alt = '';
+        photo.appendChild(img);
+      } else {
+        var blank = document.createElement('div');
+        blank.className = 'noavatar';
+        photo.appendChild(blank);
+      }
+      tr.appendChild(photo);
+
+      /* [D11] The country is read through the section and shown with it, never alone. */
+      tr.appendChild(cell(user.name || '-'));
+      tr.appendChild(cell(user.section ? user.section.name + ' · ' + user.section.country : '-'));
+      tr.appendChild(cell(user.bio || '-'));
+      tr.appendChild(cell(user.email));
+      tr.appendChild(cell(user.phone || '-'));
+      tr.appendChild(cell(when(user.submittedAt)));
+      tr.appendChild(cell(user.status + (user.role === 'super_admin' ? ' · admin' : '')));
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      if (user.status === 'pending') {
+        actions.appendChild(action('Approve', user, 'approve', null));
+        actions.appendChild(action('Reject', user, 'reject',
+          'Reject this registration? The person will see that they were not approved.'));
+      }
+      if (user.status !== 'banned') {
+        actions.appendChild(action('Ban', user, 'ban',
+          'Ban this account? Their sessions end immediately.'));
+      }
+      tr.appendChild(actions);
+
+      body.appendChild(tr);
+    });
+  }
+
+  function cell(text) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  }
+
+  function when(iso) {
+    if (!iso) { return '-'; }
+    var date = new Date(iso);
+    return isNaN(date.getTime()) ? iso : date.toLocaleString();
+  }
+
+  function action(label, user, verb, confirmation) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', function () {
+      if (confirmation && !window.confirm(confirmation + '\n\n' + (user.name || user.email))) { return; }
+      button.disabled = true;
+      el('error').textContent = '';
+      request('/admin/api/users/' + encodeURIComponent(user.id) + '/' + verb, { method: 'POST' })
+        .then(load)
+        .catch(function (error) {
+          button.disabled = false;
+          if (error.status === 401) { showLogin('Your session ended. Sign in again.'); return; }
+          el('error').textContent = label + ' failed (' + error.code + ').';
+          if (error.code === 'conflict') { load(); }
+        });
+    });
+    return button;
+  }
+
+  /* Resume a session that is still in this tab. */
+  if (tokens().access) {
+    request('/me').then(function (me) {
+      if (me.role !== 'super_admin') {
+        clearTokens();
+        showLogin('This account is not an admin.');
+        return;
+      }
+      showAdmin(me);
+    }).catch(function () {
+      clearTokens();
+      showLogin('');
+    });
+  }
+})();
+</script>
+</body>
+</html>

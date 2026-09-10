@@ -1,0 +1,27 @@
+# The datasource is supplied by AbstractIntegrationTest's Testcontainers registry.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+brand:
+  jwt:
+    # Test-only key: base64 of "brand-test-secret-key-for-integration-tests!!".
+    secret: YnJhbmQtdGVzdC1zZWNyZXQta2V5LWZvci1pbnRlZ3JhdGlvbi10ZXN0cyEh
+    access-ttl: 15m
+    refresh-ttl: 30d
+  media:
+    dir: build/test-media
+  public-base-url: http://localhost:8080
+  mail:
+    from: no-reply@test.local
+    enabled: false
+  cors:
+    allowed-origins:
+      - http://localhost:8081
+
+logging:
+  level:
+    app.brand: INFO
+    org.hibernate.SQL: WARN

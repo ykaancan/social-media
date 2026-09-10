@@ -1,0 +1,85 @@
+server:
+  port: 8080
+  error:
+    # Every error body the app sees is rendered by RestExceptionHandler [B14];
+    # the servlet container's own error page must never leak anything.
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: brand-backend
+
+  # Defaults match backend/docker-compose.yml. Every value is overridable by
+  # environment variable, so nothing about production lives in this file.
+  datasource:
+    url: jdbc:postgresql://${BRAND_DB_HOST:localhost}:${BRAND_DB_PORT:5432}/${BRAND_DB_NAME:brand}
+    username: ${BRAND_DB_USER:brand}
+    password: ${BRAND_DB_PASSWORD:brand}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jpa:
+    # The schema comes from Flyway. Hibernate only ever checks that the entities
+    # still match it; it must never write DDL.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  jackson:
+    # Optional DTO fields (Me.name, Me.section, MessageSender.hints, ...) are
+    # absent rather than null — types.ts declares them with `?`.
+    default-property-inclusion: non_null
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+      write-date-timestamps-as-nanoseconds: false
+
+  servlet:
+    multipart:
+      # [B10] Avatars only, and the one image endpoint stage 1 allows.
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  # SMTP is configured by environment (SPRING_MAIL_HOST, SPRING_MAIL_PORT,
+  # SPRING_MAIL_USERNAME, SPRING_MAIL_PASSWORD). With no host configured there is
+  # no JavaMailSender bean at all and brand.mail.enabled must stay false.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+brand:
+  jwt:
+    # REQUIRED. Base64, at least 32 bytes decoded. The application refuses to
+    # start without it — there is no built-in default outside the dev profile.
+    secret: ${BRAND_JWT_SECRET:}
+    access-ttl: 15m
+    refresh-ttl: 30d
+  # [B11] On startup the account with this email is promoted to super_admin and
+  # approved. Empty means "no bootstrap".
+  bootstrap-admin-email: ${BRAND_BOOTSTRAP_ADMIN_EMAIL:}
+  media:
+    dir: ${BRAND_MEDIA_DIR:./data/avatars}
+  # Used to build absolute avatar URLs and the password-reset link.
+  public-base-url: ${BRAND_PUBLIC_BASE_URL:http://localhost:8080}
+  mail:
+    from: ${BRAND_MAIL_FROM:no-reply@localhost}
+    # false -> reset links are written to the log at INFO instead of being sent.
+    enabled: ${BRAND_MAIL_ENABLED:false}
+  cors:
+    # Expo dev server origins by default; the native app sends no Origin header.
+    allowed-origins: ${BRAND_CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:19006}
+
+logging:
+  level:
+    app.brand: INFO

@@ -1,0 +1,14 @@
+# Gradle
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local runtime state
+data/
+logs/
+*.log
+
+# Local secrets / overrides
+.env
+application-local.yml
+src/main/resources/application-local.yml

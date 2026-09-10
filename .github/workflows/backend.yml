@@ -1,0 +1,48 @@
+name: backend
+
+# The backend suite is Testcontainers end to end: every test runs against a real
+# Postgres 16, and Flyway migrating it is itself the check on V1/V2. The
+# ubuntu-latest runner has Docker, so there is nothing to install for that.
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'admin/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'admin/**'
+      - '.github/workflows/backend.yml'
+
+jobs:
+  test:
+    name: gradle test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # [B1] Java 21 whatever the runner ships with.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The wrapper is committed from Windows, where the executable bit is not.
+      - name: Run the backend tests
+        working-directory: backend
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: backend/build/reports/tests/test
+          retention-days: 7
