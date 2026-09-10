@@ -45,7 +45,7 @@ export interface MessageApi {
   /** GET /events/:eventId/people/:personId/wall. Both people must be joined. */
   getWall(eventId: string, personId: string): Promise<WallSnapshot>;
   /** POST /messages/screen {text}. Delivery always rechecks on the server. */
-  screenMessage(text: string): Promise<{ warning: boolean }>;
+  screenMessage(text: string, context?: 'thread'): Promise<{ warning: boolean }>;
   /** POST /messages/wall. Never returns private/muted status to the sender. */
   sendWallMessage(input: SendWallMessage): Promise<{ accepted: true }>;
   /** PUT /me/inbox/:id/state {state}. All three states are reversible. */

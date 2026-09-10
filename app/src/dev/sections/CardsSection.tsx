@@ -268,6 +268,11 @@ export function CardsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) =
           ]}
           note={t('onboarding.pendingNote')}
         />
+        <PendingState
+          title={t('reviewFlow.bannedTitle')}
+          subtitle={t('reviewFlow.bannedBody')}
+          steps={[]}
+        />
       </Specimen>
     </GallerySection>
   );

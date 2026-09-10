@@ -1,3 +1,4 @@
+import { removePref } from '../prefs';
 import React, {
   createContext,
   useCallback,
@@ -72,6 +73,7 @@ export interface SessionValue extends SessionState {
   register(req: RegisterRequest): Promise<Me>;
   login(req: LoginRequest): Promise<Me>;
   logout(): Promise<void>;
+  deleteAccount(): Promise<void>;
   /** Always resolves — the server answers the same whether the address exists or not. */
   forgotPassword(email: string): Promise<void>;
   /** Sends the profile for review. The resulting `Me` is `pending`. */
@@ -156,6 +158,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
           await clearTokens();
           dispatch({ type: 'signedOut' });
         }
+      },
+
+      async deleteAccount() {
+        await api.deleteAccount();
+        api.setTokens(null);
+        await clearTokens();
+        if(state.me)await removePref(`anonymity.${state.me.id}`);
+        dispatch({type:'signedOut'});
       },
 
       forgotPassword: (email) => api.forgotPassword(email),

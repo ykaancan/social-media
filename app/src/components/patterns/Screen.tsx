@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 
 export interface ScreenProps {
+  scrollRef?: React.Ref<ScrollView>;
+  onContentSizeChange?: (width:number,height:number)=>void;
   children: React.ReactNode;
   /**
    * `S.header` — a `Back`, a `Wordmark` row, a title row. It sits OUTSIDE the
@@ -44,6 +46,8 @@ export interface ScreenProps {
  */
 export function Screen({
   children,
+  scrollRef,
+  onContentSizeChange,
   header,
   scroll = true,
   bottom,
@@ -60,6 +64,8 @@ export function Screen({
 
   const content = scroll ? (
     <ScrollView
+      ref={scrollRef}
+      onContentSizeChange={onContentSizeChange}
       testID={testID ? `${testID}-scroll` : undefined}
       style={styles.fill}
       contentContainerStyle={styles.scrollContent}

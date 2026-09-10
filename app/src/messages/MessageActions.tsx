@@ -1,3 +1,4 @@
+import { FirstReply } from '../threads/FirstReply';
 import React, { useRef, useState } from 'react';
 import { useApi, type InboxMessage, type MessageState, type ReportReason } from '../api';
 import { ConfirmSheet, ReportSheet, MoreSheet, inboxMoreItems, useToast } from '../components/patterns';
@@ -22,13 +23,14 @@ export function MessageActions({ message, onClose }: { message: InboxMessage; on
     finally { running.current = false; setBusy(false); }
   };
   const move = (state: MessageState) => { void run(() => api.updateInboxMessage(message.id, state), t(state === 'new' ? 'messageFlow.markedNew' : 'inbox.keptPrivate')); };
+  if (mode === 'reply') return <FirstReply origin={{kind:'inbox',id:message.id}} post={messagePreview(message)} onClose={onClose}/>;
   if (mode === 'report') return <ReportSheet post={messagePreview(message)} busy={busy} error={error ? t('messageFlow.actionError') : undefined}
     onClose={onClose} onReport={reason => { void run(() => api.reportMessage(message.id, reason as ReportReason), t('report.sent')); }} />;
   if (mode === 'delete' || mode === 'block') return <ConfirmSheet busy={busy} error={error ? t('messageFlow.actionError') : undefined}
     title={t(`messageFlow.${mode}Title`)} body={t(`messageFlow.${mode}Body`)} action={t(`common.${mode}`)} onClose={onClose}
     onConfirm={() => { void run(() => mode === 'delete' ? api.deleteInboxMessage(message.id) : api.blockMessage(message.id),
       t(mode === 'delete' ? 'inbox.deleted' : 'messageFlow.blocked')); }} />;
-  const items = inboxMoreItems(message, t).filter(item => item.id !== 'reply'); // Conversations are Step 6.
+  const items = inboxMoreItems(message, t);
   if (message.state !== 'new') items.unshift({ id: 'new', icon: 'Inbox', label: t('messageFlow.markNew') });
   return <MoreSheet post={messagePreview(message)} items={items} onClose={onClose} onPick={id => {
     if (busy) return;

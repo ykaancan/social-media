@@ -11,6 +11,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
  * navigator, which is what makes the tab bar disappear on a pushed screen [D2].
  */
 export type RootStackParamList = {
+  Settings: {page?:import('../screens/settings/SettingsScreen').SettingsPage}|undefined;
   Splash: undefined;
   SignUp: undefined;
   LogIn: undefined;
@@ -19,7 +20,9 @@ export type RootStackParamList = {
   Pending: undefined;
   Shell: NavigatorScreenParams<TabParamList> | undefined;
   Section: { id: string };
+  Thread: { id: string };
   EventDetail: { id: string };
+  EventProjector: { id: string };
   EventCode: { id: string; created?: boolean };
   EventPerson: { id: string; personId: string };
 };

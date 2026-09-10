@@ -9,6 +9,7 @@ export type ChipTone = 'neutral' | 'outline' | 'event' | 'live';
 export type ChipSize = 'sm' | 'md';
 
 export interface ChipProps {
+  accessibilityLabel?: string;
   /** A string (the usual case, e.g. "ESN Ankara · Türkiye") or ready-made nodes. */
   children?: React.ReactNode;
   icon?: IconName;
@@ -36,6 +37,7 @@ const SIZES = {
  * `selected` win, which is what every call site actually wants.
  */
 export function Chip({
+  accessibilityLabel,
   children,
   icon,
   selected = false,
@@ -114,6 +116,7 @@ export function Chip({
     <Pressable
       testID={testID}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
       onPress={onPress}
       onPressIn={() => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { AnonymityBadge } from '../../components/anonymity';
-import { Button, Text } from '../../components/core';
+import { Button, Text, Input } from '../../components/core';
 import {
   Composer,
   ConfirmSheet,
@@ -21,12 +21,13 @@ import {
   type PostPreview,
   type SectionOption,
 } from '../../components/patterns';
-import { useTranslation } from '../../i18n';
+import { useTranslation, useLocale } from '../../i18n';
 import { useTheme } from '../../theme';
 import { events, me, people, posts, roster, sections } from '../fixtures';
 import { Specimen } from '../kit';
 
 type SheetId =
+  | 'confirm-typed'
   | 'confirm-danger'
   | 'confirm-reveal'
   | 'report-post'
@@ -71,6 +72,7 @@ export function PatternSheets() {
   const { colors, space } = useTheme();
   const { t } = useTranslation();
 
+  const [typed,setTyped]=useState('');const locale=useLocale();
   const [open, setOpen] = useState<SheetId | null>(null);
   const close = () => setOpen(null);
 
@@ -114,6 +116,10 @@ export function PatternSheets() {
 
   return (
     <>
+      <Specimen label="ConfirmSheet · typed account deletion">
+        {opener('confirm-typed','Open · typed deletion')}
+        {open==='confirm-typed'&&<ConfirmSheet title={t('settingsFlow.lastCheck')} body={t('settingsFlow.deleteType',{word:t('settingsFlow.deleteWord')})} action={t('settings.deleteAccount')} disabled={typed.toLocaleUpperCase(locale)!==t('settingsFlow.deleteWord')} preview={<Input label={t('settingsFlow.deleteWord')} value={typed} onChange={setTyped}/>} onClose={close} onConfirm={close}/>}
+      </Specimen>
       <Specimen label="ConfirmSheet · danger">
         {opener('confirm-danger', 'Open · delete account')}
         {open === 'confirm-danger' ? (

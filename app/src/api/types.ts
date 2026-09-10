@@ -1,3 +1,6 @@
+import type { SettingsApi } from './settings';
+import type { ThreadApi } from './threads';
+import type { BoardApi } from './board';
 /**
  * The API contract between the app and the future Spring Boot backend.
  *
@@ -31,8 +34,7 @@
  * - `approved` — full member.
  * - `rejected` — an admin turned the profile down. The person may edit and
  *   resubmit, which returns them to `pending` (see `PUT /me/profile`).
- * - `banned` — an admin banned the account. Stage 1 has no designed screen for
- *   this; the app currently routes it to the Pending screen (RootNavigator TODO).
+ * - `banned` — restricted account copy in the onboarding shell; no member routes.
  */
 export type AccountStatus = 'incomplete' | 'pending' | 'approved' | 'rejected' | 'banned';
 
@@ -111,7 +113,8 @@ export interface Person {
  * `rosterTotal - roster.length` and is never guessed.
  */
 export interface SectionDetail extends SectionSummary {
-  roster: Person[];
+  /** Server supplies an accessible shared event for wall navigation, or no link. */
+  roster: (Person & {wallEventId?:string})[];
   rosterTotal: number;
 }
 
@@ -265,7 +268,7 @@ export const LIMITS = {
  * Validation (server-enforced, mirrored client-side — see `LIMITS`):
  * name <= 40, bio <= 80, password >= 8, email matches /.+@.+\..+/.
  */
-export interface ApiClient extends MessageApi {
+export interface ApiClient extends MessageApi, BoardApi, ThreadApi, SettingsApi {
   /** Approved members only. GET /events returns joined events, never discovery. */
   listMyEvents(): Promise<EventSummary[]>;
   /** POST /events. Creator joins and becomes this event's moderator. */

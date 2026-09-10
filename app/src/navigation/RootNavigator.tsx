@@ -1,3 +1,8 @@
+import {Screen,LoadState} from '../components/patterns';
+import { SettingsScreen } from '../screens/settings/SettingsScreen';
+import { ThreadsProvider } from '../threads/ThreadsProvider';
+import { ThreadScreen } from '../screens/threads/ThreadScreen';
+import { EventProjectorScreen } from '../screens/events/EventProjectorScreen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
@@ -38,17 +43,17 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * discards the old group's state.
  */
 export function RootNavigator() {
-  const { phase, me } = useSession();
+  const { phase, me, bootError, retryBoot } = useSession();
   const { colors } = useTheme();
 
   // Boot: the splash colour and nothing else. No spinner and no "loading" copy —
   // this is normally a single frame, and a message would flash.
-  if (phase === 'booting') return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  if (phase === 'booting') return bootError ? <Screen testID="boot-error"><LoadState error onRetry={()=>{void retryBoot();}}/></Screen> : <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
   const status = me?.status;
 
   return (
-    <MessagesProvider key={`${me?.id ?? 'out'}:${status}`}><NavigationContainer>
+    <MessagesProvider key={`${me?.id ?? 'out'}:${status}`}><ThreadsProvider><NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {phase === 'signedOut' || !me ? (
           <Stack.Group navigationKey="signedOut">
@@ -65,18 +70,19 @@ export function RootNavigator() {
         ) : status === 'approved' ? (
           <Stack.Group navigationKey="approved">
             <Stack.Screen name="Shell" component={Shell} />
+            <Stack.Screen name="Settings" component={SettingsScreen}/>
+            <Stack.Screen name="Thread" component={ThreadScreen} />
             <Stack.Screen name="Section" component={SectionScreen} />
             <Stack.Screen name="EventDetail" component={EventDetailScreen} />
             <Stack.Screen name="EventCode" component={EventCodeScreen} />
+            <Stack.Screen name="EventProjector" component={EventProjectorScreen} options={{orientation:'landscape',statusBarHidden:true}} />
             <Stack.Screen name="EventPerson" component={EventPersonScreen} />
             {/* Reached from Settings later; the same screen with `edit: true`. */}
             <Stack.Screen name="ProfileSetup" component={ProfileSetup} />
           </Stack.Group>
         ) : (
           // `pending`, `rejected` and — for now — `banned`.
-          // TODO: stage 1 has no designed screen for a banned account. Pending is
-          // the least wrong placeholder; give `banned` its own screen (and its own
-          // copy) as soon as the design exists.
+          // Restricted accounts reuse the onboarding shell with status-specific copy.
           // The key carries the status: a `rejected` account that resubmits
           // becomes `pending`, and the key change is what takes it off the
           // ProfileSetup form and back onto Pending.
@@ -88,6 +94,6 @@ export function RootNavigator() {
           </Stack.Group>
         )}
       </Stack.Navigator>
-    </NavigationContainer></MessagesProvider>
+    </NavigationContainer></ThreadsProvider></MessagesProvider>
   );
 }

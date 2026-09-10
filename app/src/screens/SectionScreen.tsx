@@ -121,11 +121,10 @@ export function SectionScreen({ navigation, route }: RootScreenProps<'Section'>)
             testID={`section-person-${i}`}
             person={{ id: person.id, name: person.name, avatar: person.avatarUrl }}
             me={person.id === me?.id}
+            onPress={person.id===me?.id?()=>navigation.navigate('Shell',{screen:'Profile'}):person.wallEventId?()=>navigation.navigate('EventPerson',{id:person.wallEventId!,personId:person.id}):undefined}
           />
         ))}
-        {/* No `onPress`: other people's walls arrive in step 5, and PersonRow
-            draws no chevron without one — the row says "nothing happens here",
-            which is true. */}
+        {/* Wall links require a server-authorized shared event; no outside-event discovery. */}
         {more > 0 ? (
           <View testID="section-more" style={styles.more}>
             <Text variant="caption" color={colors.text2} nums style={styles.moreText}>

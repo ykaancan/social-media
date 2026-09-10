@@ -5,6 +5,7 @@ import { IconButton } from '../core/IconButton';
 import { Text } from '../core/Text';
 
 export interface BackProps {
+  middle?: React.ReactNode;
   onBack: () => void;
   /** Optional display title under the button row. */
   title?: string;
@@ -22,13 +23,14 @@ export interface BackProps {
  * The title is ALWAYS left-aligned (§1.6 of the bundle: this app never centres
  * a nav title), and uppercased through the Turkish-aware `upper` prop.
  */
-export function Back({ onBack, title, right, style, testID }: BackProps) {
+export function Back({ middle, onBack, title, right, style, testID }: BackProps) {
   const { t } = useTranslation();
 
   return (
     <View testID={testID} style={[styles.root, style]}>
       <View style={styles.row}>
         <IconButton icon="ArrowLeft" label={t('common.back')} onPress={onBack} />
+        {middle && <View style={{flex:1,minWidth:0}}>{middle}</View>}
         {right ?? null}
       </View>
       {title ? (

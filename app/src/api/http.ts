@@ -1,3 +1,9 @@
+import type { AccountSettings, BlockedEntry } from './settings';
+import type { OpenThreadRequest, ThreadDetail, ThreadsSnapshot } from './threads';
+import { Client } from '@stomp/stompjs';
+import { Platform } from 'react-native';
+import type { BoardSnapshot, SendBoardPost, RejectionReceipt } from './board';
+import type { ReportReason } from './messages';
 import {
   type CreateEventRequest, type EventSummary, type EventDetail, type EventJoinResult,
   ApiError,
@@ -20,7 +26,7 @@ interface ErrorBody {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /**
    * Auth endpoints answer 401 with "wrong password", not "session expired", so
@@ -41,11 +47,55 @@ function joinUrl(base: string, path: string): string {
  * `types.ts`.
  */
 export class HttpApi implements ApiClient {
+  openThread(body:OpenThreadRequest):Promise<{id:string}>{return this.request('/threads',{method:'POST',body});}
+  getThreads():Promise<ThreadsSnapshot>{return this.request('/me/threads');}
+  getThread(id:string):Promise<ThreadDetail>{return this.request('/threads/'+encodeURIComponent(id));}
+  sendThreadMessage(id:string,body:{text:string;requestId:string;screeningAcknowledged?:boolean}):Promise<void>{return this.request('/threads/'+encodeURIComponent(id)+'/messages',{method:'POST',body});}
+  markThreadRead(id:string,throughMessageId:string):Promise<void>{return this.request('/threads/'+encodeURIComponent(id)+'/read',{method:'PUT',body:{throughMessageId}});}
+  revealInThread(id:string):Promise<void>{return this.request('/threads/'+encodeURIComponent(id)+'/reveal',{method:'POST'});}
+  reportThread(id:string,reason:ReportReason):Promise<void>{return this.request('/threads/'+encodeURIComponent(id)+'/report',{method:'POST',body:{reason}});}
+  blockThread(id:string,messageId:string):Promise<void>{return this.request('/threads/'+encodeURIComponent(id)+'/block',{method:'POST',body:{messageId}});}
+  subscribeThreads(onChange:()=>void):()=>void {
+    let active=true;const notify=()=>{if(active)onChange();};
+    const client=new Client({brokerURL:this.baseUrl.replace(/^http/,'ws').replace(/\/+$/,'')+'/ws',
+      reconnectDelay:5000,connectionTimeout:10000,heartbeatIncoming:10000,heartbeatOutgoing:10000,
+      forceBinaryWSFrames:Platform.OS!=='web',appendMissingNULLonIncoming:Platform.OS!=='web',
+      beforeConnect:()=>{client.connectHeaders=this.tokens?{Authorization:'Bearer '+this.tokens.accessToken}:{};},
+      onConnect:()=>{client.subscribe('/user/queue/threads',notify);notify();}});
+    client.activate();return()=>{active=false;void client.deactivate();};
+  }
+
+  private boardPath(id: string) { return '/events/' + encodeURIComponent(id); }
+  getBoard(id: string): Promise<BoardSnapshot> { return this.request(this.boardPath(id) + '/board'); }
+  sendBoardPost(input: SendBoardPost): Promise<{accepted:true}> { return this.request(this.boardPath(input.eventId) + '/posts',{method:'POST',body:input}); }
+  reactToPost(eventId: string,id: string,emoji: string|null): Promise<void> { return this.request(this.boardPath(eventId) + '/posts/' + encodeURIComponent(id) + '/reaction',{method:'PUT',body:{emoji}}); }
+  approvePosts(eventId: string,ids: string[]): Promise<void> { return this.request(this.boardPath(eventId) + '/moderation/approve',{method:'POST',body:{ids}}); }
+  rejectPost(eventId: string,id: string): Promise<RejectionReceipt> { return this.request(this.boardPath(eventId) + '/posts/' + encodeURIComponent(id) + '/reject',{method:'POST'}); }
+  undoRejection(eventId: string,undoToken: string): Promise<void> { return this.request(this.boardPath(eventId) + '/moderation/undo',{method:'POST',body:{undoToken}}); }
+  hidePost(eventId: string,id: string): Promise<void> { return this.request(this.boardPath(eventId) + '/posts/' + encodeURIComponent(id) + '/hide',{method:'POST'}); }
+  reportPost(eventId: string,id: string,reason: ReportReason): Promise<void> { return this.request(this.boardPath(eventId) + '/posts/' + encodeURIComponent(id) + '/report',{method:'POST',body:{reason}}); }
+  updateBoardControls(eventId: string,changes: {boardMode?:'approve_first'|'post_immediately';endsAt?:string}): Promise<void> { return this.request(this.boardPath(eventId) + '/controls',{method:'PUT',body:changes}); }
+  closeBoard(eventId: string): Promise<void> { return this.request(this.boardPath(eventId) + '/close',{method:'POST'}); }
+  setModerator(eventId: string,personId: string,enabled: boolean): Promise<void> { return this.request(this.boardPath(eventId) + '/moderators/' + encodeURIComponent(personId),{method:enabled?'PUT':'DELETE'}); }
+  subscribeBoard(eventId: string,onChange: () => void): () => void {
+    let active=true;
+    const notify=()=>{if(active) onChange();};
+    const client = new Client({brokerURL:this.baseUrl.replace(/^http/,'ws').replace(/\/+$/,'') + '/ws',
+      reconnectDelay:5000, connectionTimeout:10000, heartbeatIncoming:10000, heartbeatOutgoing:10000,
+      forceBinaryWSFrames:Platform.OS !== 'web', appendMissingNULLonIncoming:Platform.OS !== 'web',
+      beforeConnect:()=>{ client.connectHeaders=this.tokens?{Authorization:'Bearer '+this.tokens.accessToken}:{}; },
+      onConnect:()=>{ client.subscribe('/topic/events/'+encodeURIComponent(eventId)+'/board',notify);
+        client.subscribe('/user/queue/events/'+encodeURIComponent(eventId),notify); notify(); },
+    });
+    client.activate();
+    return ()=>{active=false; void client.deactivate();};
+  }
+
   getInbox(): Promise<import('./messages').InboxSnapshot> { return this.request('/me/inbox'); }
   getWall(eventId: string, personId: string): Promise<import('./messages').WallSnapshot> {
     return this.request(`/events/${encodeURIComponent(eventId)}/people/${encodeURIComponent(personId)}/wall`);
   }
-  screenMessage(text: string): Promise<{ warning: boolean }> { return this.request('/messages/screen', { method: 'POST', body: { text } }); }
+  screenMessage(text: string, context?: 'thread'): Promise<{ warning: boolean }> { return this.request('/messages/screen', { method: 'POST', body: { text, ...(context ? {context} : {}) } }); }
   sendWallMessage(body: import('./messages').SendWallMessage): Promise<{ accepted: true }> { return this.request('/messages/wall', { method: 'POST', body }); }
   updateInboxMessage(id: string, state: import('./messages').MessageState): Promise<import('./messages').InboxMessage> {
     return this.request(`/me/inbox/${encodeURIComponent(id)}/state`, { method: 'PUT', body: { state } });
@@ -105,6 +155,15 @@ export class HttpApi implements ApiClient {
   async forgotPassword(email: string): Promise<void> {
     await this.request<void>('/auth/forgot-password', { method: 'POST', body: { email }, auth: true });
   }
+
+  getSettings():Promise<AccountSettings>{return this.request('/me/settings');}
+  updateSettings(input:Partial<Pick<AccountSettings,'writingPolicy'|'mutedWords'|'notifications'>>):Promise<AccountSettings>{return this.request('/me/settings',{method:'PATCH',body:input});}
+  getBlocked():Promise<BlockedEntry[]>{return this.request('/me/blocks');}
+  unblock(id:string):Promise<void>{return this.request('/me/blocks/'+encodeURIComponent(id),{method:'DELETE'});}
+  async editProfile(input:Omit<ProfileRequest,'sectionId'>):Promise<Me>{const {photoUri,...body}=input;if(photoUri)await this.uploadPhoto(photoUri);return this.request('/me/profile',{method:'PATCH',body});}
+  changeSection(sectionId:string):Promise<Me>{return this.request('/me/section',{method:'PUT',body:{sectionId}});}
+  exportAccount():Promise<Record<string,unknown>>{return this.request('/me/export');}
+  deleteAccount():Promise<void>{return this.request('/me',{method:'DELETE'});}
 
   /* ---------------- me ---------------- */
 
@@ -194,15 +253,15 @@ export class HttpApi implements ApiClient {
           headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken }),
         });
-        if (!res.ok) return null;
+        if (res.status===401||res.status===403) return null;
+        if (!res.ok) throw new ApiError('network','refresh temporarily unavailable',res.status);
         const tokens = await readJson<Tokens>(res);
-        if (!tokens?.accessToken) return null;
+        if (!tokens?.accessToken) throw new ApiError('unknown','invalid refresh response');
         this.tokens = tokens;
         return tokens;
-      } catch {
-        // A network failure during refresh is not proof the session is gone,
-        // but the call that triggered it has to fail; the next call retries.
-        return null;
+      } catch (error) {
+        // Transient failures preserve credentials so the next request can retry.
+        throw error instanceof ApiError?error:new ApiError('network','refresh unavailable');
       } finally {
         this.refreshing = null;
       }

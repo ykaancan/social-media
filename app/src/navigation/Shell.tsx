@@ -1,3 +1,4 @@
+import { useThreads } from '../threads/ThreadsProvider';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import React from 'react';
 import { TabBar, type TabId } from '../components/patterns';
@@ -26,15 +27,16 @@ const ROUTE: Record<TabId, keyof TabParamList> = {
  * The bar itself is the design system's `TabBar` pattern — the navigator only
  * tells it which tab is current and listens for the change.
  *
- * The Inbox badge counts only actual new messages. Thread counts arrive in Step 6.
+ * Badges count actual new inbox messages and unread thread messages.
  */
 function ShellTabBar({ state, navigation }: BottomTabBarProps) {
   const { inbox } = useMessages();
+  const { snapshot } = useThreads();
   const current = state.routes[state.index]?.name as keyof TabParamList;
 
   return (
     <TabBar
-      badges={inbox ? { inbox: inbox.counts.new } : undefined}
+      badges={{inbox:inbox?.counts.new,threads:snapshot?.unreadCount}}
       value={TAB_ID[current] ?? 'events'}
       onChange={(id) => {
         const target = ROUTE[id];

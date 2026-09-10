@@ -37,7 +37,8 @@ import { useTheme } from '../../theme';
  */
 export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetup'>) {
   const edit = route.params?.edit === true;
-  const { me, submitProfile, logout } = useSession();
+  const { me, submitProfile, logout, refreshMe } = useSession();
+  const approved=me?.status==='approved';
   const api = useApi();
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -66,6 +67,7 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
   const [picking, setPicking] = useState(false);
   const [sending, setSending] = useState(false);
 
+  useEffect(()=>{if(approved&&me?.section)setSection(me.section);},[approved,me?.section]);
   const shownPhoto = photoUri ?? me?.avatarUrl;
 
   /* ---------------- sections ---------------- */
@@ -123,6 +125,9 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
     if (!ready || !section || sending) return;
     setSending(true);
     try {
+      if(approved){
+        await api.editProfile({name:name.trim(),bio:bio.trim(),photoUri});await refreshMe();toast.show(t('settingsFlow.saved'));navigation.goBack();return;
+      }
       await submitProfile({
         name: name.trim(),
         sectionId: section.id,
@@ -140,7 +145,7 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
       }
       toast.show(t('onboarding.errorGeneric'), { tone: 'danger' });
     }
-  }, [ready, section, sending, submitProfile, name, bio, photoUri, toast, t]);
+  }, [ready, section, sending, submitProfile, name, bio, photoUri, toast, t, approved, api, refreshMe, navigation]);
 
   /* ---------------- section chip ---------------- */
 
@@ -201,9 +206,8 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
             }}
             testID="profile-submit"
           >
-            {/* Edit mode keeps the same label: resubmitting IS what puts the
-                profile back in the admin queue, so "Save" would be a lie. */}
-            {t('onboarding.sendForApproval')}
+            {/* Approved edits save directly; rejected profiles still resubmit. */}
+            {t(approved?'common.save':'onboarding.sendForApproval')}
           </Button>
         </BottomBar>
       }
@@ -235,12 +239,12 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
       <PickerRow
         label={t('onboarding.section')}
         icon="MapPin"
-        value={section?.name}
+        value={approved?me?.section?.name:section?.name}
         placeholder={t('onboarding.pickSection')}
         hint={t('onboarding.sectionHint')}
         // Until the list is here there is nothing to open; an empty sheet would
         // read as "no sections exist".
-        onPress={sections ? () => setPicking(true) : undefined}
+        onPress={approved?()=>navigation.navigate('Settings',{page:'section'}):sections ? () => setPicking(true) : undefined}
         testID="profile-section"
       />
 
@@ -249,7 +253,7 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
         locked
         label={t('onboarding.country')}
         icon="Flag"
-        value={section?.country}
+        value={approved?me?.section?.country:section?.country}
         placeholder={t('onboarding.countryFromSection')}
         testID="profile-country"
       />
