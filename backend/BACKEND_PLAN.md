@@ -453,3 +453,51 @@ delivery event carries `pushSuppressed` for B-5. Note for B-3: the
 term endpoints in B-5 must call. Session note: a PC shutdown interrupted the
 messages agent after it had finished; the disk state was complete and the
 suite green on restart.
+
+---
+
+## B-3 record (2026-09-11)
+
+**Built.** `board/` (`BoardPost`, `PostReaction`, the published rule as one
+shared JPQL constant, `BoardService` with all eleven routes from `board.ts`,
+lazy transitions on every board read/write, `BoardHousekeeping` every 5 s
+behind `brand.housekeeping.enabled` [B5], the `InboxMessageChanged` listener
+that republishes wall decisions as board changes) and `realtime/`
+(`RealtimeConfig`: raw WebSocket `/ws`, simple broker, 10 s heartbeats;
+`StompAuthInterceptor`: JWT on CONNECT with a live approved-user check,
+membership check on `/topic/events/{id}/board`, user queues allowed, anything
+else and every SEND refused; `RealtimeErrorHandler` giving one ERROR frame
+text per refusal; `InvalidationPublisher` sending empty-body frames after
+commit [B12]). The two Spring event records `BoardChanged` and
+`ThreadsChanged` are the contract between the board (and B-4's threads) and
+the transport.
+
+**Verified.** `./gradlew test --rerun-tasks`: 181 tests, 0 failures (B-2's 147
+plus board 24, realtime 10). On the emulator against the real server with the
+device untouched between steps: the event detail opened with the board; a
+post sent through the API by the creator appeared on the device within three
+seconds via STOMP; a post from the device landed as "In queue — only you can
+see this"; making the device user a co-moderator through the API made the
+Queue tab and Board controls appear live; a third account's post showed in
+the queue; Approve published the device user's own post; Reject showed
+"Rejection scheduled / Undo" and after the window the sender's snapshot
+carried `rejectionReason: moderator` with an empty queue. Through the API: a
+co-moderator closed the board, status became `archived` with `closedAt`,
+further posts answered 409 `board_read_only`, and moderator changes on the
+archived board answered 409.
+
+**Deviations, all deliberate.** `EventRepository.countPublishedPosts` was
+left as is (it agrees with the board query because a person post is never
+hidden). `rejected_by` is cleared on a `board_closed` transition since that
+rejection has no actor. Closed or ended wins over an open undo window. Room
+post validation answers 422 per field and report answers 404 for an
+unpublished post, where the mock used one code. The path event id wins over
+the body's. Empty controls are a no-op 204. `SEND` frames are refused, not
+ignored. The heartbeat scheduler is a non-default-candidate bean so it never
+captures `@Scheduled` work. No V3 migration was needed.
+
+**Not done (later steps).** Threads (B-4) publish `ThreadsChanged`; the
+transport for `/user/queue/threads` is ready and tested. No push rows are
+written yet (B-5). The first STOMP CONNECT after a server restart is refused
+when the app's access token has expired; the client refreshes and reconnects
+on its 5 s timer, which is the designed behaviour.

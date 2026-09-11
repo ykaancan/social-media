@@ -20,6 +20,11 @@ brand:
   cors:
     allowed-origins:
       - http://localhost:8081
+  # [B5] No background timer in tests: BoardIntegrationTest calls
+  # BoardHousekeeping.run() directly, so "the undo window expired" is a fact
+  # about the frozen clock and not a race with a scheduler.
+  housekeeping:
+    enabled: false
 
 logging:
   level:

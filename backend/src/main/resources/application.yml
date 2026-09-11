@@ -79,6 +79,21 @@ brand:
   cors:
     # Expo dev server origins by default; the native app sends no Origin header.
     allowed-origins: ${BRAND_CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:19006}
+  housekeeping:
+    # [B5] The background pass that finalises expired rejection undo windows [B6]
+    # and rejects posts left pending on a closed or ended board [D4]. Both are
+    # applied lazily inside every board read and write as well, so turning this
+    # off delays notifications and changes nothing anyone can see. Off in tests,
+    # which drive BoardHousekeeping.run() at the instant they choose.
+    enabled: ${BRAND_HOUSEKEEPING_ENABLED:true}
+    # Milliseconds between passes; the undo window is 5 s.
+    interval: ${BRAND_HOUSEKEEPING_INTERVAL_MS:5000}
+
+# [B12] The realtime layer has no configuration. The STOMP endpoint (/ws), the
+# simple in-memory broker and its 10 s/10 s heartbeats are fixed in
+# realtime/RealtimeConfig because they have to match app/src/api/http.ts exactly;
+# a value that can drift apart from the client is worse than one that cannot.
+# The day a second instance is deployed, a broker relay host lands here.
 
 logging:
   level:
