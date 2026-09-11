@@ -65,6 +65,27 @@ public class UserSettings {
         return settings;
     }
 
+    /**
+     * The whole row at once, written only after {@code PATCH /me/settings} has
+     * validated every field — a partial patch merges into the current values in
+     * the service and lands here as one atomic set, so a bad word list can never
+     * leave a new writing policy behind.
+     */
+    public void apply(String writingPolicy,
+                      String[] mutedWords,
+                      String[] mutedWordsNormalized,
+                      boolean notifyInbox,
+                      boolean notifyThreads,
+                      boolean notifyBoardMentions) {
+        this.writingPolicy = writingPolicy;
+        this.mutedWords = mutedWords == null ? new String[0] : mutedWords.clone();
+        this.mutedWordsNormalized =
+                mutedWordsNormalized == null ? new String[0] : mutedWordsNormalized.clone();
+        this.notifyInbox = notifyInbox;
+        this.notifyThreads = notifyThreads;
+        this.notifyBoardMentions = notifyBoardMentions;
+    }
+
     public UUID getUserId() {
         return userId;
     }

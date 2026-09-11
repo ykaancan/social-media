@@ -24,4 +24,15 @@ public class TestEndpointsConfig {
     public RecordingResetLinkSender recordingResetLinkSender() {
         return new RecordingResetLinkSender();
     }
+
+    /**
+     * The application clock, replaceable in a test. Unfrozen it is system UTC, so
+     * every test that does not care about time behaves exactly as production does;
+     * the event-status boundaries [B5] are the tests that do.
+     */
+    @Bean
+    @Primary
+    public MutableClock mutableClock() {
+        return new MutableClock();
+    }
 }

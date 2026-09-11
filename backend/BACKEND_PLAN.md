@@ -402,3 +402,54 @@ B-2 must always set `inbox_message.event_id`, which the schema leaves nullable.
 Dev-loop notes: the worktree's app needs its own `npm ci`; Expo runs on port
 8082 (8081 belongs to the main checkout); `adb shell input text` drops
 everything after a space.
+
+---
+
+## B-2 record (2026-09-11)
+
+**Built.** `event/` (events, membership, join codes, derived status in one SQL
+expression and one Java method, `EventAccess` with 404-not-403 membership and
+`requireLive` → 409 `board_read_only`, real `postCount` over the published
+rule), `content/` (`Anonymity` embeddable, `AllowedHints`, `SenderPresenter`
+rendering chips from the snapshot section and name/avatar/letter live [B4]),
+`safety/` (`KeywordScreener` behind `ContentScreener` with a 30 s term cache
+[B9], `POST /messages/screen`, `BlockService`, `RecipientPolicy`,
+`ReportService` shared by later steps), `message/` (`GET /me/inbox`, wall read
+inside an event, `POST /messages/wall` with the mock's refusal order and one
+403 code, state changes, soft delete, report, block by message id, Spring
+events `InboxMessageDelivered` / `InboxMessageChanged` for B-3 and B-5), and
+`settings/` (`GET`/`PATCH /me/settings`, `GET /me/blocks`, `DELETE /me/blocks/{id}`).
+
+**Verified.** `./gradlew test`: 147 tests, 0 failures (B-1's 87 plus events
+11, screening 6, safety 7, messages 18, settings 18). On the emulator against
+the real server: Ece joined Deniz's live event by code, the Inbox tab badged
+the hint-level message from Deniz with the sender's section and country chips
+and the event source, Approve to wall moved it to On wall, and the Profile
+wall showed it with "1 on the wall". Through the API: anonymous message
+delivered and approved, the wall readable by a member and 404 to a
+non-member, `named_only` refusing an anonymous send with the single
+`delivery_unavailable` code, a muted word filing a delivered message to
+Private with the sender still told `accepted`, block by message id hiding the
+sender's messages and refusing further sends, the blocked list showing only
+the allowed display, unblock, and Turkish text round-tripping intact.
+
+**Deviations, all deliberate.** `EventMember` has no JPA association to the
+user (a composite-key mapping conflict); rosters load people in one extra
+query. `EventService.create` runs one transaction per join-code attempt via
+`TransactionTemplate`. `postCount`'s linked-post branch does not check
+`hidden_at` (hide applies to room posts only; B-3 owns it). Live events sort
+by `starts_at` descending among themselves. The settings PATCH body is bound
+as JSON so a wrongly typed notification value can still name its `field`. A
+missing `user_settings` row reads as defaults without being created.
+`sectionChangeAvailableAt` is the cooldown's end and is emitted as a literal
+`null`. No V3 migration was needed. Two test classes now clean up their rows
+so the "nothing is seeded" assertion is order-independent.
+
+**Not done (later steps).** The event detail screen in the app cannot open
+against this server yet because it composes `GET /events/{id}/board` (B-3), so
+walls were exercised through the API. No push rows are written yet; the
+delivery event carries `pushSuppressed` for B-5. Note for B-3: the
+`KeywordScreener` cache is only invalidated by `invalidate()`, which the admin
+term endpoints in B-5 must call. Session note: a PC shutdown interrupted the
+messages agent after it had finished; the disk state was complete and the
+suite green on restart.

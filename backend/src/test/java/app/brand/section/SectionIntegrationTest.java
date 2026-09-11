@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +48,17 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    /**
+     * The suite shares one database, and {@code SchemaMigrationTest} checks that
+     * nothing is seeded (principle 4) by counting the event tables. The fixture
+     * events below would turn that check into a coin toss on class order.
+     */
+    @AfterEach
+    void clearFixtureEvents() {
+        jdbc.update("delete from event_member");
+        jdbc.update("delete from event");
+    }
 
     /* ------------------------------------------------------------ GET /sections */
 
