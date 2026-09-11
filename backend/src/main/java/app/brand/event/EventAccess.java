@@ -1,6 +1,7 @@
 package app.brand.event;
 
 import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -32,11 +33,7 @@ public class EventAccess {
 
     /** A malformed id is simply not an event anyone has: 404, not a parse error. */
     public static UUID eventId(String raw) {
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException | NullPointerException ex) {
-            throw ApiException.notFound("no such event");
-        }
+        return Ids.orNotFound(raw, "no such event");
     }
 
     /** The event, if the caller is a member of it. Otherwise 404. */

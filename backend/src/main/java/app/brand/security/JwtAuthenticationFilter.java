@@ -46,9 +46,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         if (SecurityContextHolder.getContext().getAuthentication() == null) {
             bearer(request)
-                    .flatMap(jwtService::subject)
-                    .flatMap(this::load)
-                    .ifPresent(user -> authenticate(user, request));
+                    .flatMap(jwtService::verify)
+                    .ifPresent(token -> load(token.userId())
+                            .ifPresent(user -> authenticate(user, token.sessionId(), request)));
         }
         filterChain.doFilter(request, response);
     }
@@ -59,8 +59,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return users.findById(id);
     }
 
-    private void authenticate(AppUser user, HttpServletRequest request) {
-        AppPrincipal principal = AppPrincipal.of(user);
+    private void authenticate(AppUser user, UUID sessionId, HttpServletRequest request) {
+        AppPrincipal principal = AppPrincipal.of(user, sessionId);
         var authentication = new UsernamePasswordAuthenticationToken(
                 principal, null, List.of(new SimpleGrantedAuthority(user.getRole().authority())));
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

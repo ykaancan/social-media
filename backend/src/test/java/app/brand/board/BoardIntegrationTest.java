@@ -336,6 +336,32 @@ class BoardIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("a reaction that finds a row already there replaces it, and keeps the first moment")
+    void reactionsSurviveALostRace() throws Exception {
+        Fixture f = immediate();
+        sendRoom(f.member, f.eventId, "Tap me twice", 1);
+        String postId = postId(f.eventId, "Tap me twice");
+        Instant reactedAt = base.minus(30, ChronoUnit.SECONDS);
+
+        // The row is already there when the tap arrives — a second device, or the
+        // other half of a double tap. The read-then-insert this replaced answered
+        // 500 on the primary key here.
+        jdbc.update("insert into post_reaction (post_id, user_id, emoji, created_at) values (?, ?, ?, ?)",
+                UUID.fromString(postId), f.member.getId(), FIRE, java.sql.Timestamp.from(reactedAt));
+
+        react(f.member, f.eventId, postId, EYES).andExpect(status().isNoContent());
+        react(f.member, f.eventId, postId, FIRE).andExpect(status().isNoContent());
+
+        assertThat(reactions.count()).isEqualTo(1);
+        JsonNode card = board(f.member, f.eventId).get("posts").get(0);
+        assertThat(card.get("reactions").get(FIRE).asInt()).isEqualTo(1);
+        assertThat(card.get("myReaction").asText()).isEqualTo(FIRE);
+        // Changing your mind is not reacting again: the row keeps when you first did.
+        assertThat(jdbc.queryForObject("select created_at from post_reaction where post_id = ?",
+                java.sql.Timestamp.class, UUID.fromString(postId)).toInstant()).isEqualTo(reactedAt);
+    }
+
+    @Test
     @DisplayName("an unpublished post cannot be reacted to")
     void reactionsNeedAPublishedPost() throws Exception {
         Fixture f = live();

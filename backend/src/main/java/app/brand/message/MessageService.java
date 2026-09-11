@@ -1,6 +1,7 @@
 package app.brand.message;
 
 import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
 import app.brand.content.AnonymityLevel;
@@ -24,8 +25,6 @@ import app.brand.safety.RecipientPolicy;
 import app.brand.safety.Report;
 import app.brand.safety.ReportService;
 import app.brand.safety.WritingPolicy;
-import app.brand.section.Section;
-import app.brand.section.SectionRepository;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
@@ -77,7 +76,6 @@ public class MessageService {
 
     private final InboxMessageRepository messages;
     private final AppUserRepository users;
-    private final SectionRepository sections;
     private final EventRepository events;
     private final EventMemberRepository members;
     private final EventAccess access;
@@ -92,7 +90,6 @@ public class MessageService {
 
     public MessageService(InboxMessageRepository messages,
                           AppUserRepository users,
-                          SectionRepository sections,
                           EventRepository events,
                           EventMemberRepository members,
                           EventAccess access,
@@ -106,7 +103,6 @@ public class MessageService {
                           Clock clock) {
         this.messages = messages;
         this.users = users;
-        this.sections = sections;
         this.events = events;
         this.members = members;
         this.access = access;
@@ -159,7 +155,7 @@ public class MessageService {
     @Transactional(readOnly = true)
     public WallSnapshotDto wall(UUID viewerId, String rawEventId, String rawPersonId) {
         Event event = access.requireMember(rawEventId, viewerId);
-        UUID personId = personId(rawPersonId);
+        UUID personId = Ids.orNotFound(rawPersonId, "no such wall");
 
         AppUser target = users.findById(personId).orElseThrow(() -> ApiException.notFound("no such wall"));
         if (target.getStatus() != AccountStatus.APPROVED
@@ -211,8 +207,8 @@ public class MessageService {
             throw refused();
         }
         AppUser sender = users.findById(senderId).orElseThrow(MessageService::refused);
-        UUID recipientId = optionalId(request.recipientId());
-        UUID eventId = optionalId(request.eventId());
+        UUID recipientId = Ids.orNull(request.recipientId());
+        UUID eventId = Ids.orNull(request.eventId());
         if (recipientId == null || eventId == null || recipientId.equals(senderId)) {
             throw refused();
         }
@@ -317,7 +313,12 @@ public class MessageService {
     @Transactional
     public void block(UUID viewerId, String rawId) {
         InboxMessage row = own(viewerId, rawId);
-        blocks.block(viewerId, row.getSenderId(), copyOf(row.getAnonymity()));
+        blocks.block(viewerId, row.getSenderId(), Anonymity.copyOf(row.getAnonymity()));
+        // The blocker's own surfaces have to catch up: their inbox loses this
+        // sender's cards, and a card written from a board is one the board shows
+        // too. Their thread list is invalidated by BlockService, which is also
+        // where an unblock is published from.
+        publisher.publishEvent(new InboxMessageChanged(row.getId(), row.getEventId()));
     }
 
     /* ---------------------------------------------------------------- helpers */
@@ -328,81 +329,31 @@ public class MessageService {
      * that was never a UUID.
      */
     private InboxMessage own(UUID viewerId, String rawId) {
-        UUID id = optionalId(rawId);
-        if (id == null) {
-            throw ApiException.notFound("no such message");
-        }
+        UUID id = Ids.orNotFound(rawId, "no such message");
         return messages.visibleTo(id, viewerId).orElseThrow(() -> ApiException.notFound("no such message"));
     }
 
     /**
-     * A fresh copy of the row's anonymity columns.
+     * Everything a batch of rows needs to be rendered: the senders and their
+     * snapshot sections, resolved for the whole batch by {@link SenderPresenter},
+     * plus the events the messages were written from.
      *
-     * <p>Value-equal, but a new instance: handing a managed entity's embeddable
-     * straight to another entity would make two rows share one object. The
-     * booleans survive the round trip because {@code Anonymity.from} only forces
-     * them false for {@code anonymous} and {@code named}, where they already are.
-     */
-    private static Anonymity copyOf(Anonymity anonymity) {
-        if (anonymity == null) {
-            return Anonymity.from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, null);
-        }
-        return Anonymity.from(anonymity.level(),
-                new AllowedHints(anonymity.hintSection(), anonymity.hintCountry(), anonymity.hintLetter()),
-                anonymity.senderSectionId());
-    }
-
-    /**
-     * Everything a batch of rows needs to be rendered: the live sender rows (for
-     * {@code named} and the first letter), the snapshot sections (for the section
-     * and country chips [B4]) and the events the messages were written from.
-     *
-     * <p>Loaded in three queries rather than per row, because the inbox is read on
-     * every app open and the board read behind it will be doing this a few hundred
-     * times at an event.
+     * <p>Three queries rather than per row, because the inbox is read on every app
+     * open and the board read behind it will be doing this a few hundred times at
+     * an event.
      */
     private Context contextFor(Collection<InboxMessage> rows) {
-        Set<UUID> senderIds = new HashSet<>();
-        Set<UUID> sectionIds = new HashSet<>();
         Set<UUID> eventIds = new HashSet<>();
         for (InboxMessage row : rows) {
-            senderIds.add(row.getSenderId());
-            if (row.getAnonymity() != null && row.getAnonymity().senderSectionId() != null) {
-                sectionIds.add(row.getAnonymity().senderSectionId());
-            }
             if (row.getEventId() != null) {
                 eventIds.add(row.getEventId());
             }
         }
-        Map<UUID, AppUser> senders = byId(users.findAllById(senderIds), AppUser::getId);
-        Map<UUID, Section> snapshots = byId(sections.findAllById(sectionIds), Section::getId);
-        Map<UUID, Event> sources = byId(events.findAllById(eventIds), Event::getId);
-        return new Context(senders, snapshots, sources, presenter);
-    }
-
-    private static <T> Map<UUID, T> byId(Iterable<T> rows, java.util.function.Function<T, UUID> id) {
-        Map<UUID, T> map = new HashMap<>();
-        for (T row : rows) {
-            map.put(id.apply(row), row);
+        Map<UUID, Event> sources = new HashMap<>();
+        if (!eventIds.isEmpty()) {
+            events.findAllById(eventIds).forEach(event -> sources.put(event.getId(), event));
         }
-        return map;
-    }
-
-    /** A malformed id is simply not anything the caller has; the caller decides the status. */
-    private static UUID optionalId(String raw) {
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException | NullPointerException notAnId) {
-            return null;
-        }
-    }
-
-    private static UUID personId(String raw) {
-        UUID id = optionalId(raw);
-        if (id == null) {
-            throw ApiException.notFound("no such wall");
-        }
-        return id;
+        return new Context(presenter.forRows(rows), sources);
     }
 
     private static ApiException refused() {
@@ -410,16 +361,10 @@ public class MessageService {
     }
 
     /** One batch of rows' worth of lookups, so rendering a card is pure. */
-    private record Context(Map<UUID, AppUser> senders,
-                           Map<UUID, Section> snapshotSections,
-                           Map<UUID, Event> sourceEvents,
-                           SenderPresenter presenter) {
+    private record Context(SenderPresenter.Resolver senders, Map<UUID, Event> sourceEvents) {
 
         MessageSenderDto sender(InboxMessage row) {
-            Anonymity anonymity = row.getAnonymity();
-            Section snapshot = anonymity == null || anonymity.senderSectionId() == null
-                    ? null : snapshotSections.get(anonymity.senderSectionId());
-            return presenter.present(anonymity, senders.get(row.getSenderId()), snapshot);
+            return senders.present(row);
         }
 
         SourceDto source(InboxMessage row) {

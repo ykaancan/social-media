@@ -1,12 +1,11 @@
 package app.brand.section;
 
-import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import app.brand.section.SectionDtos.SectionDetailDto;
 import app.brand.section.SectionDtos.SectionSummaryDto;
 import app.brand.security.AppPrincipal;
 import app.brand.security.CurrentUser;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,15 +32,7 @@ public class SectionController {
 
     @GetMapping("/{id}")
     public SectionDetailDto detail(@CurrentUser AppPrincipal principal, @PathVariable String id) {
-        return sections.detail(principal.id(), sectionId(id));
-    }
-
-    /** A malformed id is simply not a section anyone has: 404, not a parse error. */
-    private static UUID sectionId(String raw) {
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException ex) {
-            throw ApiException.notFound("no such section");
-        }
+        // A malformed id is simply not a section anyone has: 404, not a parse error.
+        return sections.detail(principal.id(), Ids.orNotFound(id, "no such section"));
     }
 }

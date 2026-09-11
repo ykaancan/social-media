@@ -12,6 +12,7 @@ import app.brand.common.TextNormalizer;
 import app.brand.safety.KeywordScreener;
 import app.brand.safety.Report;
 import app.brand.safety.ReportRepository;
+import app.brand.realtime.ThreadsChanged;
 import app.brand.safety.ScreeningTerm;
 import app.brand.safety.ScreeningTermRepository;
 import app.brand.section.Section;
@@ -590,6 +591,31 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
             assertThat(change.messageId()).isEqualTo(UUID.fromString(id));
             assertThat(change.eventId()).isEqualTo(f.eventId);
         });
+    }
+
+    @Test
+    @DisplayName("blocking from the inbox invalidates the blocker's own surfaces, and only theirs")
+    void blockPublishesTheBlockersInvalidations() throws Exception {
+        Fixture f = fixture();
+        sendAt(f.sender, note(f.eventId, f.owner, "Block me", "anonymous"), 1);
+        String id = inbox(f.owner).get("messages").get(0).get("id").asText();
+
+        block(f.owner, id).andExpect(status().isNoContent());
+
+        // [D6] The blocked user is told nothing, here or anywhere else: the only
+        // person named in either event is the blocker.
+        assertThat(applicationEvents.stream(ThreadsChanged.class).toList())
+                .singleElement()
+                .satisfies(changed ->
+                        assertThat(changed.userIds()).containsExactly(f.owner.getId()));
+        // The card goes out of the blocker's inbox, and a card written from a
+        // board is one the board has to refetch too.
+        assertThat(applicationEvents.stream(InboxMessageChanged.class).toList())
+                .singleElement()
+                .satisfies(changed -> {
+                    assertThat(changed.messageId()).isEqualTo(UUID.fromString(id));
+                    assertThat(changed.eventId()).isEqualTo(f.eventId);
+                });
     }
 
     @Test

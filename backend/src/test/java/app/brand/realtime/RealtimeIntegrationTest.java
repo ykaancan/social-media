@@ -83,6 +83,8 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     private final List<StompSession> opened = new ArrayList<>();
     /** The {@code message} header of every STOMP ERROR frame this test received. */
     private final BlockingQueue<String> refusals = new LinkedBlockingQueue<>();
+    /** The events this class created, so the clean-up takes those and nothing else. */
+    private final List<UUID> fixtureEvents = new ArrayList<>();
 
     @BeforeEach
     void startClient() {
@@ -117,8 +119,16 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
         opened.clear();
         client.stop();
         scheduler.destroy();
-        jdbc.update("delete from event_member");
-        jdbc.update("delete from event");
+        // This class's own events, and the rows that reference them first: a
+        // blanket delete would take another class's fixtures with it, and would
+        // fail outright against a board that has posts on it.
+        for (UUID eventId : fixtureEvents) {
+            jdbc.update("delete from board_post where event_id = ?", eventId);
+            jdbc.update("delete from inbox_message where event_id = ?", eventId);
+            jdbc.update("delete from event_member where event_id = ?", eventId);
+            jdbc.update("delete from event where id = ?", eventId);
+        }
+        fixtureEvents.clear();
     }
 
     /* ----------------------------------------------------------- CONNECT */
@@ -365,6 +375,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
                 id, "Realtime night", creator.getSection().getId(),
                 Timestamp.from(starts), Timestamp.from(starts.plus(4, ChronoUnit.HOURS)),
                 joinCode(), creator.getId());
+        fixtureEvents.add(id);
         return id;
     }
 

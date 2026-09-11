@@ -6,9 +6,9 @@ import app.brand.board.BoardDtos.ControlsRequest;
 import app.brand.board.BoardDtos.RejectionReceiptDto;
 import app.brand.board.BoardDtos.SendBoardPostRequest;
 import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
-import app.brand.content.AnonymityLevel;
 import app.brand.content.MessageSenderDto;
 import app.brand.content.SenderPresenter;
 import app.brand.event.Event;
@@ -30,8 +30,6 @@ import app.brand.safety.ContentScreener;
 import app.brand.safety.ContentScreener.ScreeningResult;
 import app.brand.safety.Report;
 import app.brand.safety.ReportService;
-import app.brand.section.Section;
-import app.brand.section.SectionRepository;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.MeMapper;
@@ -41,6 +39,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -55,7 +54,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -109,7 +107,6 @@ public class BoardService {
     private final EventService eventService;
     private final MessageService messages;
     private final AppUserRepository users;
-    private final SectionRepository sections;
     private final SenderPresenter presenter;
     private final MeMapper meMapper;
     private final ContentScreener screener;
@@ -126,7 +123,6 @@ public class BoardService {
                         EventService eventService,
                         MessageService messages,
                         AppUserRepository users,
-                        SectionRepository sections,
                         SenderPresenter presenter,
                         MeMapper meMapper,
                         ContentScreener screener,
@@ -142,7 +138,6 @@ public class BoardService {
         this.eventService = eventService;
         this.messages = messages;
         this.users = users;
-        this.sections = sections;
         this.presenter = presenter;
         this.meMapper = meMapper;
         this.screener = screener;
@@ -198,28 +193,33 @@ public class BoardService {
                     .toList());
         }
 
-        EventDetailDto detail = eventService.detail(viewerId, eventId);
-        Map<UUID, EventPersonDto> peopleById = new HashMap<>();
-        for (EventPersonDto person : detail.people()) {
-            peopleById.put(UUID.fromString(person.id()), person);
-        }
+        // The People tab is part of this one read, so the roster is loaded — once.
+        // `enter` above already answered "is this caller a member" and "is this
+        // caller a moderator"; the overload takes both answers and the membership
+        // rows rather than asking for any of them again.
+        List<EventMember> memberRows = members.findByEventId(eventId);
+        EventDetailDto detail = eventService.detail(event, moderator, viewerId, memberRows);
 
         UUID creatorId = event.getCreatorId();
-        PersonDto creator = creatorId == null ? null : person(peopleById.get(creatorId));
-
-        List<PersonDto> moderators = new ArrayList<>();
-        for (EventMember member : members.findByEventId(eventId)) {
-            if (!member.isModerator() || member.getUserId().equals(creatorId)) {
-                continue;
-            }
-            PersonDto person = person(peopleById.get(member.getUserId()));
-            if (person != null) {
-                moderators.add(person);
+        Set<UUID> moderatorIds = new HashSet<>();
+        for (EventMember member : memberRows) {
+            if (member.isModerator() && !member.getUserId().equals(creatorId)) {
+                moderatorIds.add(member.getUserId());
             }
         }
-        // The roster is already viewer-first, then by normalised name; keep it.
-        List<String> order = detail.people().stream().map(EventPersonDto::id).toList();
-        moderators.sort((left, right) -> Integer.compare(order.indexOf(left.id()), order.indexOf(right.id())));
+        // One walk of the roster, which is already viewer-first and then by
+        // normalised name, so the moderator list comes out in that order without
+        // a second sort of its own.
+        PersonDto creator = null;
+        List<PersonDto> moderators = new ArrayList<>();
+        for (EventPersonDto row : detail.people()) {
+            UUID personId = UUID.fromString(row.id());
+            if (personId.equals(creatorId)) {
+                creator = person(row);
+            } else if (moderatorIds.contains(personId)) {
+                moderators.add(person(row));
+            }
+        }
 
         return new BoardSnapshotDto(detail, feed, ownUnpublished, queue, pendingCount, reviewed,
                 creator, List.copyOf(moderators), viewerId.equals(creatorId));
@@ -255,7 +255,7 @@ public class BoardService {
                     request.anonymityLevel(), request.allowedHints(), request.screeningAcknowledged());
             InboxMessage message = messages.deliver(viewerId, wall, true);
             posts.saveAndFlush(BoardPost.toPerson(eventId, viewerId, message.getText(),
-                    copyOf(message.getAnonymity()), message.getId(), message.getCreatedAt()));
+                    Anonymity.copyOf(message.getAnonymity()), message.getId(), message.getCreatedAt()));
         } else {
             posts.saveAndFlush(roomPost(event, viewerId, request));
         }
@@ -315,14 +315,13 @@ public class BoardService {
             throw ApiException.validation("invalid reaction", "emoji");
         }
         if (emoji == null) {
-            reactions.findByPostIdAndUserId(post.getId(), viewerId).ifPresent(reactions::delete);
+            reactions.deleteByPostIdAndUserId(post.getId(), viewerId);
         } else {
-            reactions.findByPostIdAndUserId(post.getId(), viewerId)
-                    .ifPresentOrElse(row -> row.setEmoji(emoji),
-                            () -> reactions.save(PostReaction.of(post.getId(), viewerId, emoji,
-                                    Instant.now(clock))));
+            // One statement, so two taps a few milliseconds apart cannot race on
+            // the primary key: the second one simply wins.
+            reactions.react(post.getId(), viewerId, emoji,
+                    OffsetDateTime.ofInstant(Instant.now(clock), ZoneOffset.UTC));
         }
-        reactions.flush();
         publisher.publishEvent(BoardChanged.publicOnly(eventId));
     }
 
@@ -496,7 +495,7 @@ public class BoardService {
         Event event = enter(viewerId, eventId);
         requireModerator(event, viewerId);
 
-        UUID personId = optionalId(rawPersonId);
+        UUID personId = Ids.orNull(rawPersonId);
         if (!viewerId.equals(event.getCreatorId())
                 || personId == null
                 || personId.equals(event.getCreatorId())) {
@@ -601,7 +600,7 @@ public class BoardService {
 
     /** A card in the queue right now: this board's, to the room, pending, not being rejected. */
     private BoardPost queueablePost(UUID eventId, String rawId) {
-        UUID id = optionalId(rawId);
+        UUID id = Ids.orNull(rawId);
         BoardPost post = id == null ? null : posts.findById(id).orElse(null);
         if (post == null
                 || !post.getEventId().equals(eventId)
@@ -614,7 +613,7 @@ public class BoardService {
     }
 
     private java.util.Optional<BoardPost> publishedPost(UUID eventId, String rawId) {
-        UUID id = optionalId(rawId);
+        UUID id = Ids.orNull(rawId);
         return id == null ? java.util.Optional.empty()
                 : posts.publishedById(eventId, id, BoardPostState.APPROVED, MessageState.APPROVED);
     }
@@ -646,20 +645,6 @@ public class BoardService {
                 : new PersonDto(row.id(), row.name(), row.avatarUrl(), row.section(), null);
     }
 
-    /**
-     * A fresh copy of a message's anonymity columns — value-equal, but a new
-     * instance, because handing a managed entity's embeddable to another entity
-     * would make two rows share one object.
-     */
-    private static Anonymity copyOf(Anonymity anonymity) {
-        if (anonymity == null) {
-            return Anonymity.from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, null);
-        }
-        return Anonymity.from(anonymity.level(),
-                new AllowedHints(anonymity.hintSection(), anonymity.hintCountry(), anonymity.hintLetter()),
-                anonymity.senderSectionId());
-    }
-
     /** ISO-8601, with or without an offset. Null when it is neither; the caller names the field. */
     private static Instant instant(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -676,44 +661,29 @@ public class BoardService {
         }
     }
 
-    private static UUID optionalId(String raw) {
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException | NullPointerException notAnId) {
-            return null;
-        }
-    }
-
     /**
      * Everything a batch of cards needs to render, in four queries rather than per
-     * card: the live sender rows (for {@code named} and the first letter), the
-     * snapshot sections (for the chips [B4]), the recipients of the cards addressed
-     * to a person, and every reaction on the board.
+     * card: the senders and their snapshot sections [B4] (two, through
+     * {@link SenderPresenter#forRows}), the recipients of the cards addressed to a
+     * person, and every reaction on the board.
      */
     private Context contextFor(Collection<BoardPost> rows, UUID viewerId) {
-        Set<UUID> senderIds = new HashSet<>();
-        Set<UUID> sectionIds = new HashSet<>();
         Set<UUID> messageIds = new HashSet<>();
         Set<UUID> postIds = new HashSet<>();
         for (BoardPost post : rows) {
-            senderIds.add(post.getSenderId());
-            if (post.getAnonymity() != null && post.getAnonymity().senderSectionId() != null) {
-                sectionIds.add(post.getAnonymity().senderSectionId());
-            }
             if (post.getInboxMessageId() != null) {
                 messageIds.add(post.getInboxMessageId());
             }
             postIds.add(post.getId());
         }
 
-        Map<UUID, Section> snapshots = byId(sections.findAllById(sectionIds), Section::getId);
-
         Map<UUID, PersonDto> recipients = new HashMap<>();
         if (!messageIds.isEmpty()) {
             List<InboxMessage> linked = inboxMessages.findAllById(messageIds);
             Set<UUID> recipientIds = new HashSet<>();
             linked.forEach(message -> recipientIds.add(message.getRecipientId()));
-            Map<UUID, AppUser> people = byId(users.findAllById(recipientIds), AppUser::getId);
+            Map<UUID, AppUser> people = new HashMap<>();
+            users.findAllById(recipientIds).forEach(person -> people.put(person.getId(), person));
             for (InboxMessage message : linked) {
                 AppUser person = people.get(message.getRecipientId());
                 if (person != null) {
@@ -723,8 +693,6 @@ public class BoardService {
                 }
             }
         }
-
-        Map<UUID, AppUser> senders = byId(users.findAllById(senderIds), AppUser::getId);
 
         Map<UUID, Map<String, Integer>> counts = new HashMap<>();
         Map<UUID, String> mine = new HashMap<>();
@@ -738,24 +706,14 @@ public class BoardService {
             }
         }
 
-        return new Context(senders, snapshots, recipients, counts, mine, presenter, viewerId);
-    }
-
-    private static <T> Map<UUID, T> byId(Iterable<T> rows, Function<T, UUID> id) {
-        Map<UUID, T> map = new HashMap<>();
-        for (T row : rows) {
-            map.put(id.apply(row), row);
-        }
-        return map;
+        return new Context(presenter.forRows(rows), recipients, counts, mine, viewerId);
     }
 
     /** One board's worth of lookups, so rendering a card is pure. */
-    private record Context(Map<UUID, AppUser> senders,
-                           Map<UUID, Section> snapshotSections,
+    private record Context(SenderPresenter.Resolver senders,
                            Map<UUID, PersonDto> recipientsByMessage,
                            Map<UUID, Map<String, Integer>> reactionCounts,
                            Map<UUID, String> myReactions,
-                           SenderPresenter presenter,
                            UUID viewerId) {
 
         List<BoardPostDto> map(List<BoardPost> rows) {
@@ -763,10 +721,7 @@ public class BoardService {
         }
 
         BoardPostDto dto(BoardPost post) {
-            Anonymity anonymity = post.getAnonymity();
-            Section snapshot = anonymity == null || anonymity.senderSectionId() == null
-                    ? null : snapshotSections.get(anonymity.senderSectionId());
-            MessageSenderDto sender = presenter.present(anonymity, senders.get(post.getSenderId()), snapshot);
+            MessageSenderDto sender = senders.present(post);
             return new BoardPostDto(
                     post.getId().toString(),
                     post.getText(),

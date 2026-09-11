@@ -1,19 +1,15 @@
 package app.brand.settings;
 
 import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import app.brand.common.TextNormalizer;
-import app.brand.content.AnonymityLevel;
+import app.brand.content.SenderPresenter;
 import app.brand.safety.Block;
 import app.brand.safety.BlockService;
-import app.brand.content.SenderPresenter;
 import app.brand.safety.WritingPolicy;
-import app.brand.section.Section;
-import app.brand.section.SectionRepository;
 import app.brand.settings.SettingsDtos.AccountSettingsDto;
 import app.brand.settings.SettingsDtos.BlockedEntryDto;
 import app.brand.settings.SettingsDtos.NotificationsDto;
-import app.brand.user.AppUser;
-import app.brand.user.AppUserRepository;
 import app.brand.user.UserSettings;
 import app.brand.user.UserSettingsRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,12 +18,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,21 +53,15 @@ public class SettingsService {
     private final SectionChangeLog sectionChanges;
     private final BlockService blocks;
     private final SenderPresenter presenter;
-    private final AppUserRepository users;
-    private final SectionRepository sections;
 
     public SettingsService(UserSettingsRepository settings,
                            SectionChangeLog sectionChanges,
                            BlockService blocks,
-                           SenderPresenter presenter,
-                           AppUserRepository users,
-                           SectionRepository sections) {
+                           SenderPresenter presenter) {
         this.settings = settings;
         this.sectionChanges = sectionChanges;
         this.blocks = blocks;
         this.presenter = presenter;
-        this.users = users;
-        this.sections = sections;
     }
 
     /* ------------------------------------------------------- GET /me/settings */
@@ -153,31 +139,11 @@ public class SettingsService {
         if (rows.isEmpty()) {
             return List.of();
         }
-
-        Set<UUID> peopleNeeded = rows.stream()
-                .filter(SettingsService::needsTheLiveUser)
-                .map(Block::getBlockedId)
-                .collect(Collectors.toSet());
-        Map<UUID, AppUser> people = peopleNeeded.isEmpty() ? Map.of()
-                : users.findAllById(peopleNeeded).stream()
-                        .collect(Collectors.toMap(AppUser::getId, Function.identity()));
-
-        Set<UUID> snapshotIds = rows.stream()
-                .map(row -> row.getDisplay() == null ? null : row.getDisplay().senderSectionId())
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<UUID, Section> snapshots = snapshotIds.isEmpty() ? Map.of()
-                : sections.findAllById(snapshotIds).stream()
-                        .collect(Collectors.toMap(Section::getId, Function.identity()));
-
+        // Frozen, not live: the resolver loads the blocked person's account only
+        // where the level the block was made at actually needs it.
+        SenderPresenter.Resolver senders = presenter.forFrozenRows(rows);
         return rows.stream()
-                .map(row -> new BlockedEntryDto(
-                        row.getId().toString(),
-                        presenter.present(
-                                row.getDisplay(),
-                                needsTheLiveUser(row) ? people.get(row.getBlockedId()) : null,
-                                row.getDisplay() == null ? null
-                                        : snapshots.get(row.getDisplay().senderSectionId()))))
+                .map(row -> new BlockedEntryDto(row.getId().toString(), senders.present(row)))
                 .toList();
     }
 
@@ -186,13 +152,7 @@ public class SettingsService {
     /** Someone else's row — or a string that is not a uuid at all — is 404. */
     @Transactional
     public void unblock(UUID userId, String rawId) {
-        UUID blockId;
-        try {
-            blockId = UUID.fromString(rawId);
-        } catch (IllegalArgumentException | NullPointerException ex) {
-            throw ApiException.notFound("no such block");
-        }
-        blocks.unblock(userId, blockId);
+        blocks.unblock(userId, Ids.orNotFound(rawId, "no such block"));
     }
 
     /* ------------------------------------------------------------- internals */
@@ -207,13 +167,6 @@ public class SettingsService {
                 List.of(row.getMutedWords()),
                 new NotificationsDto(row.isNotifyInbox(), row.isNotifyThreads(), row.isNotifyBoardMentions()),
                 availableAt);
-    }
-
-    private static boolean needsTheLiveUser(Block row) {
-        if (row.getDisplay() == null || row.getDisplay().level() == null) {
-            return false;
-        }
-        return row.getDisplay().level() == AnonymityLevel.NAMED || row.getDisplay().hintLetter();
     }
 
     private static WritingPolicy writingPolicy(JsonNode node) {

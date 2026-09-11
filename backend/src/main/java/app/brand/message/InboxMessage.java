@@ -1,6 +1,7 @@
 package app.brand.message;
 
 import app.brand.content.Anonymity;
+import app.brand.content.SenderRow;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -32,7 +33,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "inbox_message")
-public class InboxMessage {
+public class InboxMessage implements SenderRow {
 
     public static final int TEXT_MAX = 280;
 
@@ -118,6 +119,17 @@ public class InboxMessage {
         message.screeningFlag = screeningFlag;
         message.createdAt = now;
         return message;
+    }
+
+    /** {@link SenderRow}: the card is rendered from these two, and never from a sender id. */
+    @Override
+    public Anonymity anonymity() {
+        return anonymity;
+    }
+
+    @Override
+    public UUID senderId() {
+        return senderId;
     }
 
     public UUID getId() {

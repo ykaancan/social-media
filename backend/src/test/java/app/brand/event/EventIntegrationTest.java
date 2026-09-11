@@ -390,6 +390,62 @@ class EventIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.memberCount").value(2));
     }
 
+    @Test
+    @DisplayName("joining a board you are already on never rewrites the membership row")
+    void joinTwiceKeepsTheModeratorRow() throws Exception {
+        Section section = anySection();
+        AppUser creator = account(section);
+        JsonNode created = createEvent(creator, "Already in", "section",
+                Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600));
+        String code = created.get("joinCode").asText();
+        UUID eventId = UUID.fromString(created.get("id").asText());
+
+        // The creator's row is a moderator row, and it is already there — which is
+        // exactly the shape of a lost race: the insert conflicts. It must answer
+        // already_joined rather than 500, and it must not update the row it found.
+        mockMvc.perform(post("/events/join")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(creator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("code", code))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.reason").value("already_joined"))
+                .andExpect(jsonPath("$.eventName").value("Already in"))
+                .andExpect(jsonPath("$.event").doesNotExist());
+
+        assertThat(jdbc.queryForObject(
+                "select is_moderator from event_member where event_id = ? and user_id = ?",
+                Boolean.class, eventId, creator.getId())).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from event_member where event_id = ?",
+                Integer.class, eventId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("memberCount is the membership, not the roster: a member with no name still counts")
+    void memberCountIsMembershipNotRoster() throws Exception {
+        Section section = anySection();
+        AppUser creator = account(section);
+        UUID eventId = UUID.fromString(createEvent(creator, "Counted", "section",
+                Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600)).get("id").asText());
+
+        AppUser nameless = account(section);
+        nameless.setName(null);
+        users.saveAndFlush(nameless);
+        join(eventId, nameless.getId());
+
+        // GET /events and GET /events/{id} count the same people, whatever the
+        // roster can render.
+        mockMvc.perform(get("/events/" + eventId).header(HttpHeaders.AUTHORIZATION, bearer(creator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.memberCount").value(2))
+                .andExpect(jsonPath("$.people.length()").value(1));
+        JsonNode mine = json(mockMvc.perform(get("/events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(creator)))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(mine.get(0).get("memberCount").asInt()).isEqualTo(2);
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private String statusOf(AppUser viewer, UUID eventId) throws Exception {

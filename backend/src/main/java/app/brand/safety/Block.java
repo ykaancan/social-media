@@ -1,6 +1,7 @@
 package app.brand.safety;
 
 import app.brand.content.Anonymity;
+import app.brand.content.SenderRow;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.Column;
@@ -31,7 +32,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "block")
-public class Block {
+public class Block implements SenderRow {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -68,6 +69,20 @@ public class Block {
         block.display = display;
         block.createdAt = now;
         return block;
+    }
+
+    /**
+     * {@link SenderRow}: a block renders from the identity the blocked person had
+     * <em>already allowed</em> — the frozen display columns, never their current one.
+     */
+    @Override
+    public Anonymity anonymity() {
+        return display;
+    }
+
+    @Override
+    public UUID senderId() {
+        return blockedId;
     }
 
     public UUID getId() {

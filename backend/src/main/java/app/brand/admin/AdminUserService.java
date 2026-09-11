@@ -91,12 +91,20 @@ public class AdminUserService {
 
     /**
      * A ban ends the session as well as the account: the access token dies within
-     * its 15 minutes because {@code JwtAuthenticationFilter} reads the row, and the
-     * refresh tokens are revoked here so it cannot be renewed.
+     * its 15 minutes because {@code JwtAuthenticationFilter} reads the row, and
+     * every refresh token is revoked here so it cannot be renewed.
+     *
+     * <p>A {@code super_admin} is refused. Otherwise a second admin could ban the
+     * founder, and there is no way back in — promotion is an admin-only action.
      */
     @Transactional
     public AdminUserDto ban(UUID adminId, UUID id) {
         AppUser user = require(id);
+        if (user.getRole() == Role.SUPER_ADMIN) {
+            // The founder must not be lockable out of their own product by a second
+            // admin. There is no demote endpoint yet, so this simply refuses.
+            throw ApiException.conflict("conflict", "demote first: a super admin cannot be banned", null);
+        }
         if (user.getStatus() == AccountStatus.BANNED) {
             throw ApiException.conflict("conflict", "account is already banned", null);
         }

@@ -79,6 +79,28 @@ public class Anonymity {
                 allowed.wantsLetter(), senderSectionId);
     }
 
+    /**
+     * A fresh, value-equal instance.
+     *
+     * <p>Needed wherever one row's columns become another's — a block frozen from
+     * the message it was issued on [D6], a board card linked to the inbox message
+     * it delivered — because handing a managed entity's embeddable straight to a
+     * second entity would make two rows share one object.
+     *
+     * <p>It copies rather than re-validates: the row is already stored, and
+     * {@link #from} would refuse a combination the database is quite happy to hold.
+     */
+    public Anonymity copy() {
+        return new Anonymity(level, hintSection, hintCountry, hintLetter, senderSectionId);
+    }
+
+    /** {@link #copy()}, with a null row reading as {@code anonymous} — never a leak. */
+    public static Anonymity copyOf(Anonymity anonymity) {
+        return anonymity == null
+                ? from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, null)
+                : anonymity.copy();
+    }
+
     public AnonymityLevel level() {
         return level;
     }

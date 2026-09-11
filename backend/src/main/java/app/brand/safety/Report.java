@@ -68,18 +68,11 @@ public class Report {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    // Rows are written by ReportRepository.fileIfAbsent, not through JPA: filing
+    // has to survive losing the race with a second tap, which means one
+    // "insert ... on conflict do nothing" rather than a persist that can poison
+    // the caller's transaction. Nothing here constructs a Report.
     protected Report() {
-    }
-
-    public static Report of(UUID reporterId, String targetKind, UUID targetId, String reason, Instant now) {
-        Report report = new Report();
-        report.reporterId = reporterId;
-        report.targetKind = targetKind;
-        report.targetId = targetId;
-        report.reason = reason;
-        report.status = OPEN;
-        report.createdAt = now;
-        return report;
     }
 
     public UUID getId() {

@@ -1,6 +1,7 @@
 package app.brand.safety;
 
 import app.brand.common.ApiException;
+import app.brand.message.InboxMessage;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,8 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/messages")
 public class ScreeningController {
 
-    /** Wall and board posts are 280 characters; a thread message is 500. */
-    private static final int MAX_MESSAGE = 280;
+    /** Wall and board posts are one limit; both tables carry the same check. */
+    private static final int MAX_MESSAGE = InboxMessage.TEXT_MAX;
+
+    /** A thread message is longer. B-4 owns {@code thread_message}; until it exists, here. */
     private static final int MAX_THREAD_MESSAGE = 500;
 
     private final ContentScreener screener;

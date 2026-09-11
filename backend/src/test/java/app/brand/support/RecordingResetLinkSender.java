@@ -3,6 +3,7 @@ package app.brand.support;
 import app.brand.auth.ResetLinkSender;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Captures reset links instead of mailing or logging them, so the reset flow can
@@ -10,14 +11,14 @@ import java.util.List;
  */
 public class RecordingResetLinkSender implements ResetLinkSender {
 
-    public record Sent(String email, String link) {
+    public record Sent(String email, String link, Locale locale) {
     }
 
     private final List<Sent> sent = new ArrayList<>();
 
     @Override
-    public synchronized void send(String email, String link) {
-        sent.add(new Sent(email, link));
+    public synchronized void send(String email, String link, Locale locale) {
+        sent.add(new Sent(email, link, locale));
     }
 
     public synchronized void clear() {

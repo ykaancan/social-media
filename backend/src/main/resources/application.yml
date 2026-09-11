@@ -29,6 +29,18 @@ spring:
     open-in-view: false
     properties:
       hibernate.jdbc.time_zone: UTC
+      # Section and country are @ManyToOne(EAGER) on every content row, so a
+      # roster or a board page would otherwise be one SELECT per row. Batching
+      # turns that into one IN (...) per batch; it changes no result, only the
+      # number of round trips.
+      hibernate.default_batch_fetch_size: 50
+
+  # The reset page and the reset mail are the only server-rendered copy, and they
+  # are i18n like everything else: messages_en / messages_tr, chosen from
+  # Accept-Language by WebMvcConfig#localeResolver. The MessageSource is a bean in
+  # WebMvcConfig rather than spring.messages.* here, because Boot's auto-configured
+  # one only appears when a bare messages.properties exists and there is no default
+  # language file to have - en is a language like tr, not a fallback.
 
   jackson:
     # Optional DTO fields (Me.name, Me.section, MessageSender.hints, ...) are

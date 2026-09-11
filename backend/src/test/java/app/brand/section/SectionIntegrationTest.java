@@ -49,15 +49,27 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    /** The events this class created, so the clean-up takes those and nothing else. */
+    private final List<UUID> fixtureEvents = new ArrayList<>();
+
     /**
      * The suite shares one database, and {@code SchemaMigrationTest} checks that
      * nothing is seeded (principle 4) by counting the event tables. The fixture
      * events below would turn that check into a coin toss on class order.
+     *
+     * <p>Only this class's own rows, and the rows that reference them first: a
+     * blanket delete would take another class's fixtures with it, and would fail
+     * outright against a board that has posts on it.
      */
     @AfterEach
     void clearFixtureEvents() {
-        jdbc.update("delete from event_member");
-        jdbc.update("delete from event");
+        for (UUID eventId : fixtureEvents) {
+            jdbc.update("delete from board_post where event_id = ?", eventId);
+            jdbc.update("delete from inbox_message where event_id = ?", eventId);
+            jdbc.update("delete from event_member where event_id = ?", eventId);
+            jdbc.update("delete from event where id = ?", eventId);
+        }
+        fixtureEvents.clear();
     }
 
     /* ------------------------------------------------------------ GET /sections */
@@ -290,7 +302,7 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
 
     /** Plain SQL: the events feature is step B-2's, and this only needs two rows. */
     private UUID event(UUID sectionId, Instant startsAt, Instant endsAt) {
-        return jdbc.queryForObject("""
+        UUID id = jdbc.queryForObject("""
                         insert into event (name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
                         values (?, 'national', ?, ?, ?, 'magenta', 'approve_first', ?)
                         returning id
@@ -301,6 +313,8 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
                 java.sql.Timestamp.from(startsAt),
                 java.sql.Timestamp.from(endsAt),
                 joinCode());
+        fixtureEvents.add(id);
+        return id;
     }
 
     private void join(UUID eventId, UUID userId) {

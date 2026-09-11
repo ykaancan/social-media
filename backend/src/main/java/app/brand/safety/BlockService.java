@@ -2,11 +2,13 @@ package app.brand.safety;
 
 import app.brand.common.ApiException;
 import app.brand.content.Anonymity;
+import app.brand.realtime.ThreadsChanged;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,10 +25,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class BlockService {
 
     private final BlockRepository blocks;
+    private final ApplicationEventPublisher publisher;
     private final Clock clock;
 
-    public BlockService(BlockRepository blocks, Clock clock) {
+    public BlockService(BlockRepository blocks, ApplicationEventPublisher publisher, Clock clock) {
         this.blocks = blocks;
+        this.publisher = publisher;
         this.clock = clock;
     }
 
@@ -56,9 +60,14 @@ public class BlockService {
             // The CHECK constraint would refuse it anyway; a 422 is the honest answer.
             throw ApiException.validation("cannot block yourself", "id");
         }
-        return blocks.findByBlockerIdAndBlockedId(blockerId, blockedId)
+        Block row = blocks.findByBlockerIdAndBlockedId(blockerId, blockedId)
                 .orElseGet(() -> blocks.saveAndFlush(
                         Block.of(blockerId, blockedId, displayAllowed, Instant.now(clock))));
+        // The blocker's own thread list changes shape [D6]: threads with this
+        // person drop out of it. Only the blocker is told — the blocked user is
+        // not notified, here or anywhere else.
+        publisher.publishEvent(new ThreadsChanged(Set.of(blockerId)));
+        return row;
     }
 
     /** The ids this account has blocked — the filter for their inbox, wall and threads. */
@@ -90,5 +99,8 @@ public class BlockService {
             throw ApiException.notFound("no such block");
         }
         blocks.delete(block);
+        // The threads that were filtered out come back. There is no message
+        // context to republish here, and an unblock is nobody else's business.
+        publisher.publishEvent(new ThreadsChanged(Set.of(blockerId)));
     }
 }

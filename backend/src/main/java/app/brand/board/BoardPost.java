@@ -1,6 +1,7 @@
 package app.brand.board;
 
 import app.brand.content.Anonymity;
+import app.brand.content.SenderRow;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -40,7 +41,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "board_post")
-public class BoardPost {
+public class BoardPost implements SenderRow {
 
     public static final int TEXT_MAX = 280;
 
@@ -151,6 +152,17 @@ public class BoardPost {
         post.inboxMessageId = inboxMessageId;
         post.createdAt = createdAt;
         return post;
+    }
+
+    /** {@link SenderRow}: the card is rendered from these two, and never from a sender id. */
+    @Override
+    public Anonymity anonymity() {
+        return anonymity;
+    }
+
+    @Override
+    public UUID senderId() {
+        return senderId;
     }
 
     public UUID getId() {

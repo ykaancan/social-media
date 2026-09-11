@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -126,18 +127,18 @@ public class AuthService {
     }
 
     /**
-     * The client sends no body, so a bearer alone must end the session: every
-     * refresh token of that account is revoked. A body, when there is one, revokes
-     * exactly the token it names.
+     * The client sends no body, so the bearer alone has to end the session — and
+     * exactly that session: the {@code sid} claim names the refresh row this
+     * access token was issued beside, so signing out on the phone does not sign
+     * the same person out on the tablet. A body, when there is one, revokes the
+     * token it names as well. Only a ban and a password reset end every session.
      */
     @Transactional
-    public void logout(UUID userId, String presentedRefreshToken) {
+    public void logout(UUID sessionId, String presentedRefreshToken) {
         if (presentedRefreshToken != null && !presentedRefreshToken.isBlank()) {
             tokenService.revoke(presentedRefreshToken);
         }
-        if (userId != null) {
-            tokenService.revokeAllForUser(userId);
-        }
+        tokenService.revokeSession(sessionId);
     }
 
     /**
@@ -145,7 +146,7 @@ public class AuthService {
      * nothing is created and nothing is sent — the 202 is identical.
      */
     @Transactional
-    public void forgotPassword(String rawEmail) {
+    public void forgotPassword(String rawEmail, Locale locale) {
         String email = rawEmail == null ? "" : rawEmail.trim();
         if (email.isEmpty()) {
             return;
@@ -155,7 +156,7 @@ public class AuthService {
             String token = tokenService.randomToken();
             resetTokens.save(PasswordResetToken.issue(
                     user.getId(), TokenService.hash(token), now, now.plus(RESET_TTL)));
-            resetLinkSender.send(user.getEmail(), resetLink(token));
+            resetLinkSender.send(user.getEmail(), resetLink(token), locale);
         });
     }
 

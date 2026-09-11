@@ -25,6 +25,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * [D6] blocks, [D10] muted words and [B4] the sender presenter — the three pieces
@@ -52,6 +54,12 @@ class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private ReportService reports;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     /* ---------------------------------------------------------- blocks [D6] */
 
@@ -225,6 +233,54 @@ class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
                        muted_words_normalized = string_to_array(?, ',')
                  where user_id = ?
                 """, entered, normalized, user.getId());
+    }
+
+    /* --------------------------------------------------------------- reports */
+
+    @Test
+    @DisplayName("a report filed twice inside one transaction is one row, and the caller's writes survive")
+    void reportingTwiceInOneTransactionIsOneRow() {
+        AppUser reporter = account();
+        UUID target = UUID.randomUUID();
+
+        UUID[] filed = new TransactionTemplate(transactionManager).execute(status -> {
+            // A write of the caller's own, before the report. The old
+            // save-and-catch recovered by re-reading inside a transaction the
+            // violation had already marked rollback-only, so this write — and the
+            // whole request — went down with a 500.
+            AppUser renamed = users.findById(reporter.getId()).orElseThrow();
+            renamed.setName("Still here");
+            users.saveAndFlush(renamed);
+
+            // Two taps that both get past the read. The second is a no-op, not a
+            // failure: someone who taps Report twice has done nothing wrong.
+            Report first = reports.file(reporter.getId(), Report.INBOX_MESSAGE, target, "spam");
+            Report second = reports.file(reporter.getId(), Report.INBOX_MESSAGE, target, "harassment");
+            return new UUID[] {first.getId(), second.getId()};
+        });
+
+        assertThat(filed[0]).isEqualTo(filed[1]);
+        assertThat(jdbc.queryForObject("select count(*) from report where reporter_id = ?",
+                Integer.class, reporter.getId())).isEqualTo(1);
+        // The first reason stands; the duplicate changed nothing.
+        assertThat(jdbc.queryForObject("select reason from report where reporter_id = ?",
+                String.class, reporter.getId())).isEqualTo("spam");
+        assertThat(users.findById(reporter.getId()).orElseThrow().getName()).isEqualTo("Still here");
+    }
+
+    @Test
+    @DisplayName("a report of something that was already reported by someone else is still filed")
+    void reportsAreOnePerReporter() {
+        AppUser first = account();
+        AppUser second = account();
+        UUID target = UUID.randomUUID();
+
+        Report mine = reports.file(first.getId(), Report.BOARD_POST, target, "hate");
+        Report theirs = reports.file(second.getId(), Report.BOARD_POST, target, "hate");
+
+        assertThat(mine.getId()).isNotEqualTo(theirs.getId());
+        assertThat(jdbc.queryForObject("select count(*) from report where target_id = ?",
+                Integer.class, target)).isEqualTo(2);
     }
 
     private AppUser account() {

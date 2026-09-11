@@ -3,9 +3,10 @@ package app.brand.safety;
 import app.brand.common.ApiException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,21 +54,14 @@ public class ReportService {
         if (reason == null || !Report.REASONS.contains(reason)) {
             throw ApiException.validation("invalid reason", "reason");
         }
+        // The insert itself is the duplicate check [see ReportRepository#fileIfAbsent]:
+        // a read-then-write would still have to survive losing the race, and
+        // recovering from a unique-index violation inside the caller's transaction
+        // is not possible — by then the transaction is already rollback-only and
+        // everything the caller wrote is going with it.
+        reports.fileIfAbsent(reporterId, targetKind, targetId, reason,
+                OffsetDateTime.ofInstant(Instant.now(clock), ZoneOffset.UTC));
         return reports.findByReporterIdAndTargetKindAndTargetId(reporterId, targetKind, targetId)
-                .orElseGet(() -> insert(reporterId, targetKind, targetId, reason));
-    }
-
-    /**
-     * The unique index is the real guard: two taps that race past the read above
-     * must still leave one row and one 204, never a 500.
-     */
-    private Report insert(UUID reporterId, String targetKind, UUID targetId, String reason) {
-        try {
-            return reports.saveAndFlush(
-                    Report.of(reporterId, targetKind, targetId, reason, Instant.now(clock)));
-        } catch (DataIntegrityViolationException raced) {
-            return reports.findByReporterIdAndTargetKindAndTargetId(reporterId, targetKind, targetId)
-                    .orElseThrow(() -> raced);
-        }
+                .orElseThrow(() -> new IllegalStateException("report vanished after insert"));
     }
 }

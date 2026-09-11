@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html th:lang="${#locale.language}" lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>Choose a new password</title>
+    <title th:text="#{reset.form.title}">Choose a new password</title>
     <style>
         :root { color-scheme: light dark; }
         body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0;
@@ -22,18 +22,18 @@
 </head>
 <body>
 <main>
-    <h1>Choose a new password</h1>
-    <p class="hint">This link works once and expires one hour after it was requested.</p>
+    <h1 th:text="#{reset.form.heading}">Choose a new password</h1>
+    <p class="hint" th:text="#{reset.form.hint}">This link works once.</p>
     <p class="error" th:if="${error}" th:text="${error}">Something was wrong.</p>
     <form method="post" action="/reset">
         <input type="hidden" name="token" th:value="${token}">
-        <label for="password">New password</label>
+        <label for="password" th:text="#{reset.form.password}">New password</label>
         <input id="password" name="password" type="password" autocomplete="new-password"
                th:attr="minlength=${minLength}" required>
-        <label for="confirm">Repeat it</label>
+        <label for="confirm" th:text="#{reset.form.confirm}">Repeat it</label>
         <input id="confirm" name="confirm" type="password" autocomplete="new-password"
                th:attr="minlength=${minLength}" required>
-        <button type="submit">Set password</button>
+        <button type="submit" th:text="#{reset.form.submit}">Set password</button>
     </form>
 </main>
 </body>

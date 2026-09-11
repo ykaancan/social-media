@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
 import app.brand.content.AnonymityLevel;
+import app.brand.realtime.ThreadsChanged;
 import app.brand.safety.Block;
 import app.brand.safety.BlockService;
 import app.brand.section.Section;
@@ -38,6 +39,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
@@ -51,6 +54,7 @@ import org.springframework.test.web.servlet.MvcResult;
  * from the identity frozen on the block [D6], so an anonymous block is still an
  * anonymous row after the sender has changed section or been renamed.
  */
+@RecordApplicationEvents
 class SettingsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -67,6 +71,9 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MutableClock clock;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     @Autowired
     private BlockService blocks;
@@ -412,6 +419,27 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("blocking and unblocking each tell the blocker's own thread list to refetch")
+    void blockAndUnblockPublishThreadsChanged() throws Exception {
+        AppUser me = account();
+        AppUser other = account();
+
+        Block block = blocks.block(me.getId(), other.getId(),
+                Anonymity.from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, null));
+        assertThat(published()).singleElement()
+                .satisfies(changed -> assertThat(changed.userIds()).containsExactly(me.getId()));
+
+        mockMvc.perform(delete("/me/blocks/" + block.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(me)))
+                .andExpect(status().isNoContent());
+
+        // The threads that were filtered out come back, so the blocker refetches.
+        // [D6] The other person is not told, and there is no message to republish.
+        assertThat(published()).hasSize(2);
+        assertThat(published().get(1).userIds()).containsExactly(me.getId());
+    }
+
+    @Test
     @DisplayName("someone else's block, an unknown id and a malformed id are all 404")
     void unblockOthersIs404() throws Exception {
         AppUser me = account();
@@ -460,6 +488,11 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     }
 
     /* -------------------------------------------------------------- helpers */
+
+    /** Every {@code ThreadsChanged} this test has published so far, in order. */
+    private List<ThreadsChanged> published() {
+        return applicationEvents.stream(ThreadsChanged.class).toList();
+    }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder patchRequest(
             AppUser me, Map<String, Object> body) throws Exception {

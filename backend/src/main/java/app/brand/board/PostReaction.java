@@ -41,16 +41,9 @@ public class PostReaction {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    // Rows are written by PostReactionRepository.react — one upsert, so two taps
+    // cannot race on the primary key. Nothing here constructs a PostReaction.
     protected PostReaction() {
-    }
-
-    public static PostReaction of(UUID postId, UUID userId, String emoji, Instant now) {
-        PostReaction reaction = new PostReaction();
-        reaction.postId = postId;
-        reaction.userId = userId;
-        reaction.emoji = emoji;
-        reaction.createdAt = now;
-        return reaction;
     }
 
     public UUID getPostId() {
@@ -63,10 +56,6 @@ public class PostReaction {
 
     public String getEmoji() {
         return emoji;
-    }
-
-    public void setEmoji(String emoji) {
-        this.emoji = emoji;
     }
 
     public Instant getCreatedAt() {

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import app.brand.config.WebMvcConfig;
 import app.brand.support.AbstractIntegrationTest;
 import app.brand.support.RecordingResetLinkSender;
 import app.brand.user.AccountStatus;
@@ -14,6 +15,8 @@ import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.UserSettingsRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +36,13 @@ import org.springframework.test.web.servlet.MvcResult;
  */
 class AuthIntegrationTest extends AbstractIntegrationTest {
 
+    /* Turkish copy from messages_tr.properties, escaped so this file stays ASCII. */
+    private static final String TR_FORM_HEADING = "Yeni bir \u015fifre se\u00e7";
+    private static final String TR_INVALID_HEADING = "Bu ba\u011flant\u0131 art\u0131k \u00e7al\u0131\u015fm\u0131yor";
+    private static final String TR_MISMATCH = "\u0130ki \u015fifre birbirini tutmuyor.";
+    private static final String TR_MAIL_SUBJECT = "\u015eifreni s\u0131f\u0131rla";
+    private static final String TR_MAIL_INTRO = "Yeni bir \u015fifre se\u00e7mek i\u00e7in bu ba\u011flant\u0131y\u0131 a\u00e7";
+
     @Autowired
     private AppUserRepository users;
 
@@ -41,6 +51,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private RecordingResetLinkSender resetLinks;
+
+    @Autowired
+    private MailResetLinkSender mailSender;
 
     @BeforeEach
     void clearRecordedLinks() {
@@ -211,20 +224,61 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     /* ------------------------------------------------------------ logout */
 
     @Test
-    @DisplayName("logout with only a bearer revokes every refresh token of that account")
-    void logoutRevokesEverySession() throws Exception {
-        JsonNode auth = read(register(uniqueEmail(), "correct horse"));
-        String access = auth.get("tokens").get("accessToken").asText();
-        String refresh = auth.get("tokens").get("refreshToken").asText();
+    @DisplayName("logout with only a bearer ends that session and leaves the other device signed in")
+    void logoutEndsOnlyTheCallingSession() throws Exception {
+        String email = uniqueEmail();
+        JsonNode phone = read(register(email, "correct horse"));
+        JsonNode tablet = read(login(email, "correct horse"));
 
-        // The client sends no body at all.
-        mockMvc.perform(post("/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+        String phoneAccess = phone.get("tokens").get("accessToken").asText();
+        String phoneRefresh = phone.get("tokens").get("refreshToken").asText();
+        String tabletRefresh = tablet.get("tokens").get("refreshToken").asText();
+
+        // The client sends no body at all: the sid claim names the session.
+        mockMvc.perform(post("/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + phoneAccess))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(post("/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("refreshToken", refresh))))
+                        .content(json(Map.of("refreshToken", phoneRefresh))))
                 .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("refreshToken", tabletRefresh))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("a rotated pair carries the new session id, so a later logout ends the new row")
+    void logoutAfterRefreshEndsTheRotatedSession() throws Exception {
+        String email = uniqueEmail();
+        JsonNode phone = read(register(email, "correct horse"));
+        JsonNode tablet = read(login(email, "correct horse"));
+        String tabletRefresh = tablet.get("tokens").get("refreshToken").asText();
+
+        MvcResult rotated = mockMvc.perform(post("/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("refreshToken",
+                                phone.get("tokens").get("refreshToken").asText()))))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode pair = read(rotated);
+
+        mockMvc.perform(post("/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + pair.get("accessToken").asText()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("refreshToken", pair.get("refreshToken").asText()))))
+                .andExpect(status().isUnauthorized());
+
+        // Still only this session: the other device is untouched.
+        mockMvc.perform(post("/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("refreshToken", tabletRefresh))))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -309,6 +363,91 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("a password reset still signs out every session, not only the one that asked")
+    void resetKillsEverySession() throws Exception {
+        String email = uniqueEmail();
+        String phoneRefresh = read(register(email, "correct horse"))
+                .get("tokens").get("refreshToken").asText();
+        String tabletRefresh = read(login(email, "correct horse"))
+                .get("tokens").get("refreshToken").asText();
+
+        mockMvc.perform(post("/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", email))))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/reset")
+                        .param("token", resetLinks.lastToken())
+                        .param("password", "a whole new password")
+                        .param("confirm", "a whole new password"))
+                .andExpect(status().isOk());
+
+        for (String refresh : List.of(phoneRefresh, tabletRefresh)) {
+            mockMvc.perform(post("/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("refreshToken", refresh))))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test
+    @DisplayName("the reset page is Turkish when the browser asks for Turkish")
+    void resetPageIsTranslated() throws Exception {
+        String token = resetTokenFor(uniqueEmail());
+
+        mockMvc.perform(get("/reset").param("token", token)
+                        .header(HttpHeaders.ACCEPT_LANGUAGE, "tr-TR,tr;q=0.9"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(TR_FORM_HEADING)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("lang=\"tr\"")));
+
+        // The dead-link page is translated too, not only the happy path.
+        mockMvc.perform(get("/reset").param("token", "invented")
+                        .header(HttpHeaders.ACCEPT_LANGUAGE, "tr"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(TR_INVALID_HEADING)));
+    }
+
+    @Test
+    @DisplayName("a mismatch on the reset form is reported in the language of the request")
+    void resetFormErrorIsTranslated() throws Exception {
+        String token = resetTokenFor(uniqueEmail());
+
+        mockMvc.perform(post("/reset")
+                        .header(HttpHeaders.ACCEPT_LANGUAGE, "tr")
+                        .param("token", token)
+                        .param("password", "a whole new password")
+                        .param("confirm", "something else"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(TR_MISMATCH)));
+    }
+
+    @Test
+    @DisplayName("the reset mail is written in the language the request came in with")
+    void resetMailIsTranslated() throws Exception {
+        String email = uniqueEmail();
+        register(email, "correct horse");
+
+        mockMvc.perform(post("/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.ACCEPT_LANGUAGE, "tr")
+                        .content(json(Map.of("email", email))))
+                .andExpect(status().isAccepted());
+
+        // The locale of the request reaches the sender; nothing about it is stored.
+        assertThat(resetLinks.sent()).hasSize(1);
+        assertThat(resetLinks.sent().get(0).locale()).isEqualTo(WebMvcConfig.TURKISH);
+
+        var turkish = mailSender.compose("https://example.test/reset?token=x", WebMvcConfig.TURKISH);
+        assertThat(turkish.subject()).isEqualTo(TR_MAIL_SUBJECT);
+        assertThat(turkish.body()).contains(TR_MAIL_INTRO).contains("https://example.test/reset?token=x");
+
+        var english = mailSender.compose("https://example.test/reset?token=x", Locale.ENGLISH);
+        assertThat(english.subject()).isEqualTo("Reset your password");
+        assertThat(english.body()).contains("Open this link to choose a new password");
+    }
+
+    @Test
     @DisplayName("an unknown reset token renders the same page as an expired one")
     void resetPageRejectsUnknownToken() throws Exception {
         mockMvc.perform(get("/reset").param("token", "invented"))
@@ -371,6 +510,24 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     /* -------------------------------------------------------------- helpers */
+
+    private MvcResult login(String email, String password) throws Exception {
+        return mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", email, "password", password))))
+                .andExpect(status().isOk())
+                .andReturn();
+    }
+
+    /** Registers the address and returns a live reset token for it. */
+    private String resetTokenFor(String email) throws Exception {
+        register(email, "correct horse");
+        mockMvc.perform(post("/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", email))))
+                .andExpect(status().isAccepted());
+        return resetLinks.lastToken();
+    }
 
     private MvcResult register(String email, String password) throws Exception {
         return mockMvc.perform(post("/auth/register")

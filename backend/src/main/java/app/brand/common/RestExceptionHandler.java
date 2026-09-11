@@ -5,18 +5,28 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -73,6 +83,62 @@ public class RestExceptionHandler {
         return unprocessable("missing parameter", ex.getParameterName());
     }
 
+    /**
+     * The part name is what the client got wrong — {@code photo}, in the one
+     * multipart endpoint stage 1 has.
+     */
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorBody> handleMissingPart(MissingServletRequestPartException ex) {
+        return unprocessable("missing part", ex.getRequestPartName());
+    }
+
+    /**
+     * A path variable that will not parse means there is no such thing, not that
+     * the server broke: {@code /admin/api/users/not-a-uuid} is a 404 exactly like
+     * a well-formed id that does not exist, so nothing is learnable from the
+     * difference. A query or form parameter is the caller's mistake and keeps its
+     * name in {@code field}.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorBody> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        if (ex.getParameter().hasParameterAnnotation(PathVariable.class)
+                && UUID.class.equals(ex.getRequiredType())) {
+            return notFound();
+        }
+        return unprocessable("invalid value", ex.getName());
+    }
+
+    /** The route exists, this verb does not. {@code Allow} says which ones do. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorBody> handleMethod(HttpRequestMethodNotSupportedException ex) {
+        var response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .contentType(MediaType.APPLICATION_JSON);
+        Set<HttpMethod> allowed = ex.getSupportedHttpMethods();
+        if (allowed != null && !allowed.isEmpty()) {
+            response.allow(allowed.toArray(new HttpMethod[0]));
+        }
+        return response.body(ApiErrorBody.of("method_not_allowed", "method not allowed"));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiErrorBody> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ApiErrorBody.of("unsupported_media_type", "unsupported content type"));
+    }
+
+    /**
+     * The caller asked for something this server does not write. The content type
+     * is pinned deliberately: without it the body would go back through content
+     * negotiation, fail for the same reason, and the client would get an empty 406.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<ApiErrorBody> handleNotAcceptable(HttpMediaTypeNotAcceptableException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ApiErrorBody.of("not_acceptable", "cannot produce an acceptable response"));
+    }
+
     /** [B10] 5 MB avatar cap; a bigger upload is a validation failure, not a 500. */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiErrorBody> handleTooLarge(MaxUploadSizeExceededException ex) {
@@ -93,8 +159,7 @@ public class RestExceptionHandler {
 
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiErrorBody> handleNotFound(Exception ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiErrorBody.of("not_found", "not found"));
+        return notFound();
     }
 
     /**
@@ -106,6 +171,11 @@ public class RestExceptionHandler {
         log.error("unhandled exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiErrorBody.of("unknown", "unexpected error"));
+    }
+
+    private static ResponseEntity<ApiErrorBody> notFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorBody.of("not_found", "not found"));
     }
 
     private static ResponseEntity<ApiErrorBody> unprocessable(String message, String field) {

@@ -196,10 +196,15 @@ public class EventService {
         if (event == null) {
             return EventJoinResultDto.notFound();
         }
-        if (members.existsByEventIdAndUserId(event.getId(), viewerId)) {
+        // The insert is the membership check: asking first and inserting after
+        // loses a race with the person's second tap, and losing it used to be a
+        // 500 on the primary key. `do nothing` also means a moderator rejoining
+        // their own board keeps the flag [see EventMemberRepository#joinIfAbsent].
+        int joined = members.joinIfAbsent(event.getId(), viewerId,
+                OffsetDateTime.ofInstant(Instant.now(clock), ZoneOffset.UTC));
+        if (joined == 0) {
             return EventJoinResultDto.alreadyJoined(event.getName());
         }
-        members.saveAndFlush(EventMember.join(event.getId(), viewerId, false, Instant.now(clock)));
         return EventJoinResultDto.joined(detail(viewerId, event.getId()));
     }
 
@@ -208,18 +213,38 @@ public class EventService {
     @Transactional(readOnly = true)
     public EventDetailDto detail(UUID viewerId, UUID eventId) {
         Event event = access.requireMember(eventId, viewerId);
-        Instant now = Instant.now(clock);
+        return detail(event, access.isModerator(event, viewerId), viewerId);
+    }
 
-        List<EventPersonDto> people = roster(event, viewerId);
+    /**
+     * The same detail, for a caller that has already established both — the board
+     * read [B12] enters through {@code EventAccess.requireMember} and asks for the
+     * moderator flag before it builds anything, and asking the database those two
+     * questions a second time is two queries per board open.
+     */
+    @Transactional(readOnly = true)
+    public EventDetailDto detail(Event event, boolean isModerator, UUID viewerId) {
+        return detail(event, isModerator, viewerId, members.findByEventId(event.getId()));
+    }
+
+    /** And again, for a caller that already holds the membership rows (it needs the flags). */
+    @Transactional(readOnly = true)
+    public EventDetailDto detail(Event event, boolean isModerator, UUID viewerId,
+                                 List<EventMember> memberRows) {
+        Instant now = Instant.now(clock);
+        List<EventPersonDto> people = roster(memberRows, viewerId);
         long postCount = counts(events.countPublishedPosts(List.of(event.getId())))
                 .getOrDefault(event.getId(), 0L);
 
-        EventSummaryDto summary = summary(event, now, people.size(), postCount);
+        // The membership count, not the roster's length: an account with no name
+        // yet is still a member, and `GET /events` counts it. The two lists must
+        // agree with each other.
+        EventSummaryDto summary = summary(event, now, memberRows.size(), postCount);
         return new EventDetailDto(
                 summary.id(), summary.name(), summary.scope(), summary.startsAt(), summary.endsAt(),
                 summary.cover(), summary.boardMode(), summary.status(), summary.section(),
                 summary.country(), summary.closedAt(), summary.memberCount(), summary.postCount(),
-                event.getJoinCode(), access.isModerator(event, viewerId), people);
+                event.getJoinCode(), isModerator, people);
     }
 
     /* -------------------------------------------------------------- mapping */
@@ -249,8 +274,8 @@ public class EventService {
      * "Boğaziçi" and "Bogazici" have to sort together, which the database collation
      * does not do.
      */
-    private List<EventPersonDto> roster(Event event, UUID viewerId) {
-        List<UUID> memberIds = members.findByEventId(event.getId()).stream()
+    private List<EventPersonDto> roster(List<EventMember> memberRows, UUID viewerId) {
+        List<UUID> memberIds = memberRows.stream()
                 .map(EventMember::getUserId)
                 .toList();
         List<AppUser> people = users.findAllById(memberIds).stream()

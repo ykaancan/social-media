@@ -25,6 +25,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * {@code /auth/logout} and {@code /sections/**} (the profile setup screen needs the
  * section picker before there is any approval at all).
  *
+ * <p>The admin exemption is the static page only — {@code /admin}, {@code /admin/},
+ * {@code /admin/index.html} and the one-segment {@code *.css} / {@code *.js} beside
+ * it, exactly what {@code SecurityConfig} makes public. {@code /admin/api/**} is
+ * status-checked like every other route, so a banned, rejected or pending
+ * {@code super_admin} gets a 403 and not the queue.
+ *
  * <p>An anonymous request passes straight through: whether it is a 401 is the
  * authorization rules' decision, not this filter's.
  */
@@ -45,9 +51,16 @@ public class ApprovedMemberFilter extends OncePerRequestFilter {
             "/reset",
             "/media/",
             "/actuator/",
-            "/admin",
             "/ws",
             "/error");
+
+    /** The static admin page, and nothing under {@code /admin/api}. */
+    private static final Set<String> ADMIN_PAGE_PATHS = Set.of(
+            "/admin",
+            "/admin/",
+            "/admin/index.html");
+
+    private static final String ADMIN_PREFIX = "/admin/";
 
     private final SecurityErrorResponder responder;
 
@@ -86,6 +99,25 @@ public class ApprovedMemberFilter extends OncePerRequestFilter {
                 return true;
             }
         }
-        return false;
+        return isAdminPageAsset(path);
+    }
+
+    /**
+     * Mirrors the {@code /admin/*.css} and {@code /admin/*.js} matchers in
+     * {@code SecurityConfig}: one segment under {@code /admin/}, so
+     * {@code /admin/api/users} can never match.
+     */
+    private static boolean isAdminPageAsset(String path) {
+        if (ADMIN_PAGE_PATHS.contains(path)) {
+            return true;
+        }
+        if (!path.startsWith(ADMIN_PREFIX)) {
+            return false;
+        }
+        String rest = path.substring(ADMIN_PREFIX.length());
+        if (rest.indexOf('/') >= 0) {
+            return false;
+        }
+        return rest.endsWith(".css") || rest.endsWith(".js");
     }
 }

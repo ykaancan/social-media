@@ -10,6 +10,7 @@ import app.brand.auth.AuthDtos.TokensDto;
 import app.brand.security.AppPrincipal;
 import app.brand.security.CurrentUser;
 import jakarta.validation.Valid;
+import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -59,14 +60,14 @@ public class AuthController {
     public void logout(@RequestBody(required = false) LogoutRequest request,
                        @CurrentUser(required = false) AppPrincipal principal) {
         authService.logout(
-                principal == null ? null : principal.id(),
+                principal == null ? null : principal.sessionId(),
                 request == null ? null : request.refreshToken());
     }
 
     /** Always 202, whether or not the address exists. */
     @PostMapping("/forgot-password")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request == null ? null : request.email());
+    public void forgotPassword(@RequestBody ForgotPasswordRequest request, Locale locale) {
+        authService.forgotPassword(request == null ? null : request.email(), locale);
     }
 }

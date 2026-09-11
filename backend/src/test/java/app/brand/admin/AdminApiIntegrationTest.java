@@ -65,6 +65,32 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("forbidden"));
     }
 
+    @Test
+    @DisplayName("a banned super_admin is 403: /admin/api is status-checked like every other route")
+    void bannedAdminLosesTheQueue() throws Exception {
+        Account admin = admin();
+        setStatus(admin.id, AccountStatus.BANNED);
+
+        mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("approval_required"));
+    }
+
+    @Test
+    @DisplayName("a super_admin whose account is back to pending is 403 as well")
+    void pendingAdminLosesTheQueue() throws Exception {
+        Account admin = admin();
+        setStatus(admin.id, AccountStatus.PENDING);
+
+        mockMvc.perform(post("/admin/api/users/" + UUID.randomUUID() + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isForbidden());
+
+        setStatus(admin.id, AccountStatus.REJECTED);
+        mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isForbidden());
+    }
+
     /* --------------------------------------------------------------- list */
 
     @Test
@@ -255,6 +281,36 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("banned"));
     }
 
+    @Test
+    @DisplayName("a super_admin cannot be banned through the API: 409, demote first")
+    void adminCannotBeBanned() throws Exception {
+        Account first = admin();
+        Account second = admin();
+
+        mockMvc.perform(post("/admin/api/users/" + second.id + "/ban")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(first)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("conflict"));
+
+        assertThat(users.findById(second.id).orElseThrow().getStatus())
+                .isEqualTo(AccountStatus.APPROVED);
+        // Including themselves: the founder cannot be locked out by a mis-tap either.
+        mockMvc.perform(post("/admin/api/users/" + first.id + "/ban")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(first)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("a path variable that is not a UUID is a 404 in the error shape, not a 500")
+    void malformedIdIsNotFound() throws Exception {
+        Account admin = admin();
+
+        mockMvc.perform(get("/admin/api/users/not-a-uuid")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("not_found"));
+    }
+
     /* ------------------------------------------------------------ promote */
 
     @Test
@@ -301,6 +357,23 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
         }
+    }
+
+    @Test
+    @DisplayName("the page stays reachable with any account state: only /admin/api is status-checked")
+    void staticPageIsNotStatusChecked() throws Exception {
+        Account banned = account(AccountStatus.BANNED);
+
+        for (String path : List.of("/admin/", "/admin", "/admin/index.html")) {
+            mockMvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, bearer(banned)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
+        }
+
+        // The page is the exemption; the API behind it is not.
+        mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(banned)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("approval_required"));
     }
 
     /* ------------------------------------------------------------ helpers */

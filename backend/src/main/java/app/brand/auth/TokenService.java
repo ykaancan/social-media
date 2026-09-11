@@ -44,12 +44,18 @@ public class TokenService {
         this.refreshTtl = properties.jwt().refreshTtl();
     }
 
+    /**
+     * The refresh row is written first so its id can go into the access token as
+     * {@code sid}: that is what makes a sign-out end one session and not every
+     * device the person has [B3].
+     */
     @Transactional
     public TokensDto issue(AppUser user) {
         Instant now = clock.instant();
         String refresh = randomToken();
-        refreshTokens.save(RefreshToken.issue(user.getId(), hash(refresh), now, now.plus(refreshTtl)));
-        return new TokensDto(jwtService.issue(user), refresh);
+        RefreshToken stored = refreshTokens.saveAndFlush(
+                RefreshToken.issue(user.getId(), hash(refresh), now, now.plus(refreshTtl)));
+        return new TokensDto(jwtService.issue(user, stored.getId()), refresh);
     }
 
     /**
@@ -81,6 +87,23 @@ public class TokenService {
         });
     }
 
+    /**
+     * Ends exactly the session an access token named in its {@code sid} claim.
+     * Unknown or already revoked is not an error — the session is gone either way.
+     */
+    @Transactional
+    public void revokeSession(UUID sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        Instant now = clock.instant();
+        refreshTokens.findById(sessionId).ifPresent(token -> {
+            token.revoke(now);
+            refreshTokens.save(token);
+        });
+    }
+
+    /** Kept for the two cases that really do end every session: ban and password reset. */
     @Transactional
     public void revokeAllForUser(UUID userId) {
         refreshTokens.revokeAllForUser(userId, clock.instant());

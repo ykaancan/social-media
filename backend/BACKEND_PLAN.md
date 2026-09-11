@@ -501,3 +501,44 @@ transport for `/user/queue/threads` is ready and tested. No push rows are
 written yet (B-5). The first STOMP CONNECT after a server restart is refused
 when the app's access token has expired; the client refreshes and reconnects
 on its 5 s timer, which is the designed behaviour.
+
+---
+
+## Review fixes (2026-09-11)
+
+A code review of B-1 to B-3 (eight finder angles, verified by the lead)
+produced ten findings; all ten are fixed here. `./gradlew test --rerun`: 201
+tests, 0 failures.
+
+- Report filing is a native `INSERT ... ON CONFLICT DO NOTHING`; the old
+  catch re-queried an aborted transaction and turned a double tap into a 500
+  that rolled back the caller.
+- The approved-member filter exempts only the static admin page; `/admin/api/**`
+  requires an approved super_admin, and banning a super_admin through the API
+  is refused (409) so the founder cannot be locked out.
+- Access tokens carry a `sid` claim bound to their refresh row; logout revokes
+  that session only. Revoke-all remains for ban and password reset.
+- Join and reactions are `ON CONFLICT` upserts, so a racing duplicate is a
+  normal answer, not a 500.
+- 405, 415, 406, UUID path mismatch and missing multipart part answer in the
+  `{code, message, field?}` shape without ERROR logs.
+- Block and unblock publish `ThreadsChanged` (and block-by-message an inbox
+  invalidation) so a second device refreshes.
+- The board snapshot no longer rebuilds and re-sorts the roster or repeats the
+  membership queries; `memberCount` is the membership count on both event
+  routes.
+- Reset pages and mail are i18n (`messages_en/tr.properties`, locale from
+  `Accept-Language` or the forgot-password request).
+- `Anonymity.copy()`, `common/Ids`, and a batch-resolving `SenderPresenter`
+  over a `SenderRow` interface replace the duplicated helpers.
+- Also: `V3__board_post_pending_idx.sql` (partial index for the housekeeping
+  queries), `hibernate.default_batch_fetch_size = 50` for the eager
+  section/country associations, no recipient email in reset-mail logs, test
+  clean-ups limited to each class's own rows, screening limits read from the
+  entity constants.
+
+Left open, on purpose: `KeywordScreener.invalidate()` is still a method on
+the concrete class (B-5 term writes should publish an event instead);
+unbounded board queries are acceptable at stage-1 scale; entitlement config
+flags are not yet declared (assign to B-5); a live STOMP subscription is not
+re-checked after a ban until the socket reconnects.

@@ -1,6 +1,7 @@
 package app.brand.user;
 
 import app.brand.common.ApiException;
+import app.brand.common.Ids;
 import app.brand.media.AvatarImageProcessor;
 import app.brand.media.AvatarStore;
 import app.brand.section.Section;
@@ -166,11 +167,13 @@ public class ProfileService {
         return bio.isEmpty() ? null : bio;
     }
 
+    /**
+     * 422, not 404: this is a form field the person just picked from a list, so a
+     * malformed id and an id that is not a section get the same answer.
+     */
     private Section requireSection(String rawId) {
-        UUID id;
-        try {
-            id = UUID.fromString(rawId == null ? "" : rawId.trim());
-        } catch (IllegalArgumentException ex) {
+        UUID id = Ids.orNull(rawId == null ? null : rawId.trim());
+        if (id == null) {
             throw ApiException.validation("unknown section", "sectionId");
         }
         return sections.findById(id)
