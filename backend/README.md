@@ -77,16 +77,16 @@ rotating the JWT secret costs. The pieces it drives are `Dockerfile`,
 `src/main/resources/application-prod.yml` and `deploy/` (the production compose
 file, the Caddyfile and `.env.example`).
 
-## What is here so far
+## What is here
 
-Build step **B-1**, first wave: the Gradle project, Compose Postgres, the
-complete stage-1 schema (`V1__schema.sql`) and the ESN reference data
-(`V2__reference_data.sql`), the error contract **[B14]**, `TextNormalizer`,
-JWT + refresh rotation **[B3]**, the approved-member guard, and `/auth/*`
-including the server-rendered password-reset pages.
-
-`/me`, `/me/profile`, `/me/photo`, `/sections` and the admin page are the second
-wave of the same step.
+All six build steps of the plan (B-1 to B-6), merged to `main` on 2026-09-14:
+auth and sessions, profiles and sections, events, walls and inbox, live boards
+with moderation and STOMP invalidations, private threads, safety (screening,
+muted words, blocks, reports, rate limits), account export and deletion, push
+through the Expo outbox, the admin page (`/admin/`), and the deployment files.
+Each step's record (built, verified, deviations, not done) is at the end of
+[`BACKEND_PLAN.md`](BACKEND_PLAN.md). What still needs the founder before a
+first event is in [`../RELEASE.md`](../RELEASE.md).
 
 ## Rules that are not negotiable here
 

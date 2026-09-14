@@ -1,20 +1,22 @@
 # MVP frontend progress
 
-Updated 2026-09-10. This is the frontend-first sequence agreed in this task;
+Updated 2026-09-14. This is the frontend-first sequence agreed in this task;
 older source comments use superseded step numbers for the backend.
 
 | Step | Scope | Status |
 | --- | --- | --- |
 | 1 | Design tokens, component library, gallery | Implemented |
-| 2 | Onboarding, session, four-tab shell, section roster | Implemented against development mock |
-| 3 | Events list, join/create, event detail and people, QR and sharing | Implemented against development mock |
-| 4 | Public/owner walls, inbox, composer, message actions | Implemented against development mock |
-| 5 | Board feed, moderation, co-moderators/controls, projector | Implemented against development mock |
-| 6 | Private threads, unread badges, reveal | Implemented against development mock |
-| 7 | Settings and safety | Implemented against development mock |
-| 8 | Frontend completion review across devices and languages | Automated/browser review complete; native sign-off pending |
+| 2 | Onboarding, session, four-tab shell, section roster | Implemented; verified against the real server (backend B-1) |
+| 3 | Events list, join/create, event detail and people, QR and sharing | Implemented; verified against the real server (B-2, B-3) |
+| 4 | Public/owner walls, inbox, composer, message actions | Implemented; verified against the real server (B-2) |
+| 5 | Board feed, moderation, co-moderators/controls, projector | Implemented; verified against the real server (B-3, B-6) |
+| 6 | Private threads, unread badges, reveal | Implemented; verified against the real server (B-4) |
+| 7 | Settings and safety | Implemented; verified against the real server (B-5, B-6) |
+| 8 | Frontend completion review across devices and languages | Automated, browser and Android-emulator review complete; physical Android and iOS sign-off pending (`RELEASE.md`) |
 
-Backend and minimal admin web implementation follow the mobile frontend flows.
+The backend and the admin page are complete (`backend/BACKEND_PLAN.md`, steps
+B-1 to B-6, merged 2026-09-14). `MockApi` remains the stand-in only when
+`EXPO_PUBLIC_API_URL` is unset.
 
 ## Step 3 implementation
 
