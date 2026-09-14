@@ -542,3 +542,42 @@ the concrete class (B-5 term writes should publish an event instead);
 unbounded board queries are acceptable at stage-1 scale; entitlement config
 flags are not yet declared (assign to B-5); a live STOMP subscription is not
 re-checked after a ban until the socket reconnects.
+
+---
+
+## B-4 record (2026-09-14)
+
+**Built.** `thread/`: `Thread`, `ThreadParticipant` (current sending level,
+`revealed_at`, `read_through_seq`), `ThreadMessage` (level at send time,
+per-thread `seq` from 1, `system = revealed`), `RequestKey`; `POST /threads`
+from an inbox message or a published board post with the mock's 404/403/422
+order and rate-limited to 20 openings per rolling day (429), `GET /me/threads`,
+`GET /threads/{id}`, `POST /threads/{id}/messages`, `PUT /threads/{id}/read`,
+`POST /threads/{id}/reveal`, `/report`, `/block`; `ThreadsChanged` published
+on open, send, read (only when the watermark moved), reveal and block, which
+the B-3 transport delivers on `/user/queue/threads`; hourly purge of request
+keys older than 7 days.
+
+**Verified.** `./gradlew test --rerun`: 227 tests, 0 failures (26 new). On
+the emulator against the real server: Reply privately from a board post
+opened a thread with the pinned origin; Deniz's reply sent through the API
+appeared on the device with no interaction, rendered at Deniz's section-hint
+level; the same send repeated with the same request key stayed one message;
+Reveal myself from the device made Deniz's view show the other participant
+as named with a system row appended while the first anonymous message kept
+its level [D5]; the counterpart's list showed the honest unread count.
+
+**Deviations, all deliberate.** `request_key.key` stores a SHA-256 of a
+scoped string ("open <requestId>" / "send:<threadId> <requestId>") because
+the column is capped at 100 characters. The opening rate limit is a rolling
+24-hour window and the opener is derived from the seq-1 message, so no
+migration was needed; the limit is read with `@Value` rather than added to
+`BrandProperties`. A concurrent open with the same key answers 409 and rolls
+back the loser (the single-threaded mock cannot express this). The stored
+origin is read without a visibility rule so a card later taken off a wall or
+a hidden post does not blank an existing conversation. `seq` is assigned
+under `select ... for update` on the thread row.
+
+**Not done (later steps).** Push rows for thread messages (B-5). Account
+deletion's thread clean-up (B-5). The threads list screen was checked through
+the API, not on the device.
