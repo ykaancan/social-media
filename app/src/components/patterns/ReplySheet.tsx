@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from '../../i18n';
 import { useTheme } from '../../theme';
@@ -9,6 +9,7 @@ import { Icon } from '../core/Icon';
 import { Input } from '../core/Input';
 import { Sheet } from '../core/Sheet';
 import { Text } from '../core/Text';
+import { Note } from './Note';
 
 /** post / wall message / reply-that-starts-a-thread — HANDOFF §4. */
 export const REPLY_MAX = 280;
@@ -70,6 +71,7 @@ export function senderFor(me: MeView, level: AnonymityLevel, hintFields: HintFie
 }
 
 export interface ReplyPayload {
+  screeningAcknowledged?: boolean;
   text: string;
   level: AnonymityLevel;
   hints: SenderView['hints'];
@@ -81,7 +83,8 @@ export interface ReplySheetProps {
   initialLevel?: AnonymityLevel;
   initialHintFields?: HintFields;
   onClose: () => void;
-  onSend: (payload: ReplyPayload) => void;
+  onSend: (payload: ReplyPayload) => void | Promise<void>;
+  onScreen?: (text: string) => Promise<{warning:boolean}>;
 }
 
 /**
@@ -100,6 +103,7 @@ export function ReplySheet({
   initialHintFields = { section: true },
   onClose,
   onSend,
+  onScreen,
 }: ReplySheetProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -108,10 +112,20 @@ export function ReplySheet({
   const [level, setLevel] = useState<AnonymityLevel>(initialLevel);
   const [hintFields, setHintFields] = useState<HintFields>(initialHintFields);
 
-  const canSend = text.trim().length > 0;
+  const [busy,setBusy]=useState(false), [error,setError]=useState(false), [warned,setWarned]=useState<string>();
+  const running=useRef(false), draft=JSON.stringify([text.trim(),level,hintFields]);
+  const warning=warned===draft;
+  const canSend = text.trim().length > 0 && text.trim().length <= REPLY_MAX && (level!=='hint'||Object.values(hintFields).some(Boolean));
+  const submit=async()=>{
+    if(running.current||!canSend)return;running.current=true;setBusy(true);setError(false);
+    try{
+      if(onScreen&&!warning&&(await onScreen(text.trim())).warning){setWarned(draft);return;}
+      await onSend({text:text.trim(),level,hints:senderFor(me,level,hintFields).hints,...(warning?{screeningAcknowledged:true}:{})});
+    }catch{setError(true);}finally{running.current=false;setBusy(false);}
+  };
 
   return (
-    <Sheet title={t('inbox.replyPrivately')} onClose={onClose} style={styles.sheet} testID="reply-sheet">
+    <Sheet title={t('inbox.replyPrivately')} onClose={busy?undefined:onClose} style={styles.sheet} testID="reply-sheet">
       <View style={styles.previewBlock}>
         <Text variant="captionCaps" upper color={colors.text2}>
           {t('composer.replyingTo')}
@@ -124,7 +138,7 @@ export function ReplySheet({
         rows={3}
         autoFocus
         value={text}
-        onChange={setText}
+        onChange={value=>{if(!running.current)setText(value);}}
         maxLength={REPLY_MAX}
         placeholder={t('thread.placeholder')}
         testID="reply-text"
@@ -136,9 +150,9 @@ export function ReplySheet({
         </Text>
         <AnonymitySelector
           value={level}
-          onChange={setLevel}
+          onChange={value=>{if(!running.current)setLevel(value);}}
           hintFields={hintFields}
-          onHintFieldsChange={setHintFields}
+          onHintFieldsChange={value=>{if(!running.current)setHintFields(value);}}
           me={me}
         />
       </View>
@@ -150,14 +164,18 @@ export function ReplySheet({
         </Text>
       </View>
 
+      {warning&&<Note icon="TriangleAlert"><Text variant="bodySm">{t('composer.screeningWarning')} {t('composer.screeningDetail')}</Text></Note>}
+      {error&&<Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
       <Button
+        testID="reply-send"
+        loading={busy}
         size="lg"
         full
         icon="Send"
-        disabled={!canSend}
-        onPress={() => onSend({ text: text.trim(), level, hints: senderFor(me, level, hintFields).hints })}
+        disabled={!canSend||busy}
+        onPress={()=>{void submit();}}
       >
-        {t('composer.send')}
+        {t(warning?'messageFlow.sendAnyway':'composer.send')}
       </Button>
     </Sheet>
   );

@@ -69,13 +69,13 @@ export function Pending({ navigation }: RootScreenProps<'Pending'>) {
     };
   }, []);
 
-  const rejected = me?.status === 'rejected';
+  const rejected = me?.status === 'rejected', banned=me?.status==='banned';
 
   // "{name} · {section}" — both are set from `pending` onward, but the line is
   // built from what is actually there rather than printing a stray separator.
   const sent = [me?.name, me?.section?.name].filter(Boolean).join(' · ');
 
-  const steps: PendingStep[] = rejected
+  const steps: PendingStep[] = banned ? [] : rejected
     ? [
         { label: t('onboarding.stepSent'), done: true, description: sent || undefined },
         { label: t('onboarding.stepReview'), done: true, description: t('onboarding.rejectedNote') },
@@ -111,15 +111,13 @@ export function Pending({ navigation }: RootScreenProps<'Pending'>) {
         </View>
       }
     >
-      {/* TODO: `banned` is routed here too (RootNavigator), so a banned account
-          currently reads the queue copy, which is wrong. It needs its own screen
-          and its own words as soon as the design exists. */}
+
       <PendingState
         testID="pending-state"
-        title={rejected ? t('onboarding.rejectedTitle') : t('onboarding.pendingTitle')}
-        subtitle={rejected ? undefined : t('onboarding.pendingSub')}
+        title={banned?t('reviewFlow.bannedTitle'):rejected ? t('onboarding.rejectedTitle') : t('onboarding.pendingTitle')}
+        subtitle={banned?t('reviewFlow.bannedBody'):rejected ? undefined : t('onboarding.pendingSub')}
         steps={steps}
-        note={rejected ? undefined : t('onboarding.pendingNote')}
+        note={rejected||banned ? undefined : t('onboarding.pendingNote')}
       />
 
       {rejected ? (

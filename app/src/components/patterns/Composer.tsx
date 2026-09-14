@@ -31,6 +31,7 @@ export interface ComposerPayload {
 }
 
 export interface ComposerProps {
+  initialText?: string;
   me: MeView;
   /** Joined members, for the "to a person" picker. Ignored when `wallOwner` is set. */
   members?: PickerPerson[];
@@ -62,6 +63,7 @@ export interface ComposerProps {
  */
 export function Composer({
   me,
+  initialText = '',
   members = [],
   wallOwner,
   boardMode,
@@ -77,7 +79,7 @@ export function Composer({
   const { colors, radius } = useTheme();
   const { t } = useTranslation();
 
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const [target, setTarget] = useState<ComposerTarget>(wallOwner ? 'person' : 'room');
   const [person, setPerson] = useState<PickerPerson | undefined>(wallOwner);
   const [level, setLevel] = useState<AnonymityLevel>(initialLevel);

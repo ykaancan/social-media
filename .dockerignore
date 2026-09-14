@@ -1,0 +1,36 @@
+# Build context for backend/Dockerfile. The context is the repository root
+# because the backend build copies ../admin/index.html into the jar [B11], so
+# everything else the repo holds is excluded here rather than shipped.
+
+.git
+.gitattributes
+.github
+.claude
+
+# The Expo app and the design bundle are not inputs to the server image.
+app
+design
+
+# Docs at the root.
+AGENTS.md
+CLAUDE.md
+DECISIONS.md
+
+# Gradle output and local runtime state; the image builds from source.
+backend/build
+backend/.gradle
+backend/data
+backend/logs
+backend/Dockerfile
+backend/docker-compose.yml
+
+# Deployment files are read on the host by docker compose, never by the build.
+backend/deploy
+
+# Secrets can never enter a build context.
+**/.env
+**/.env.*
+!**/.env.example
+
+**/*.log
+**/node_modules

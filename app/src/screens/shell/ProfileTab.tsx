@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Text } from '../../components/core';
+import { Text, IconButton } from '../../components/core';
 import { Empty, Screen, WallHeader, LoadState, MessageCard } from '../../components/patterns';
 import { useTranslation } from '../../i18n';
 import type { TabScreenProps } from '../../navigation/types';
@@ -19,7 +19,7 @@ export function ProfileTab({ navigation }: TabScreenProps<'Profile'>) {
   const section = me?.section;
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   return <Screen testID="profile-screen" bottom={selected && <MessageActions key={selected.id} message={selected} onClose={() => setSelectedId(null)} />}>
-    <Text variant="captionCaps" color={colors.text2} upper>{t('wall.myWall')}</Text>
+    <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text variant="captionCaps" color={colors.text2} upper>{t('wall.myWall')}</Text><IconButton icon="Settings" label={t('settings.title')} testID="profile-settings" onPress={()=>navigation.navigate('Settings')}/></View>
     <WallHeader testID="profile-wall-header" user={{ name: me?.name ?? '', section: section?.name, country: section?.country, bio: me?.bio, avatar: me?.avatarUrl }}
       count={inbox?.counts.approved} onSection={section ? () => navigation.navigate('Section', { id: section.id }) : undefined} style={styles.header} />
     {error || !inbox ? <LoadState error={error} onRetry={() => { void refresh(); }} /> : <>

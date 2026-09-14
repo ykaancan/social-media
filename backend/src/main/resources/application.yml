@@ -1,0 +1,161 @@
+server:
+  port: 8080
+  error:
+    # Every error body the app sees is rendered by RestExceptionHandler [B14];
+    # the servlet container's own error page must never leak anything.
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: brand-backend
+
+  # Defaults match backend/docker-compose.yml. Every value is overridable by
+  # environment variable, so nothing about production lives in this file.
+  datasource:
+    url: jdbc:postgresql://${BRAND_DB_HOST:localhost}:${BRAND_DB_PORT:5432}/${BRAND_DB_NAME:brand}
+    username: ${BRAND_DB_USER:brand}
+    password: ${BRAND_DB_PASSWORD:brand}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jpa:
+    # The schema comes from Flyway. Hibernate only ever checks that the entities
+    # still match it; it must never write DDL.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      # Section and country are @ManyToOne(EAGER) on every content row, so a
+      # roster or a board page would otherwise be one SELECT per row. Batching
+      # turns that into one IN (...) per batch; it changes no result, only the
+      # number of round trips.
+      hibernate.default_batch_fetch_size: 50
+
+  # The reset page and the reset mail are the only server-rendered copy, and they
+  # are i18n like everything else: messages_en / messages_tr, chosen from
+  # Accept-Language by WebMvcConfig#localeResolver. The MessageSource is a bean in
+  # WebMvcConfig rather than spring.messages.* here, because Boot's auto-configured
+  # one only appears when a bare messages.properties exists and there is no default
+  # language file to have - en is a language like tr, not a fallback.
+
+  jackson:
+    # Optional DTO fields (Me.name, Me.section, MessageSender.hints, ...) are
+    # absent rather than null — types.ts declares them with `?`.
+    default-property-inclusion: non_null
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+      write-date-timestamps-as-nanoseconds: false
+
+  servlet:
+    multipart:
+      # [B10] Avatars only, and the one image endpoint stage 1 allows.
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  # SMTP is configured by environment (SPRING_MAIL_HOST, SPRING_MAIL_PORT,
+  # SPRING_MAIL_USERNAME, SPRING_MAIL_PASSWORD). With no host configured there is
+  # no JavaMailSender bean at all and brand.mail.enabled must stay false.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+brand:
+  jwt:
+    # REQUIRED. Base64, at least 32 bytes decoded. The application refuses to
+    # start without it — there is no built-in default outside the dev profile.
+    secret: ${BRAND_JWT_SECRET:}
+    access-ttl: 15m
+    refresh-ttl: 30d
+  # [B11] On startup the account with this email is promoted to super_admin and
+  # approved. Empty means "no bootstrap".
+  bootstrap-admin-email: ${BRAND_BOOTSTRAP_ADMIN_EMAIL:}
+  media:
+    dir: ${BRAND_MEDIA_DIR:./data/avatars}
+  # Used to build absolute avatar URLs and the password-reset link.
+  public-base-url: ${BRAND_PUBLIC_BASE_URL:http://localhost:8080}
+  mail:
+    from: ${BRAND_MAIL_FROM:no-reply@localhost}
+    # false -> reset links are written to the log at INFO instead of being sent.
+    enabled: ${BRAND_MAIL_ENABLED:false}
+  cors:
+    # Expo dev server origins by default; the native app sends no Origin header.
+    allowed-origins: ${BRAND_CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:19006}
+  limits:
+    # CLAUDE.md §5, "per-sender rate limits on ... thread openings". Threads one
+    # account may open in any rolling 24 hours; the 21st answers 429 rate_limited.
+    # A retry of an opening that already succeeded replays its request key [B7]
+    # and is not counted again. 0 turns the limit off.
+    thread-openings-per-day: ${BRAND_THREAD_OPENINGS_PER_DAY:20}
+    # CLAUDE.md §5, "per-sender rate limits on anonymous posts". Rolling one-hour
+    # windows counted over what the account has already written; the one past the
+    # limit answers 429 rate_limited. Only anonymous content is counted and only
+    # anonymous content is refused — a named message carries a person and the
+    # ordinary product rules already govern it. 0 turns a limit off.
+    anonymous-messages-per-hour: ${BRAND_ANONYMOUS_MESSAGES_PER_HOUR:30}
+    anonymous-posts-per-hour: ${BRAND_ANONYMOUS_POSTS_PER_HOUR:30}
+    # Published cards one board read returns, newest first. The load check
+    # (backend/loadtest/README.md) measured ~0.15 ms of server time per published
+    # post per 5 s poll and 9 of 10 pooled connections in use at a ~500-post
+    # board; the feed is the only read that grows with the length of an event.
+    # `postCount` is unaffected and stays the full, real count. 0 = no cap.
+    board-feed: ${BRAND_BOARD_FEED:200}
+  # Brief §3: the entitlement layer is present from day one and switched OFF in
+  # stages 1–2. These are the config flags; nothing gates on them yet, and
+  # GET /me/entitlements is the only reader. Stage 3 flips them.
+  entitlements:
+    # Inbox cards past the free allowance render as locked cards [D3].
+    locked-cards: ${BRAND_LOCKED_CARDS:false}
+    # Free inbox reads per period. 0 = unlimited, which is stage 1.
+    free-inbox-reads: ${BRAND_FREE_INBOX_READS:0}
+    # Cold thread opens per day. 0 = unused; stage 1 has no cold DMs at all.
+    cold-open-limit: ${BRAND_COLD_OPEN_LIMIT:0}
+    # The reveal action costs. Stage 1 is free and unlimited.
+    reveal-paid: ${BRAND_REVEAL_PAID:false}
+  housekeeping:
+    # [B5] The background pass that finalises expired rejection undo windows [B6]
+    # and rejects posts left pending on a closed or ended board [D4]. Both are
+    # applied lazily inside every board read and write as well, so turning this
+    # off delays notifications and changes nothing anyone can see. Off in tests,
+    # which drive BoardHousekeeping.run() at the instant they choose.
+    enabled: ${BRAND_HOUSEKEEPING_ENABLED:true}
+    # Milliseconds between passes; the undo window is 5 s.
+    interval: ${BRAND_HOUSEKEEPING_INTERVAL_MS:5000}
+    # [B7] Milliseconds between request-key purges. Nothing is retrying a
+    # week-old key, so hourly is far more often than it needs to be.
+    request-key-interval: ${BRAND_REQUEST_KEY_PURGE_INTERVAL_MS:3600000}
+  push:
+    # [B8] Off by default, and off is not a stub: the outbox is written, the copy
+    # is rendered in the device's language and the drain runs exactly as it will
+    # in production — it hands each row to LoggingPushSender instead of Expo.
+    # Switching this on (with an Expo access token) is the only difference
+    # between "nothing buzzes" and "phones buzz".
+    enabled: ${BRAND_PUSH_ENABLED:false}
+    # From expo.dev; blank sends the requests unauthenticated, which Expo allows
+    # until the project enables enhanced security.
+    expo-access-token: ${BRAND_EXPO_ACCESS_TOKEN:}
+    # Milliseconds between outbox drains. Shares brand.housekeeping.enabled as its
+    # scheduling switch, so tests drive PushHousekeeping.run() themselves.
+    interval: ${BRAND_PUSH_INTERVAL_MS:5000}
+    # Rows per pass, capped at the 100 messages Expo accepts in one request.
+    batch-size: ${BRAND_PUSH_BATCH_SIZE:100}
+
+# [B12] The realtime layer has no configuration. The STOMP endpoint (/ws), the
+# simple in-memory broker and its 10 s/10 s heartbeats are fixed in
+# realtime/RealtimeConfig because they have to match app/src/api/http.ts exactly;
+# a value that can drift apart from the client is worse than one that cannot.
+# The day a second instance is deployed, a broker relay host lands here.
+
+logging:
+  level:
+    app.brand: INFO

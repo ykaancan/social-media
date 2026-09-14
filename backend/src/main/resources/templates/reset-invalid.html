@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html th:lang="${#locale.language}" lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title th:text="#{reset.invalid.title}">This link no longer works</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0;
+               display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+        main { width: 100%; max-width: 22rem; padding: 1.5rem; }
+        h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+        p { font-size: .9375rem; line-height: 1.5; }
+    </style>
+</head>
+<body>
+<main>
+    <h1 th:text="#{reset.invalid.heading}">This link no longer works</h1>
+    <p th:text="#{reset.invalid.body1}">Reset links expire after an hour and can only be used once.</p>
+    <p th:text="#{reset.invalid.body2}">Ask for a new one from the sign-in screen in the app.</p>
+</main>
+</body>
+</html>

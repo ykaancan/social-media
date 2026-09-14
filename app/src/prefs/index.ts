@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 /** Every key the app stores, in one place, so nothing invents a string. */
 export const PREF_KEYS = {
   /** Set once the Events coach mark has been dismissed by hand. */
+  locale: 'locale',
   coachMarkDismissed: 'coachMark.dismissed',
 } as const;
 

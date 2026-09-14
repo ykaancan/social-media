@@ -7,6 +7,7 @@ import { Text } from '../core/Text';
 
 export interface ConfirmSheetProps {
   busy?: boolean;
+  disabled?: boolean;
   error?: string;
   title: string;
   /** One or two sentences. Already translated. */
@@ -30,7 +31,7 @@ export interface ConfirmSheetProps {
  * hidden (block) or soft-deleted (inbox delete).
  */
 export function ConfirmSheet({
-  busy = false, error,
+  busy = false, disabled = false, error,
   title,
   body,
   action,
@@ -56,7 +57,7 @@ export function ConfirmSheet({
         variant={danger ? 'danger' : 'primary'}
         onPress={onConfirm}
         loading={busy}
-        disabled={busy}
+        disabled={busy||disabled}
         testID="confirm-action"
       >
         {action}

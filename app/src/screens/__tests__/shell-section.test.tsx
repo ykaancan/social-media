@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, ApiProvider, type ApiClient, type SectionDetail } from '../../api';
 import { MockApi } from '../../api/mock';
 import { ToastHost } from '../../components/patterns';
-import { initI18n } from '../../i18n';
+import { initI18n, setLocale, t } from '../../i18n';
 import { RootNavigator } from '../../navigation';
 import { getPref, PREF_KEYS, setPref } from '../../prefs';
 import { clearTokens, SessionProvider, useSession, type SessionValue } from '../../session';
@@ -86,9 +87,103 @@ async function signInApproved(api: ApiClient) {
 
 const approvedApi = () => new MockApi({ latencyMs: 0, approveAfterMs: 0 });
 
+it('opens a private board reply, sends, reveals and blocks through the real navigator',async()=>{
+  const {api,eventId}=await openLiveBoardWithQueuedPost();
+  await act(async()=>{await api.approvePosts(eventId,['post-1']);});
+  await waitFor(()=>expect(screen.getByTestId('board-post-1-reply')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('board-post-1-reply'));
+  await fireEvent.changeText(screen.getByTestId('reply-text'),'A private first reply');
+  await fireEvent.press(screen.getByTestId('reply-send'));
+  await waitFor(()=>expect(screen.getByTestId('thread-origin')).toBeTruthy());
+  expect(screen.getByText('A private first reply')).toBeTruthy();expect(screen.queryByTestId('tab-threads')).toBeNull();
+  await fireEvent.changeText(screen.getByTestId('thread-text'),'Another private message');
+  await fireEvent.press(screen.getByTestId('thread-send'));
+  await waitFor(()=>expect(screen.getByText('Another private message')).toBeTruthy());
+  await fireEvent.changeText(screen.getByTestId('thread-text'),'Another private message');
+  await fireEvent.press(screen.getByTestId('thread-send'));
+  await waitFor(()=>expect(screen.getAllByText('Another private message')).toHaveLength(2));
+  await fireEvent.press(screen.getByTestId('thread-more'));await fireEvent.press(screen.getByTestId('more-reveal'));
+  await fireEvent.press(screen.getByTestId('confirm-action'));
+  await waitFor(()=>expect(screen.queryByTestId('confirm-sheet')).toBeNull());
+  const thread=(await api.getThreads()).threads[0];
+  expect((await api.getThread(thread.id)).messages[0].sender.level).toBe('anonymous');
+  expect((await api.getThread(thread.id)).canReveal).toBe(false);
+  await fireEvent.press(screen.getByTestId('thread-more'));expect(screen.queryByTestId('more-reveal')).toBeNull();
+  await fireEvent.press(screen.getByTestId('more-block'));await fireEvent.press(screen.getByTestId('confirm-action'));
+  await waitFor(()=>expect(screen.getByTestId('threads-empty')).toBeTruthy());
+  expect(screen.queryByTestId('thread-origin')).toBeNull();
+});
+
+it('shows a real unread thread badge and clears it on opening the conversation',async()=>{
+  const appState=AppState.currentState;AppState.currentState='active';
+  try {
+  const api=approvedApi();await signInApproved(api);
+  await waitFor(()=>expect(screen.getByTestId('events-empty')).toBeTruthy());
+  await act(async()=>{
+    const event=await api.createEvent({name:'Thread test',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
+    await api.sendBoardPost({eventId:event.id,text:'My original post',anonymityLevel:'anonymous',allowedHints:{}});
+    await api.register({email:'reply-member@example.com',password:'password123'});
+    await api.submitProfile({name:'Reply member',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+    await api.openThread({origin:{kind:'post',id:'post-1',eventId:event.id},text:'An incoming reply',anonymityLevel:'anonymous',allowedHints:{},requestId:'incoming'});
+    await api.login({email:'deniz@example.com',password:'sekizkarakter'});
+  });
+  await fireEvent.press(screen.getByTestId('tab-threads'));
+  await waitFor(()=>expect(screen.getByTestId('thread-row-thread-1')).toBeTruthy());
+  expect(within(screen.getByTestId('tab-threads')).getByText('1')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('thread-row-thread-1'));
+  await waitFor(()=>expect(screen.getByText('An incoming reply')).toBeTruthy());
+  await waitFor(async()=>expect((await api.getThreads()).unreadCount).toBe(0));
+  await fireEvent.press(screen.getByLabelText('Back'));
+  await waitFor(()=>expect(screen.getByTestId('tab-threads')).toBeTruthy());
+  expect(within(screen.getByTestId('tab-threads')).queryByText('1')).toBeNull();
+  } finally {AppState.currentState=appState;}
+});
+
 beforeEach(async () => {
   await clearTokens();
   await AsyncStorage.clear();
+});
+
+it('saves privacy, muted words, notifications and section changes through Settings',async()=>{
+  const api=approvedApi(),session=await signInApproved(api);
+  await fireEvent.press(screen.getByTestId('tab-profile'));await fireEvent.press(screen.getByTestId('profile-settings'));
+  await waitFor(()=>expect(screen.getByText('Who can write to me')).toBeTruthy());
+  expect(screen.queryByTestId('tab-profile')).toBeNull();
+  await fireEvent.press(screen.getByText('Who can write to me'));await waitFor(()=>expect(screen.getByRole('radio',{name:'Named only'})).toBeTruthy());
+  await fireEvent.press(screen.getByRole('radio',{name:'Named only'}));await waitFor(()=>expect(screen.getByRole('radio',{name:'Named only'}).props.accessibilityState.checked).toBe(true));
+  expect((await api.getSettings()).writingPolicy).toBe('named_only');
+  await fireEvent.press(screen.getByLabelText('Back'));await fireEvent.press(screen.getByText('Muted words'));
+  await waitFor(()=>expect(screen.getByTestId('muted-word')).toBeTruthy());
+  await fireEvent.changeText(screen.getByTestId('muted-word'),'IŞIK');await fireEvent.press(screen.getByText('Add'));
+  await waitFor(()=>expect(screen.getByText('ışık')).toBeTruthy());
+  await fireEvent.press(screen.getByLabelText('Back'));await fireEvent.press(screen.getByText('Notifications'));
+  await waitFor(()=>expect(screen.getByRole('switch',{name:'Inbox'})).toBeTruthy());
+  await fireEvent.press(screen.getByRole('switch',{name:'Inbox'}));
+  await waitFor(()=>expect(screen.getByRole('switch',{name:'Inbox'}).props.accessibilityState.checked).toBe(false));
+  await fireEvent.press(screen.getByLabelText('Back'));await fireEvent.press(screen.getByText('My section'));
+  await waitFor(()=>expect(screen.getByTestId('change-section')).toBeTruthy());await fireEvent.press(screen.getByTestId('change-section'));
+  await fireEvent.press(screen.getByTestId('section-bologna'));await fireEvent.press(screen.getByTestId('confirm-action'));
+  await waitFor(()=>expect(screen.queryByTestId('confirm-sheet')).toBeNull());
+  expect(session().me).toMatchObject({status:'approved',section:{id:'bologna',country:'Italy'}});
+  await waitFor(()=>expect(screen.queryByTestId('change-section')).toBeNull());
+});
+
+it('edits the approved profile and requires typed confirmation before real account deletion',async()=>{
+  const api=approvedApi(),session=await signInApproved(api);
+  await fireEvent.press(screen.getByTestId('tab-profile'));await fireEvent.press(screen.getByTestId('profile-settings'));
+  await waitFor(()=>expect(screen.getByText('Edit profile')).toBeTruthy());await fireEvent.press(screen.getByText('Edit profile'));
+  await fireEvent.changeText(screen.getByTestId('profile-name'),'Deniz Updated');await fireEvent.press(screen.getByTestId('profile-submit'));
+  await waitFor(()=>expect(screen.queryByTestId('profile-setup')).toBeNull());expect(session().me).toMatchObject({name:'Deniz Updated',status:'approved'});
+  jest.spyOn(api,'deleteAccount').mockRejectedValueOnce(new ApiError('network','offline'));
+  await fireEvent.press(screen.getByText('Delete account'));await fireEvent.press(screen.getByTestId('confirm-action'));
+  expect(screen.getByTestId('confirm-action').props.accessibilityState.disabled).toBe(true);
+  await fireEvent.changeText(screen.getByTestId('delete-word'),'DELETE');
+  expect(screen.getByTestId('confirm-action').props.accessibilityState.disabled).toBe(false);
+  await fireEvent.press(screen.getByTestId('confirm-action'));
+  await waitFor(()=>expect(within(screen.getByTestId('confirm-sheet')).getByRole('alert')).toBeTruthy());
+  expect(session().phase).toBe('signedIn');
+  await fireEvent.press(screen.getByTestId('confirm-action'));await waitFor(()=>expect(session().phase).toBe('signedOut'));
+  await expect(api.login({email:'deniz@example.com',password:'sekizkarakter'})).rejects.toMatchObject({status:401});
 });
 
 describe('Events tab', () => {
@@ -346,4 +441,93 @@ it('keeps the New badge, inbox filters and owner wall synchronized', async () =>
   await fireEvent.press(screen.getByTestId('tab-profile'));
   await waitFor(() => expect(screen.getByTestId('profile-empty')).toBeTruthy());
   expect(screen.queryByText('A real test message')).toBeNull();
+});
+
+
+async function openLiveBoardWithQueuedPost() {
+  const api=approvedApi(); await signInApproved(api);
+  await waitFor(()=>expect(screen.getByTestId('events-empty')).toBeTruthy());
+  let eventId='';
+  await act(async()=>{
+    const event=await api.createEvent({name:'Live board test',scope:'section',cover:'coral',boardMode:'approve_first',
+      startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});eventId=event.id;
+    await api.register({email:'board-member@example.com',password:'password123'});
+    await api.submitProfile({name:'Board member',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+    await api.sendBoardPost({eventId:event.id,text:'A queued room post',anonymityLevel:'anonymous',allowedHints:{}});
+    await api.login({email:'deniz@example.com',password:'sekizkarakter'});
+  });
+  await fireEvent.press(screen.getByTestId('tab-profile'));
+  await fireEvent.press(screen.getByTestId('tab-events'));
+  await waitFor(()=>expect(screen.getByTestId('event-'+eventId)).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('event-'+eventId));
+  await waitFor(()=>expect(screen.getByTestId('board-compose')).toBeTruthy());
+  return {api,eventId};
+}
+
+it('approves a queued room post and shows only published content in the projector',async()=>{
+  await openLiveBoardWithQueuedPost();
+  expect(screen.queryByText('A queued room post')).toBeNull();
+  await fireEvent.press(screen.getByRole('tab',{name:'Queue'}));
+  await waitFor(()=>expect(screen.getByTestId('queue-post-1')).toBeTruthy());
+  await fireEvent.press(within(screen.getByTestId('queue-post-1')).getByText('Approve'));
+  await waitFor(()=>expect(screen.queryByTestId('queue-post-1')).toBeNull());
+  await fireEvent.press(screen.getByRole('tab',{name:'Board'}));
+  await waitFor(()=>expect(screen.getByTestId('board-post-1')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('board-projector'));
+  await waitFor(()=>expect(screen.getByTestId('projector-stage')).toBeTruthy());
+  expect(screen.getByText('A queued room post')).toBeTruthy();
+  expect(screen.queryByTestId('board-compose')).toBeNull();
+  await fireEvent.press(screen.getByText('Exit projector'));
+  await waitFor(()=>expect(screen.getByTestId('board-compose')).toBeTruthy());
+});
+
+it('undoes rejection from the toast and closes the board through confirmation',async()=>{
+  const {api,eventId}=await openLiveBoardWithQueuedPost();
+  await fireEvent.press(screen.getByRole('tab',{name:'Queue'}));
+  await waitFor(()=>expect(screen.getByTestId('queue-post-1')).toBeTruthy());
+  await fireEvent.press(within(screen.getByTestId('queue-post-1')).getByLabelText('Reject'));
+  await waitFor(()=>expect(screen.getByText('Undo')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Undo'));
+  await waitFor(()=>expect(screen.getByTestId('queue-post-1')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('board-controls'));
+  await fireEvent.press(screen.getByTestId('controls-close-board'));
+  await fireEvent.press(screen.getByTestId('confirm-action'));
+  await waitFor(()=>expect(screen.queryByTestId('confirm-sheet')).toBeNull());
+  expect((await api.getBoard(eventId)).event.status).toBe('archived');
+  await fireEvent.press(screen.getByRole('tab',{name:'Board'}));
+  expect(screen.queryByTestId('board-compose')).toBeNull();
+});
+
+it('sends an anonymous moderator room post through the shared composer',async()=>{
+  const {api,eventId}=await openLiveBoardWithQueuedPost();
+  await fireEvent.press(screen.getByTestId('board-compose'));
+  await waitFor(()=>expect(screen.getByTestId('composer-text')).toBeTruthy());
+  await fireEvent.changeText(screen.getByTestId('composer-text'),'Welcome from the host');
+  await fireEvent.press(screen.getByTestId('composer-send'));
+  await waitFor(()=>expect(screen.queryByTestId('composer')).toBeNull());
+  await waitFor(()=>expect(screen.getByText('Welcome from the host')).toBeTruthy());
+  expect((await api.getBoard(eventId)).posts[0].sender).toEqual({level:'anonymous'});
+});
+
+
+it.each(['en','tr'] as const)('completes moderation, private reply, reveal and block in %s',async locale=>{
+  await act(async()=>{await setLocale(locale);});
+  try {
+    const {api,eventId}=await openLiveBoardWithQueuedPost();
+    await fireEvent.press(screen.getByRole('tab',{name:t('queue.title')}));
+    await waitFor(()=>expect(screen.getByTestId('queue-post-1')).toBeTruthy());
+    await fireEvent.press(within(screen.getByTestId('queue-post-1')).getByText(t('queue.approve')));
+    await fireEvent.press(screen.getByRole('tab',{name:t('events.board')}));
+    await waitFor(()=>expect(screen.getByTestId('board-post-1-reply')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('board-post-1-reply'));
+    await fireEvent.changeText(screen.getByTestId('reply-text'),'Merhaba — hello');
+    await fireEvent.press(screen.getByTestId('reply-send'));
+    await waitFor(()=>expect(screen.getByTestId('thread-origin')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('thread-more'));await fireEvent.press(screen.getByTestId('more-reveal'));
+    expect(screen.getByText(t('threadFlow.revealBody'))).toBeTruthy();await fireEvent.press(screen.getByTestId('confirm-action'));
+    await waitFor(()=>expect(screen.queryByTestId('confirm-sheet')).toBeNull());
+    await fireEvent.press(screen.getByTestId('thread-more'));await fireEvent.press(screen.getByTestId('more-block'));await fireEvent.press(screen.getByTestId('confirm-action'));
+    await waitFor(()=>expect(screen.getByTestId('threads-empty')).toBeTruthy());
+    expect((await api.getBoard(eventId)).posts).toHaveLength(1);
+  } finally {await act(async()=>{await setLocale('en');});}
 });

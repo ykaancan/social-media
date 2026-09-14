@@ -34,7 +34,7 @@ export interface ModsSheetProps {
  *
  * `event_moderator` is a role on the event, never a hardcoded user
  * (CLAUDE.md §Roles). Co-moderators share the queue and can hide posts; they
- * cannot see identities, cannot ban, and cannot change board settings — which
+ * cannot see hidden identities or ban members. They can change board settings, as
  * is exactly what the note under the list says. The creator's row has no remove
  * button: an event without its creator has no owner.
  */

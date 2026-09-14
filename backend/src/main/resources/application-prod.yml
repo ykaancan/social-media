@@ -1,0 +1,117 @@
+# Production profile. SPRING_PROFILES_ACTIVE=prod is the image default.
+#
+# Nothing in this file is a secret, and nothing in it carries a default for one:
+# every sensitive value is written ${VAR} with no `:fallback`, so a variable the
+# operator forgot stops the boot with "Could not resolve placeholder 'VAR'"
+# instead of quietly running on a development value. In particular this file
+# overrides brand.jwt.secret, so the dev profile's committed secret can never be
+# inherited here.
+#
+# The variable table and the runbook are in backend/DEPLOY.md.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${BRAND_DB_HOST}:${BRAND_DB_PORT}/${BRAND_DB_NAME}
+    username: ${BRAND_DB_USER}
+    password: ${BRAND_DB_PASSWORD}
+    hikari:
+      # One small VM, one instance. Postgres' default max_connections is 100 and
+      # this is the only client, so this is a ceiling, not an allocation. 20 rather
+      # than 10 because the load check (backend/loadtest/README.md) saw 9 of 10
+      # already active at a ~500-post board with 300 members polling; widening it
+      # buys board size, not request rate — past that point (40) it made things
+      # worse, so 20 is the insurance, not the fix. The fix is brand.limits.board-feed.
+      maximum-pool-size: ${BRAND_DB_POOL_SIZE:20}
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+
+  flyway:
+    # Migrations run on start. An update is: new image, `up -d`, Flyway migrates.
+    enabled: true
+
+  jpa:
+    hibernate:
+      # The schema is Flyway's. Hibernate only ever checks that it still matches.
+      ddl-auto: validate
+    properties:
+      hibernate.format_sql: false
+
+  thymeleaf:
+    # The password-reset pages are the only server-rendered surface; in
+    # production their templates never change while the process lives.
+    cache: true
+
+  servlet:
+    multipart:
+      # [B10] Avatars, the one image endpoint stage 1 has. Same as everywhere.
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  lifecycle:
+    # Pairs with server.shutdown below: how long in-flight requests get.
+    timeout-per-shutdown-phase: 20s
+
+server:
+  port: 8080
+  # Behind Caddy. Tomcat reads X-Forwarded-Proto/-For/-Host, so absolute URLs and
+  # the client IP are the ones the browser actually used, not http://api:8080.
+  forward-headers-strategy: framework
+  # SIGTERM stops accepting, finishes what is in flight, then exits.
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health and nothing else: no /actuator/env, no /actuator/beans.
+        include: health
+  endpoint:
+    health:
+      # The proxy and the HEALTHCHECK need UP or not-UP, and nobody needs more.
+      show-details: never
+
+brand:
+  jwt:
+    # REQUIRED. Base64, at least 32 bytes decoded (`openssl rand -base64 32`).
+    # No default here on purpose: rotating it signs everyone out, running on a
+    # guessable one is worse.
+    secret: ${BRAND_JWT_SECRET}
+  # [B11] The account with this email is promoted to super_admin and approved on
+  # startup. Set it empty once the founder's account exists and has been checked.
+  bootstrap-admin-email: ${BRAND_BOOTSTRAP_ADMIN_EMAIL}
+  media:
+    # [B10] A volume. Losing it loses every avatar, so it is in the backup.
+    dir: /data/avatars
+  # https://<domain>. Avatar URLs and the password-reset link are built from it.
+  public-base-url: ${BRAND_PUBLIC_BASE_URL}
+  mail:
+    from: ${BRAND_MAIL_FROM}
+    # false writes the reset link to the log at INFO instead of sending it, which
+    # is only acceptable before launch. SMTP is configured with SPRING_MAIL_*.
+    enabled: ${BRAND_MAIL_ENABLED}
+  cors:
+    # Comma-separated. The native app sends no Origin; this is the admin page and
+    # anything web that talks to the API.
+    allowed-origins: ${BRAND_CORS_ALLOWED_ORIGINS}
+  housekeeping:
+    # [B5] The pass that finalises rejection undo windows and rejects posts left
+    # pending on a closed board [D4]. On in production, always.
+    enabled: true
+  push:
+    # [B8] false still writes the outbox and renders the copy; it hands the rows
+    # to the logging sender instead of Expo.
+    enabled: ${BRAND_PUSH_ENABLED}
+    expo-access-token: ${BRAND_EXPO_ACCESS_TOKEN}
+
+logging:
+  level:
+    root: INFO
+    # INFO, never DEBUG: DEBUG here would put request bodies and screening
+    # decisions in the log, and the log is not a place for other people's
+    # messages.
+    app.brand: INFO
+    org.flywaydb: INFO

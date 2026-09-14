@@ -1,0 +1,106 @@
+name: backend
+
+# The backend suite is Testcontainers end to end: every test runs against a real
+# Postgres 16, and Flyway migrating it is itself the check on V1/V2. The
+# ubuntu-latest runner has Docker, so there is nothing to install for that.
+#
+# Push is filtered by branch rather than by path: a `v*` tag push carries no file
+# diff, so a `paths:` filter would skip exactly the event that publishes the
+# release image. Pull requests keep the path filter.
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'admin/**'
+      - '.github/workflows/backend.yml'
+
+jobs:
+  test:
+    name: gradle test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # [B1] Java 21 whatever the runner ships with.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The wrapper is committed from Windows, where the executable bit is not.
+      - name: Run the backend tests
+        working-directory: backend
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: backend/build/reports/tests/test
+          retention-days: 7
+
+  image:
+    name: docker image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      # Only used on a tag; a branch build never logs in and never pushes.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The image build is a check on every push: if the Dockerfile or the build
+      # stops working, it fails here and not on the VM. It is published only for
+      # a v* tag, which is the release gesture.
+      - name: Is this a release tag?
+        id: release
+        run: echo "value=${{ startsWith(github.ref, 'refs/tags/v') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: steps.release.outputs.value == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/brand-api
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      # The context is the repository root: the backend build copies
+      # ../admin/index.html into the jar [B11].
+      - name: Build (and on a tag, push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: ${{ steps.release.outputs.value == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

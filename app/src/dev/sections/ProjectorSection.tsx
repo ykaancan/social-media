@@ -1,3 +1,4 @@
+import { ProjectorStage } from '../../components/projector/ProjectorStage';
 import React from 'react';
 import { StyleSheet, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
 import { PulseDot, Text } from '../../components/core';
@@ -81,6 +82,13 @@ export function ProjectorSection({ onLayout }: { onLayout?: (e: LayoutChangeEven
             </ThemeProvider>
           </View>
         </View>
+      </Specimen>
+      <Specimen label="ProjectorStage · live cycle / empty">
+        <View style={{height:320}}><ProjectorStage name="National Platform" status="live" onExit={()=>{}} posts={[
+          {id:'stage-1',text:posts.speaker,sender:{level:'hint',hints:{section:'ESN Ankara'}},createdAt:new Date().toISOString(),state:'approved',mine:false,reactions:{'🔥':3}},
+          {id:'stage-2',text:posts.jacket,sender:{level:'anonymous'},createdAt:new Date().toISOString(),state:'approved',mine:false,reactions:{}},
+        ]}/></View>
+        <View style={{height:220}}><ProjectorStage name="Welcome night" status="upcoming" onExit={()=>{}} posts={[]}/></View>
       </Specimen>
     </GallerySection>
   );

@@ -11,6 +11,8 @@ import type { BoardMode } from './CreateSheet';
 import type { Translate } from './MoreSheet';
 
 export interface ControlsSheetProps {
+  endControl?: React.ReactNode;
+  canCloseBoard?: boolean;
   mode: BoardMode;
   onMode: (mode: BoardMode) => void;
   /** The chosen end time ("02:00"), or null for "No end". */
@@ -50,6 +52,8 @@ export function closeBoardConfirmBody(t: Translate, pendingCount = 0): string {
  * of it with `closeBoardConfirmBody()`.
  */
 export function ControlsSheet({
+  endControl,
+  canCloseBoard = true,
   mode,
   onMode,
   end,
@@ -94,7 +98,7 @@ export function ControlsSheet({
         <Text variant="captionCaps" upper color={colors.text2}>
           {t('events.endsLabel')}
         </Text>
-        <View style={styles.chips}>
+        {endControl ?? <View style={styles.chips}>
           {endOptions.map((v) => (
             <Chip key={v} selected={end === v} onPress={() => onEnd(v)}>
               {v}
@@ -103,9 +107,9 @@ export function ControlsSheet({
           <Chip selected={end === null} onPress={() => onEnd(null)}>
             {t('events.noEnd')}
           </Chip>
-        </View>
+        </View>}
         <Text variant="caption" color={colors.text2}>
-          {t('events.endsNote')}
+          {t(endControl ? 'boardFlow.endRequired' : 'events.endsNote')}
         </Text>
       </View>
 
@@ -114,6 +118,7 @@ export function ControlsSheet({
         full
         variant="danger"
         icon="Square"
+        disabled={!canCloseBoard}
         onPress={onCloseBoard}
         testID="controls-close-board"
       >

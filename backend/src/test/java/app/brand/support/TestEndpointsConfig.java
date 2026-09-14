@@ -1,0 +1,49 @@
+package app.brand.support;
+
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+
+/**
+ * Test-only beans.
+ *
+ * <p>{@link PingController} is not declared here: it is an ordinary
+ * {@code @RestController} in the test source set and the application's own
+ * component scan finds it. Declaring it as a bean too would map the same path
+ * twice.
+ */
+@TestConfiguration
+public class TestEndpointsConfig {
+
+    /**
+     * Captures the reset link instead of mailing or logging it, so the reset flow
+     * can be driven end to end without a live token reaching a log file.
+     */
+    @Bean
+    @Primary
+    public RecordingResetLinkSender recordingResetLinkSender() {
+        return new RecordingResetLinkSender();
+    }
+
+    /**
+     * The application clock, replaceable in a test. Unfrozen it is system UTC, so
+     * every test that does not care about time behaves exactly as production does;
+     * the event-status boundaries [B5] are the tests that do.
+     */
+    @Bean
+    @Primary
+    public MutableClock mutableClock() {
+        return new MutableClock();
+    }
+
+    /**
+     * [B8] The push transport. Primary over the configured sender, so no test ever
+     * reaches Expo and a test that wants to can read back exactly what the drain
+     * would have delivered.
+     */
+    @Bean
+    @Primary
+    public RecordingPushSender recordingPushSender() {
+        return new RecordingPushSender();
+    }
+}

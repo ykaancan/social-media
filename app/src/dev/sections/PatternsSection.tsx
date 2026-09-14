@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { AnonymityBadge } from '../../components/anonymity';
 import { QueueCard } from '../../components/cards';
 import { Button, IconButton, StatusPill, Switch } from '../../components/core';
 import {
   Back,
+  BlockedRow,
+  ChoiceRow,
+  ThreadRow,
+  ThreadComposer,
   MessageCard,
+  UnpublishedPost,
   EventHeader,
   LoadState,
   EventDatePicker,
@@ -73,6 +79,10 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
             approvedFromBoard: false, state}} onMore={() => {}} onStateChange={() => {}} />
         </Specimen>
       ))}
+      {(['pending','rejected'] as const).map(state=><Specimen key={state} label={`UnpublishedPost · ${state}`}>
+        <UnpublishedPost post={{id:'gallery-'+state,text:'Thank you for a great event.',sender:{level:'anonymous'},createdAt:new Date().toISOString(),state,mine:true,reactions:{}}}
+          onRewrite={()=>{}} onDismiss={()=>{}}/>
+      </Specimen>)}
       <Specimen label="MessageCard · public wall">
         <MessageCard wall message={{id: 'gallery-wall', text: 'Thank you for a great event.',
           sender: {level: 'hint', hints: {country: 'Türkiye'}}, createdAt: new Date().toISOString(), approvedFromBoard: true}} />
@@ -357,6 +367,21 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
         <PersonPicker members={roster} value={picked} onPick={setPicked} />
       </Specimen>
 
+      <Specimen label="ThreadRow · masked unread / named read">
+        <Group>{(['anonymous','named'] as const).map((level,index)=><ThreadRow key={level} onPress={()=>undefined} thread={{id:level,other:level==='named'?{level,name:me.name}:{level},source:'Welcome night',unreadCount:index?0:2,updatedAt:'2026-09-10T18:30:00Z',lastMessage:{id:level,text:posts.bus,sender:{level:'anonymous'},mine:!!index,createdAt:'2026-09-10T18:30:00Z'}}}/>)}</Group>
+      </Specimen>
+      <Specimen label="ThreadComposer · screening warning / retained draft on failure">
+        <View style={[frame,{height:340}]}><ThreadComposer onScreen={async()=>({warning:true})} onSend={async()=>{throw new Error('Gallery delivery failure');}}/></View>
+      </Specimen>
+      <Specimen label="Back · thread identity and source">
+        <Back onBack={()=>undefined} middle={<AnonymityBadge level="hint" hints={{section:me.section,country:me.country,letter:me.name[0]}}/>} right={<IconButton icon="Ellipsis" label={t('common.more')} onPress={()=>undefined}/>}/>
+      </Specimen>
+      <Specimen label="ChoiceRow · selected / unselected / disabled">
+        <Group><ChoiceRow label={t('settings.anyone')} description={t('settingsFlow.anyone')} selected onPress={()=>undefined}/><ChoiceRow label={t('settings.namedOnly')} selected={false} onPress={()=>undefined}/><ChoiceRow label={t('settings.nobody')} selected={false} disabled onPress={()=>undefined}/></Group>
+      </Specimen>
+      <Specimen label="BlockedRow · anonymous / hint / named">
+        <Group><BlockedRow sender={{level:'anonymous'}} onUnblock={()=>undefined}/><BlockedRow sender={{level:'hint',hints:{section:me.section,country:me.country}}} onUnblock={()=>undefined}/><BlockedRow sender={{level:'named',name:me.name}} busy onUnblock={()=>undefined}/></Group>
+      </Specimen>
       <PatternSheets />
       <Specimen label="EventHeader · upcoming / live / archived">
         <EventHeader name="Welcome night" status="upcoming" date="14 Nov · 20:00–23:00" scope="ESN Ankara" />
