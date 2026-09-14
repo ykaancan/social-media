@@ -1,6 +1,5 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useApi, type DeviceRegistration } from '../api';
@@ -123,6 +122,13 @@ function platform(): DeviceRegistration['platform'] {
 async function expoPushToken(): Promise<string | null> {
   try {
     if (!Device.isDevice) return null;
+    // Expo Go on Android has had no remote push since SDK 53, and its copy of
+    // expo-notifications throws the moment it is imported. The module is
+    // therefore required here, lazily, inside this try — never at the top of
+    // the file, where a throw would take the whole app down at start-up.
+    if (Platform.OS === 'android' && Constants.executionEnvironment === 'storeClient') return null;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Notifications = require('expo-notifications') as typeof import('expo-notifications');
 
     // Android 13+ wants a channel to exist before a token is asked for; without
     // one, notifications arrive and are silently dropped.

@@ -631,3 +631,51 @@ The screening term limit is 80 characters.
 development build, the Expo access token and project id are on the founder
 list). `KeywordScreener.invalidate()` is now event-driven, closing the review
 note. Next: B-6 release readiness.
+
+---
+
+## B-6 record (2026-09-14)
+
+**Built.** A multi-stage `Dockerfile` (JDK 21 build, layered jar, non-root
+Alpine JRE, health check, graceful shutdown; the build context is the repo
+root so the admin page ships in the image), `application-prod.yml` with every
+secret from the environment and a clear failure when `BRAND_JWT_SECRET` is
+missing, `deploy/docker-compose.prod.yml` with Postgres, the API, Caddy for
+automatic HTTPS and the WebSocket upgrade, and a nightly `pg_dump` + avatar
+backup with 14-day retention, `deploy/.env.example`, a CI job that builds the
+image on every push and pushes it to GHCR on `v*` tags, `DEPLOY.md` (first
+deploy, bootstrap admin, backup and restore, updates, JWT rotation, triage),
+a k6 load test in `loadtest/` with its findings, a cap on the board feed
+(`brand.limits.board-feed`, default 200 newest published posts; `postCount`
+stays the full count), a production pool of 20, and `RELEASE.md` at the repo
+root: the founder's sign-off list.
+
+**Verified.** `./gradlew test --rerun`: 294 tests, 0 failures. The image built
+and ran through Caddy on a throwaway stack: health UP via the proxy, three
+migrations applied, register 201, `/admin/` served, WebSocket upgrade 101,
+avatar upload working on the Alpine JRE, bootstrap admin promoted on restart,
+one backup cycle and a `pg_restore` round-trip, and a clear exit when the JWT
+secret is missing. Load check on one board with 300 members polling every
+5 s plus 300 STOMP sockets for 3 minutes on a 1 GB heap: board p95 36 ms,
+inbox p95 7 ms, zero failed requests, pool peak 5 of 10, zero warnings; the
+cost is linear in published posts (p95 139 ms at ~500 posts before the cap),
+which the cap removes. On the emulator against the dev server: Turkish
+throughout, projector mode in landscape, Settings and the section change.
+The app also gained a fix found here: `expo-notifications` threw at import in
+Expo Go on Android and red-screened a cold start; it is now required lazily
+and skipped in Expo Go, and the app boots cleanly.
+
+**Deviations, all deliberate.** The Docker build context is the repo root.
+`JwtService` gained an eight-line guard so a missing secret names the
+variable. The CI trigger no longer filters by path on push (a tag push
+carries no diff). The local-HTTP Caddy variant uses `http://localhost` as the
+site address rather than a global `auto_https off`. `reviewed` and the other
+moderator lists stay unbounded. The JVM heap follows the container limit
+(`mem_limit: 1g`) rather than a fixed `-Xmx`.
+
+**Not verified.** Real-domain HTTPS issuance, a restore into a fresh volume
+(only a dump/restore round-trip inside the container), the GHCR push (no tag
+yet), iOS, real push delivery, and the physical-phone matrix in
+`app/FRONTEND_REVIEW.md`. These are on the founder list in `RELEASE.md`.
+
+The six backend steps are complete. What remains is on the founder's side.

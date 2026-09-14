@@ -1,0 +1,48 @@
+# The only thing on ports 80/443. Everything behind it is one upstream: the API
+# serves the JSON endpoints, /media/avatars/*, the password-reset pages and the
+# static admin page at /admin/ [B11], so there is nothing to route by path.
+#
+# BRAND_DOMAIN is the site address:
+#   app.example.com    production. Caddy obtains and renews the certificate by
+#                      itself and redirects :80 to :443.
+#   http://localhost   local testing. An address with an explicit http:// scheme
+#                      switches automatic HTTPS off for that site, so nothing
+#                      tries to issue a certificate for a name that has no DNS.
+#
+# Add `email you@example.com` in a global block above if you want Let's Encrypt
+# expiry notices; Caddy does not need one.
+
+{$BRAND_DOMAIN} {
+	encode zstd gzip
+
+	# [B12] Raw WebSocket at /ws, no SockJS. reverse_proxy handles the Upgrade
+	# handshake on its own; the matcher exists so the long-lived STOMP socket
+	# gets no response buffering and no idle cut - heartbeats are 10 s/10 s and
+	# a board sits quiet between posts.
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @websocket {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		# X-Forwarded-For / -Proto / -Host are set by reverse_proxy itself, and
+		# server.forward-headers-strategy=framework is what reads them.
+		reverse_proxy api:8080
+	}
+
+	# 6 MB multipart avatars [B10] plus headroom; anything larger is refused here
+	# instead of travelling to the JVM.
+	request_body {
+		max_size 10MB
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

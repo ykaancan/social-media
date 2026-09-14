@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -41,12 +42,31 @@ public interface BoardPostRepository extends JpaRepository<BoardPost, UUID> {
             + "        select 1 from InboxMessage m where m.id = p.inboxMessageId"
             + "          and m.state = :messageApproved and m.deletedAt is null)))";
 
-    /** Every card on the board right now, newest first. */
+    /**
+     * The newest cards on the board, newest first, at most {@code limit} of them.
+     *
+     * <p>[B6] The feed is bounded because it is polled: the load check measured
+     * ~0.15 ms of server time per published post per poll, so an unbounded read
+     * grows linearly with how long the board has been running and pinned 9 of the
+     * 10 pooled connections at ~500 posts
+     * ({@code backend/loadtest/README.md}). The screen is newest-first anyway.
+     * {@code postCount} is still the full count — it is a real number [principle
+     * 4] and comes from {@code EventRepository.countPublishedPosts}, not from the
+     * size of this list.
+     */
     @Query("select p from BoardPost p where p.eventId = :eventId and " + PUBLISHED + " "
             + "order by p.createdAt desc, p.id desc")
     List<BoardPost> published(@Param("eventId") UUID eventId,
                               @Param("approved") BoardPostState approved,
-                              @Param("messageApproved") MessageState messageApproved);
+                              @Param("messageApproved") MessageState messageApproved,
+                              Limit limit);
+
+    /** Every card on the board right now, newest first. */
+    default List<BoardPost> published(UUID eventId,
+                                      BoardPostState approved,
+                                      MessageState messageApproved) {
+        return published(eventId, approved, messageApproved, Limit.unlimited());
+    }
 
     /**
      * One published card of one board — what react, hide and report act on. A post

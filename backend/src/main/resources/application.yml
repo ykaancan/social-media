@@ -104,6 +104,12 @@ brand:
     # ordinary product rules already govern it. 0 turns a limit off.
     anonymous-messages-per-hour: ${BRAND_ANONYMOUS_MESSAGES_PER_HOUR:30}
     anonymous-posts-per-hour: ${BRAND_ANONYMOUS_POSTS_PER_HOUR:30}
+    # Published cards one board read returns, newest first. The load check
+    # (backend/loadtest/README.md) measured ~0.15 ms of server time per published
+    # post per 5 s poll and 9 of 10 pooled connections in use at a ~500-post
+    # board; the feed is the only read that grows with the length of an event.
+    # `postCount` is unaffected and stays the full, real count. 0 = no cap.
+    board-feed: ${BRAND_BOARD_FEED:200}
   # Brief §3: the entitlement layer is present from day one and switched OFF in
   # stages 1–2. These are the config flags; nothing gates on them yet, and
   # GET /me/entitlements is the only reader. Stage 3 flips them.

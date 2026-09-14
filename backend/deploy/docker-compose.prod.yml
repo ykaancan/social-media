@@ -1,0 +1,146 @@
+# [BRAND] production stack: Postgres, the API, a Caddy proxy that terminates
+# TLS, and a nightly pg_dump. One small VM runs all four.
+#
+#   cd backend/deploy
+#   cp .env.example .env && $EDITOR .env
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Compose reads .env from this directory for ${...} below, and the api and backup
+# containers read the same file through env_file. The runbook is ../DEPLOY.md.
+
+name: brand
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BRAND_DB_NAME}
+      POSTGRES_USER: ${BRAND_DB_USER}
+      POSTGRES_PASSWORD: ${BRAND_DB_PASSWORD}
+      # Initdb only. Postgres' own log stays in UTC like everything else.
+      TZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # No `ports:`. The database is reachable from the api and the backup job and
+    # from nothing else; `docker compose exec db psql` is how a human gets in.
+    networks:
+      - internal
+    healthcheck:
+      # $$ so compose leaves the expansion to the shell inside the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    # Either build from this checkout, or pull the tag CI pushed. Set BRAND_IMAGE
+    # in .env to the GHCR tag to deploy a built image instead of building on the
+    # VM; `docker compose ... build api` is what uses the build block.
+    image: ${BRAND_IMAGE:-brand-api:local}
+    build:
+      # The repository root: the backend build copies ../admin/index.html [B11].
+      context: ../..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # The database is a service name on the internal network, never a secret.
+      BRAND_DB_HOST: db
+      BRAND_DB_PORT: "5432"
+    volumes:
+      # [B10] Avatars are files on disk. This volume is the other half of the
+      # backup; losing it loses every profile photo.
+      - avatars:/data/avatars
+    depends_on:
+      db:
+        condition: service_healthy
+    # No `ports:` either. The only way in is through the proxy.
+    networks:
+      - internal
+    # The image runs -XX:MaxRAMPercentage=75 and no -Xmx, so the heap is three
+    # quarters of *this* number. Without it the JVM would size itself against the
+    # whole VM (1.5 GB on a 2 GB box) and leave nothing for Postgres and Caddy;
+    # 1g puts the heap at ~768 MB, against a measured peak of 221 MB heap /
+    # 595 MB RSS at 300 members on a live board (../loadtest/README.md). Raise it
+    # on a bigger VM — the heap follows, no JVM flag to change.
+    mem_limit: 1g
+    stop_grace_period: 30s
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      # A bare domain (app.example.com) gets automatic HTTPS. An address with an
+      # explicit http:// scheme (http://localhost) does not — that is the local
+      # testing variant, and it is Caddy's own documented rule, not a flag.
+      BRAND_DOMAIN: ${BRAND_DOMAIN}
+    ports:
+      - "${BRAND_HTTP_PORT:-80}:80"
+      - "${BRAND_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means re-issuing
+      # certificates, which Let's Encrypt rate-limits.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    networks:
+      - internal
+
+  backup:
+    # The same Postgres minor version as db, so pg_dump matches the server.
+    image: postgres:16
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGUSER: ${BRAND_DB_USER}
+      PGPASSWORD: ${BRAND_DB_PASSWORD}
+      PGDATABASE: ${BRAND_DB_NAME}
+      BACKUP_HOUR: ${BRAND_BACKUP_HOUR:-03}
+      RETENTION_DAYS: ${BRAND_BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ${BRAND_BACKUP_DIR:-./backups}:/backups
+      # Read-only: the job copies avatars out, it never writes them.
+      - avatars:/data/avatars:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        echo "backup: nightly at $${BACKUP_HOUR}:00 UTC, keeping $${RETENTION_DAYS} days"
+        while true; do
+          now=$$(date -u +%s)
+          next=$$(date -u -d "today $${BACKUP_HOUR}:00" +%s)
+          if [ "$$next" -le "$$now" ]; then
+            next=$$(date -u -d "tomorrow $${BACKUP_HOUR}:00" +%s)
+          fi
+          sleep $$((next - now))
+          stamp=$$(date -u +%Y-%m-%dT%H%M)
+          echo "backup: dumping $$stamp"
+          pg_dump --format=custom --file="/backups/brand-$$stamp.dump.part"
+          mv "/backups/brand-$$stamp.dump.part" "/backups/brand-$$stamp.dump"
+          tar -czf "/backups/avatars-$$stamp.tar.gz" -C /data avatars
+          find /backups -name 'brand-*.dump' -mtime +$${RETENTION_DAYS} -delete
+          find /backups -name 'avatars-*.tar.gz' -mtime +$${RETENTION_DAYS} -delete
+          echo "backup: done $$stamp"
+        done
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  db-data:
+  avatars:
+  caddy-data:
+  caddy-config:

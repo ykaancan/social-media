@@ -55,26 +55,27 @@ whole run and migrates it from scratch, which is also the only check `V1` and
 
 ## Configuration
 
-Everything is an environment variable; the defaults match `docker-compose.yml`.
+Everything is an environment variable, and the defaults in `application.yml`
+match `docker-compose.yml`, so local development needs none of them set. The
+full table — what each one is, its development default, and which are required
+in production — is [`DEPLOY.md`](DEPLOY.md) section 8. That is the single
+source; it is not copied back here.
 
-| Variable | Default | What it is |
-| --- | --- | --- |
-| `BRAND_DB_HOST` / `BRAND_DB_PORT` | `localhost` / `5432` | Postgres |
-| `BRAND_DB_NAME` / `BRAND_DB_USER` / `BRAND_DB_PASSWORD` | `brand` / `brand` / `brand` | Postgres |
-| `BRAND_JWT_SECRET` | *(required outside `dev`)* | Base64, **≥ 32 bytes decoded**. The app refuses to start without it. |
-| `BRAND_BOOTSTRAP_ADMIN_EMAIL` | *(empty)* | **[B11]** the account with this email is promoted to `super_admin` and approved on startup. |
-| `BRAND_MEDIA_DIR` | `./data/avatars` | **[B10]** where resized avatars are written. |
-| `BRAND_PUBLIC_BASE_URL` | `http://localhost:8080` | Absolute base for avatar URLs and the password-reset link. |
-| `BRAND_MAIL_FROM` | `no-reply@localhost` | From address on the reset mail. |
-| `BRAND_MAIL_ENABLED` | `false` | `false` **logs the reset link at INFO** instead of sending it. |
-| `BRAND_CORS_ALLOWED_ORIGINS` | Expo dev servers | Comma-separated. The native app sends no `Origin`. |
-| `SPRING_MAIL_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | *(unset)* | SMTP. With no host there is no mail sender at all, so keep `BRAND_MAIL_ENABLED=false`. |
-
-Generate a real secret with:
+The one worth knowing before you read it: `BRAND_JWT_SECRET` is base64 of at
+least 32 bytes, and the app refuses to start without it outside the `dev`
+profile.
 
 ```bash
 openssl rand -base64 32
 ```
+
+## Deploying it
+
+[`DEPLOY.md`](DEPLOY.md) is the runbook: prerequisites, first deploy, the
+bootstrap admin [B11], backups with a tested restore, updates, logs, and what
+rotating the JWT secret costs. The pieces it drives are `Dockerfile`,
+`src/main/resources/application-prod.yml` and `deploy/` (the production compose
+file, the Caddyfile and `.env.example`).
 
 ## What is here so far
 

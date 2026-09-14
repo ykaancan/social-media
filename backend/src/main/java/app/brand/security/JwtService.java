@@ -49,9 +49,19 @@ public class JwtService {
     private final Clock clock;
 
     public JwtService(BrandProperties properties, Clock clock) {
+        String configured = properties.jwt().secret();
+        // An unset environment variable reaches configuration binding as the
+        // literal text of the placeholder, not as an error, so "BRAND_JWT_SECRET
+        // is missing" would otherwise surface as "illegal base64 character '_'".
+        // This is the first thing that touches it: say what is wrong, once.
+        if (configured == null || configured.isBlank() || configured.startsWith("${")) {
+            throw new IllegalStateException(
+                    "brand.jwt.secret is not set. Set BRAND_JWT_SECRET to a base64 value of at"
+                            + " least " + MIN_SECRET_BYTES + " bytes: openssl rand -base64 32");
+        }
         byte[] secret;
         try {
-            secret = Decoders.BASE64.decode(properties.jwt().secret());
+            secret = Decoders.BASE64.decode(configured);
         } catch (DecodingException ex) {
             throw new IllegalStateException("brand.jwt.secret must be base64", ex);
         }

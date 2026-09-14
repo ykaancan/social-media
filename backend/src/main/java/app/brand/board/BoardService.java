@@ -57,7 +57,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -117,6 +119,8 @@ public class BoardService {
     private final ReportService reports;
     private final ApplicationEventPublisher publisher;
     private final Clock clock;
+    /** [B6] How many published cards one board read returns. 0 or less = every one. */
+    private final int boardFeedLimit;
 
     public BoardService(BoardPostRepository posts,
                         PostReactionRepository reactions,
@@ -133,7 +137,8 @@ public class BoardService {
                         RateLimiter rateLimiter,
                         ReportService reports,
                         ApplicationEventPublisher publisher,
-                        Clock clock) {
+                        Clock clock,
+                        @Value("${brand.limits.board-feed:200}") int boardFeedLimit) {
         this.posts = posts;
         this.reactions = reactions;
         this.inboxMessages = inboxMessages;
@@ -150,6 +155,7 @@ public class BoardService {
         this.reports = reports;
         this.publisher = publisher;
         this.clock = clock;
+        this.boardFeedLimit = boardFeedLimit;
     }
 
     /* --------------------------------------------- GET /events/{id}/board */
@@ -164,7 +170,13 @@ public class BoardService {
         Event event = enter(viewerId, eventId);
         boolean moderator = access.isModerator(event, viewerId);
 
-        List<BoardPost> published = posts.published(eventId, BoardPostState.APPROVED, MessageState.APPROVED);
+        // [B6] The feed is capped at brand.limits.board-feed. The board poll is the
+        // one read whose cost grows with the length of the event — ~0.15 ms of
+        // server time per published post per poll, 9 of 10 pooled connections at
+        // ~500 posts (backend/loadtest/README.md) — and the screen is newest-first
+        // anyway. `postCount` below is untouched: it stays the full count [principle 4].
+        List<BoardPost> published = posts.published(eventId, BoardPostState.APPROVED,
+                MessageState.APPROVED, feedLimit());
         List<BoardPost> room = posts.roomPosts(eventId);
 
         List<BoardPost> everything = new ArrayList<>(published.size() + room.size());
@@ -229,6 +241,11 @@ public class BoardService {
 
         return new BoardSnapshotDto(detail, feed, ownUnpublished, queue, pendingCount, reviewed,
                 creator, List.copyOf(moderators), viewerId.equals(creatorId));
+    }
+
+    /** [B6] 0 or less turns the cap off, the way every other brand.limits value does. */
+    private Limit feedLimit() {
+        return boardFeedLimit > 0 ? Limit.of(boardFeedLimit) : Limit.unlimited();
     }
 
     /* --------------------------------------------- POST /events/{id}/posts */
