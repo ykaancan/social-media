@@ -70,7 +70,7 @@ grouped by who has to act. Nothing here needs a code change unless marked.
 
 ## 5. What was verified, for the record
 
-- Backend: 293 integration tests on Testcontainers; every step walked on an
+- Backend: 294 integration tests on Testcontainers; every step walked on an
   Android emulator against the real server; a code review of B-1 to B-3 with
   all ten findings fixed. Frontend: 381 tests, English and Turkish.
 - Not verified on hardware: iOS at all, real push delivery, camera QR scanning
