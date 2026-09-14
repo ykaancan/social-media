@@ -289,6 +289,17 @@ export interface ApiClient extends MessageApi, BoardApi, ThreadApi, SettingsApi 
   submitProfile(req: ProfileRequest): Promise<Me>;
   listSections(): Promise<SectionSummary[]>;
   getSection(id: string): Promise<SectionDetail>;
+  /**
+   * PUT /me/devices. Approved members only, and an upsert by token: calling it
+   * again with the same token is free, and a token that moves to another account
+   * re-binds rather than notifying the person who used to hold the phone.
+   */
+  registerDevice(input: DeviceRegistration): Promise<void>;
+  /**
+   * DELETE /me/devices/:token. Sign-out, best effort — nothing waits for it, and
+   * the server also drops a token the push provider reports as gone.
+   */
+  unregisterDevice(token: string): Promise<void>;
   /** Sets (or clears) the bearer credentials used by subsequent calls. */
   setTokens(tokens: Tokens | null): void;
   /**
@@ -328,5 +339,17 @@ export interface EventDetail extends EventSummary {
 export type EventJoinResult =
   | { ok: true; event: EventDetail }
   | { ok: false; reason: 'not_found' | 'already_joined'; eventName?: string };
+
+/**
+ * One phone this account wants notifications on. `locale` is the app's current
+ * language and decides which of the two languages the server writes the push copy
+ * in — nothing about a notification is rendered in the app.
+ */
+export interface DeviceRegistration {
+  /** The Expo push token. Opaque; the app never parses it. */
+  token: string;
+  platform: 'ios' | 'android' | 'web';
+  locale: 'en' | 'tr';
+}
 
 import type { MessageApi } from './messages';

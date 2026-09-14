@@ -1,12 +1,15 @@
 package app.brand.safety;
 
 import app.brand.common.TextNormalizer;
+import app.brand.common.events.ScreeningTermsChanged;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * [B9] The keyword half of screening: every term folded through the one
@@ -19,6 +22,13 @@ import org.springframework.stereotype.Component;
  * <p>The list is cached for 30 seconds. An admin edits it a few times a year and
  * every message sent at an event reads it, so a half-minute of staleness is the
  * right trade; it is the only state this bean holds.
+ *
+ * <p>An edit does not wait out those 30 seconds: {@link #onTermsChanged} drops the
+ * cache after the writing transaction commits. That listener is why the freshness
+ * contract no longer depends on the caller remembering to call
+ * {@link #invalidate()} — a term added on the admin page is matched by the very
+ * next message, and a second screener implementation can listen for the same
+ * event instead of being wired into the admin code.
  */
 @Component
 public class KeywordScreener implements ContentScreener {
@@ -57,6 +67,19 @@ public class KeywordScreener implements ContentScreener {
     /** Drops the cache so a term written in this request is matched by the next one. */
     public void invalidate() {
         snapshot = new Snapshot(Instant.EPOCH, List.of());
+    }
+
+    /**
+     * [B9] The list changed; reload on the next screen.
+     *
+     * <p>{@code AFTER_COMMIT} because a cache dropped before the commit could be
+     * refilled from the old rows by a message sent in between, and
+     * {@code fallbackExecution = true} so a write outside a transaction (a test,
+     * a future import job) still invalidates.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onTermsChanged(ScreeningTermsChanged event) {
+        invalidate();
     }
 
     private List<Term> current() {

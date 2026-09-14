@@ -54,6 +54,34 @@ public class AuditLog {
     protected AuditLog() {
     }
 
+    /**
+     * An action taken on a piece of content, or on the person behind it: the
+     * reports queue's {@code identity_view}, {@code hide_content} and — where the
+     * subject is the reported content rather than the account — anything else that
+     * has to name <em>what</em> was looked at as well as <em>whose</em> it was.
+     *
+     * @param subjectUserId the account the action is about (the sender's identity)
+     * @param subjectKind   {@code inbox_message}, {@code board_post}, {@code thread}
+     * @param subjectId     the row that was looked at or acted on
+     */
+    public static AuditLog aboutContent(UUID actorId,
+                                        AuditAction action,
+                                        UUID subjectUserId,
+                                        String subjectKind,
+                                        UUID subjectId,
+                                        String details,
+                                        Instant now) {
+        AuditLog row = new AuditLog();
+        row.actorId = actorId;
+        row.action = action.value();
+        row.subjectUserId = subjectUserId;
+        row.subjectKind = subjectKind;
+        row.subjectId = subjectId;
+        row.details = details;
+        row.createdAt = now;
+        return row;
+    }
+
     /** An action taken on an account. {@code actorId} null means the server itself. */
     public static AuditLog aboutUser(UUID actorId,
                                      AuditAction action,

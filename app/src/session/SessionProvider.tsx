@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -73,6 +74,13 @@ export interface SessionValue extends SessionState {
   register(req: RegisterRequest): Promise<Me>;
   login(req: LoginRequest): Promise<Me>;
   logout(): Promise<void>;
+  /**
+   * Runs `cb` before the tokens are cleared on sign-out, while the server still
+   * accepts them — for work that needs the dying session (unregistering this
+   * device's push token). Best effort: a callback that throws or takes longer
+   * than two seconds does not stop the sign-out. Returns the unsubscribe.
+   */
+  onBeforeLogout(cb: () => Promise<void>): () => void;
   deleteAccount(): Promise<void>;
   /** Always resolves — the server answers the same whether the address exists or not. */
   forgotPassword(email: string): Promise<void>;
@@ -93,6 +101,8 @@ export interface SessionProviderProps {
 export function SessionProvider({ children }: SessionProviderProps) {
   const api = useApi();
   const [state, dispatch] = useReducer(reducer, INITIAL);
+  /** Pre-logout work registered by hooks (see `onBeforeLogout`). */
+  const beforeLogout = useRef(new Set<() => Promise<void>>());
 
   /**
    * Boot: stored tokens → `GET /me`. No tokens, or a session the server no
@@ -150,6 +160,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       async logout() {
         try {
+          // Callbacks run while the tokens are still valid; none may delay the
+          // sign-out by more than a moment or fail it.
+          const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+          await Promise.race([
+            Promise.allSettled([...beforeLogout.current].map((cb) => cb().catch(() => undefined))),
+            timeout,
+          ]);
           await api.logout();
         } finally {
           // Local sign-out is unconditional: a server that did not answer must
@@ -158,6 +175,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
           await clearTokens();
           dispatch({ type: 'signedOut' });
         }
+      },
+
+      onBeforeLogout(cb) {
+        beforeLogout.current.add(cb);
+        return () => {
+          beforeLogout.current.delete(cb);
+        };
       },
 
       async deleteAccount() {

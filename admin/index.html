@@ -11,12 +11,24 @@
 
   This is deliberately plain. It is not a designed screen (brief 4.9) and it must
   not grow a design system: /design is the app's, and nothing here is shared with
-  it. The reports queue (step B-5) is the next section on this page.
+  it.
+
+  Four tabs: Users, Reports, Flagged, Screening terms.
+
+  Two rules this page keeps and never bends:
+    * The sender of reported content is shown as the members see them. The admin
+      has to press "Show sender" to see who it is, and the notice next to that
+      button says, before anything is fetched, that the view is written to the
+      audit log (CLAUDE.md 5). Nothing on this page triggers that read by
+      accident - never on render, never on a row click.
+    * [D6]/[D12] Copy never says "removed". Hiding a post or a message hides it;
+      the row survives, for a second report and for a KVKK question.
 -->
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; padding: 24px; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   h1 { font-size: 20px; margin: 0 0 16px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .spacer { flex: 1; }
   label { display: block; font-size: 12px; opacity: .7; margin-bottom: 4px; }
@@ -30,11 +42,25 @@
   th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
   td.actions { white-space: nowrap; }
   td.actions button { margin-right: 6px; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: rgba(128,128,128,.12); }
   img.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; display: block; }
   .noavatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(128,128,128,.25); }
   .muted { opacity: .6; }
   .error { color: #b00020; min-height: 20px; margin: 12px 0 0; }
   .status { min-height: 20px; margin: 12px 0 0; opacity: .7; }
+  .tabs { display: flex; gap: 8px; margin: 8px 0 16px; flex-wrap: wrap; }
+  .tabs button[aria-selected="true"] { font-weight: 600; text-decoration: underline; }
+  .panel { border: 1px solid rgba(128,128,128,.4); border-radius: 6px; padding: 16px; margin-top: 16px; }
+  .panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 12px; }
+  .panel dt { opacity: .7; }
+  .panel dd { margin: 0; }
+  .notice { border-left: 3px solid rgba(128,128,128,.7); padding: 8px 12px; margin: 12px 0; }
+  .bubbles { display: grid; gap: 6px; margin: 8px 0 12px; }
+  .bubble { padding: 6px 10px; border-radius: 6px; background: rgba(128,128,128,.15); max-width: 70%; }
+  .bubble.mine { margin-left: auto; background: rgba(128,128,128,.28); }
+  .bubble .who { font-size: 12px; opacity: .7; }
+  form.inline { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -64,37 +90,136 @@
     <button type="button" id="logout">Log out</button>
   </div>
 
-  <div class="row">
-    <div>
-      <label for="filter">Status</label>
-      <select id="filter">
-        <option value="pending" selected>Pending</option>
-        <option value="approved">Approved</option>
-        <option value="rejected">Rejected</option>
-        <option value="banned">Banned</option>
-        <option value="incomplete">Incomplete</option>
-        <option value="all">All</option>
-      </select>
-    </div>
-    <div>
-      <label>&nbsp;</label>
-      <button type="button" id="reload">Reload</button>
-    </div>
-  </div>
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="users" aria-selected="true">Users</button>
+    <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
+    <button type="button" role="tab" data-tab="flagged" aria-selected="false">Flagged</button>
+    <button type="button" role="tab" data-tab="terms" aria-selected="false">Screening terms</button>
+  </nav>
 
   <p class="error" id="error"></p>
   <p class="status" id="status"></p>
 
-  <div class="scroll">
-  <table>
-    <thead>
-      <tr>
-        <th>Photo</th><th>Name</th><th>Section</th><th>Bio</th>
-        <th>Email</th><th>Phone</th><th>Submitted</th><th>Status</th><th></th>
-      </tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <!-- ------------------------------------------------------------ users -->
+  <div id="tab-users">
+    <div class="row">
+      <div>
+        <label for="filter">Status</label>
+        <select id="filter">
+          <option value="pending" selected>Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="banned">Banned</option>
+          <option value="incomplete">Incomplete</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="button" id="reload">Reload</button>
+      </div>
+    </div>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Photo</th><th>Name</th><th>Section</th><th>Bio</th>
+          <th>Email</th><th>Phone</th><th>Submitted</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ---------------------------------------------------------- reports -->
+  <div id="tab-reports" hidden>
+    <div class="row">
+      <div>
+        <label for="reportFilter">Status</label>
+        <select id="reportFilter">
+          <option value="open" selected>Open</option>
+          <option value="dismissed">Dismissed</option>
+          <option value="hidden">Hidden</option>
+          <option value="warned">Warned</option>
+          <option value="banned">Banned</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="button" id="reportReload">Reload</button>
+      </div>
+    </div>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Reason</th><th>Kind</th><th>Content</th><th>Reporter</th>
+          <th>Sender (as members see)</th><th>Reported</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="reportRows"></tbody>
+    </table>
+    </div>
+
+    <div class="panel" id="reportPanel" hidden></div>
+  </div>
+
+  <!-- ---------------------------------------------------------- flagged -->
+  <div id="tab-flagged" hidden>
+    <p class="muted">
+      Messages that were delivered after the sender acknowledged a soft screening
+      warning. Nobody reported these; they are here to be read.
+    </p>
+    <div class="row">
+      <button type="button" id="flaggedReload">Reload</button>
+    </div>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Content</th><th>Sender (as members see)</th><th>Event</th><th>Sent</th></tr>
+      </thead>
+      <tbody id="flaggedRows"></tbody>
+    </table>
+    </div>
+
+    <div class="panel" id="flaggedPanel" hidden></div>
+  </div>
+
+  <!-- ------------------------------------------------------------ terms -->
+  <div id="tab-terms" hidden>
+    <p class="muted">
+      Hard terms refuse delivery. Soft terms warn the sender before they send, and a
+      message they send anyway appears in Flagged. Matching is case-insensitive,
+      Turkish-aware and by substring.
+    </p>
+    <form class="inline" id="termForm">
+      <div>
+        <label for="termText">Term</label>
+        <input id="termText" maxlength="80" required>
+      </div>
+      <div>
+        <label for="termSeverity">Severity</label>
+        <select id="termSeverity">
+          <option value="hard">Hard - block</option>
+          <option value="soft" selected>Soft - warn</option>
+        </select>
+      </div>
+      <button type="submit" id="termAdd">Add term</button>
+    </form>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Term</th><th>Severity</th><th>Added</th><th></th></tr>
+      </thead>
+      <tbody id="termRows"></tbody>
+    </table>
+    </div>
   </div>
 </section>
 
@@ -225,30 +350,65 @@
     loginView.hidden = true;
     adminView.hidden = false;
     el('who').textContent = (me && (me.name || me.email)) || '';
-    load();
+    selectTab('users');
   }
 
-  /* -------------------------------------------------------------- queue */
+  /* --------------------------------------------------------------- tabs */
+
+  var TABS = { users: load, reports: loadReports, flagged: loadFlagged, terms: loadTerms };
+
+  Array.prototype.forEach.call(document.querySelectorAll('[role="tab"]'), function (button) {
+    button.addEventListener('click', function () { selectTab(button.getAttribute('data-tab')); });
+  });
+
+  function selectTab(name) {
+    Object.keys(TABS).forEach(function (key) {
+      el('tab-' + key).hidden = key !== name;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[role="tab"]'), function (button) {
+      button.setAttribute('aria-selected', String(button.getAttribute('data-tab') === name));
+    });
+    el('reportPanel').hidden = true;
+    el('flaggedPanel').hidden = true;
+    clearMessages();
+    TABS[name]();
+  }
+
+  function clearMessages() {
+    el('error').textContent = '';
+    el('status').textContent = '';
+  }
+
+  function failed(what) {
+    return function (error) {
+      el('status').textContent = '';
+      if (error.status === 401) { showLogin('Your session ended. Sign in again.'); return; }
+      el('error').textContent = what + ' (' + error.code + ')'
+        + (error.message ? ': ' + error.message : '') + '.';
+    };
+  }
+
+  function counted(rows, singular, plural) {
+    return rows.length === 1 ? '1 ' + singular : rows.length + ' ' + plural;
+  }
+
+  /* --------------------------------------------------------- users tab */
 
   el('filter').addEventListener('change', load);
   el('reload').addEventListener('click', load);
 
   function load() {
-    el('error').textContent = '';
+    clearMessages();
     el('status').textContent = 'Loading...';
     request('/admin/api/users?status=' + encodeURIComponent(el('filter').value))
       .then(render)
-      .catch(function (error) {
-        el('status').textContent = '';
-        if (error.status === 401) { showLogin('Your session ended. Sign in again.'); return; }
-        el('error').textContent = 'Could not load the list (' + error.code + ').';
-      });
+      .catch(failed('Could not load the list'));
   }
 
   function render(rows) {
     var body = el('rows');
     body.textContent = '';
-    el('status').textContent = rows.length === 1 ? '1 account' : rows.length + ' accounts';
+    el('status').textContent = counted(rows, 'account', 'accounts');
 
     rows.forEach(function (user) {
       var tr = document.createElement('tr');
@@ -293,18 +453,6 @@
     });
   }
 
-  function cell(text) {
-    var td = document.createElement('td');
-    td.textContent = text;
-    return td;
-  }
-
-  function when(iso) {
-    if (!iso) { return '-'; }
-    var date = new Date(iso);
-    return isNaN(date.getTime()) ? iso : date.toLocaleString();
-  }
-
   function action(label, user, verb, confirmation) {
     var button = document.createElement('button');
     button.type = 'button';
@@ -317,12 +465,371 @@
         .then(load)
         .catch(function (error) {
           button.disabled = false;
-          if (error.status === 401) { showLogin('Your session ended. Sign in again.'); return; }
-          el('error').textContent = label + ' failed (' + error.code + ').';
+          failed(label + ' failed')(error);
           if (error.code === 'conflict') { load(); }
         });
     });
     return button;
+  }
+
+  /* ------------------------------------------------------- reports tab */
+
+  el('reportFilter').addEventListener('change', loadReports);
+  el('reportReload').addEventListener('click', loadReports);
+
+  var KINDS = {
+    inbox_message: 'Message',
+    board_post: 'Board post',
+    thread: 'Thread'
+  };
+
+  function loadReports() {
+    clearMessages();
+    el('reportPanel').hidden = true;
+    el('status').textContent = 'Loading...';
+    request('/admin/api/reports?status=' + encodeURIComponent(el('reportFilter').value))
+      .then(renderReports)
+      .catch(failed('Could not load the reports'));
+  }
+
+  function renderReports(rows) {
+    var body = el('reportRows');
+    body.textContent = '';
+    el('status').textContent = counted(rows, 'report', 'reports');
+
+    rows.forEach(function (report) {
+      var tr = document.createElement('tr');
+      tr.className = 'clickable';
+      tr.appendChild(cell(report.reason));
+      tr.appendChild(cell(KINDS[report.targetKind] || report.targetKind));
+      tr.appendChild(cell(excerpt(report.content)));
+      tr.appendChild(cell(report.reporter && report.reporter.name || '-'));
+      tr.appendChild(cell(senderLabel(report.senderDisplay)));
+      tr.appendChild(cell(when(report.createdAt)));
+      tr.appendChild(cell(report.status));
+      tr.addEventListener('click', function () { openReport(report); });
+      body.appendChild(tr);
+    });
+  }
+
+  /*
+    The detail panel. It is built from the row the list already has - opening a
+    report does NOT call the identity endpoint. That call happens only when the
+    admin presses "Show sender", under a notice saying it is written to the audit
+    log, so nobody deanonymises a sender by browsing.
+  */
+  function openReport(report) {
+    var panel = el('reportPanel');
+    panel.textContent = '';
+    panel.hidden = false;
+
+    panel.appendChild(heading('Report · ' + (KINDS[report.targetKind] || report.targetKind)));
+    panel.appendChild(facts([
+      ['Reason', report.reason],
+      ['Status', report.status],
+      ['Reported', when(report.createdAt)],
+      ['Reporter', report.reporter && report.reporter.name || '-'],
+      ['Sender, as members see them', senderLabel(report.senderDisplay)],
+      ['Event', report.content && report.content.eventName || '-'],
+      ['Written', report.content && when(report.content.createdAt) || '-']
+    ]));
+
+    var text = document.createElement('p');
+    text.textContent = report.content && report.content.text || '(the content is no longer stored)';
+    panel.appendChild(text);
+
+    panel.appendChild(identityBlock(
+      '/admin/api/reports/' + encodeURIComponent(report.id),
+      function (detail) { return detail.content; }));
+
+    if (report.status === 'open') {
+      panel.appendChild(reportActions(report));
+    } else {
+      var done = document.createElement('p');
+      done.className = 'muted';
+      done.textContent = 'This report was already resolved (' + report.status + ').';
+      panel.appendChild(done);
+    }
+  }
+
+  /*
+    [D6]/[D12] The copy here is exact. Hiding takes a post off the board and takes
+    a message out of the inbox it was delivered to; nothing is removed, and the
+    row stays for a second report and for a KVKK question.
+  */
+  function reportActions(report) {
+    var wrap = document.createElement('div');
+    wrap.className = 'row';
+    var hideable = report.targetKind !== 'thread';
+
+    wrap.appendChild(reportAction(report, 'dismiss', 'Dismiss',
+      'Dismiss this report? Nothing is hidden and nobody is told.'));
+    if (hideable) {
+      wrap.appendChild(reportAction(report, 'hide', 'Hide content',
+        report.targetKind === 'board_post'
+          ? 'Hide this post? It comes off the board for everyone. The post is kept.'
+          : 'Hide this message? It comes out of the recipient’s inbox. The message is kept.'));
+    }
+    wrap.appendChild(reportAction(report, 'warn', 'Warn sender',
+      'Warn the sender? They get a notification about this report.'));
+    wrap.appendChild(reportAction(report, 'ban', 'Ban sender',
+      'Ban the sender? Their account is closed and their sessions end immediately.'));
+
+    if (!hideable) {
+      var note = document.createElement('span');
+      note.className = 'muted';
+      note.textContent = 'A thread is private to the two people in it and cannot be hidden.';
+      wrap.appendChild(note);
+    }
+    return wrap;
+  }
+
+  function reportAction(report, verb, label, confirmation) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', function () {
+      if (!window.confirm(confirmation)) { return; }
+      button.disabled = true;
+      el('error').textContent = '';
+      request('/admin/api/reports/' + encodeURIComponent(report.id) + '/' + verb, { method: 'POST' })
+        .then(function () {
+          el('reportPanel').hidden = true;
+          loadReports();
+        })
+        .catch(function (error) {
+          button.disabled = false;
+          failed(label + ' failed')(error);
+          if (error.code === 'conflict') { loadReports(); }
+        });
+    });
+    return button;
+  }
+
+  /* ------------------------------------------------------- flagged tab */
+
+  el('flaggedReload').addEventListener('click', loadFlagged);
+
+  function loadFlagged() {
+    clearMessages();
+    el('flaggedPanel').hidden = true;
+    el('status').textContent = 'Loading...';
+    request('/admin/api/flagged')
+      .then(renderFlagged)
+      .catch(failed('Could not load the flagged list'));
+  }
+
+  function renderFlagged(rows) {
+    var body = el('flaggedRows');
+    body.textContent = '';
+    el('status').textContent = counted(rows, 'flagged message', 'flagged messages');
+
+    rows.forEach(function (message) {
+      var tr = document.createElement('tr');
+      tr.className = 'clickable';
+      tr.appendChild(cell(excerpt(message.content)));
+      tr.appendChild(cell(senderLabel(message.senderDisplay)));
+      tr.appendChild(cell(message.content && message.content.eventName || '-'));
+      tr.appendChild(cell(message.content && when(message.content.createdAt) || '-'));
+      tr.addEventListener('click', function () { openFlagged(message); });
+      body.appendChild(tr);
+    });
+  }
+
+  function openFlagged(message) {
+    var panel = el('flaggedPanel');
+    panel.textContent = '';
+    panel.hidden = false;
+
+    panel.appendChild(heading('Flagged message'));
+    panel.appendChild(facts([
+      ['Sender, as members see them', senderLabel(message.senderDisplay)],
+      ['Event', message.content && message.content.eventName || '-'],
+      ['Sent', message.content && when(message.content.createdAt) || '-']
+    ]));
+
+    var text = document.createElement('p');
+    text.textContent = message.content && message.content.text || '-';
+    panel.appendChild(text);
+
+    panel.appendChild(identityBlock('/admin/api/flagged/' + encodeURIComponent(message.id), null));
+  }
+
+  /* ---------------------------------------------- the audited identity */
+
+  /*
+    The notice is rendered BEFORE anything is fetched and stays until the admin
+    presses the button. Pressing it is the only thing on this page that writes an
+    identity_view row (CLAUDE.md 5), and every press writes one.
+  */
+  function identityBlock(path, contentOf) {
+    var box = document.createElement('div');
+    box.className = 'notice';
+
+    var notice = document.createElement('p');
+    notice.textContent = 'Who sent this is hidden until you ask. Showing it is written to '
+      + 'the audit log, with your name and the time - every time.';
+    box.appendChild(notice);
+
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Show sender';
+    box.appendChild(button);
+
+    button.addEventListener('click', function () {
+      button.disabled = true;
+      request(path).then(function (detail) {
+        box.textContent = '';
+        box.appendChild(facts([
+          ['Name', detail.sender && detail.sender.name || '-'],
+          ['Email', detail.sender && detail.sender.email || '-'],
+          ['Section', detail.sender && detail.sender.section || '-']
+        ]));
+        var logged = document.createElement('p');
+        logged.className = 'muted';
+        logged.textContent = 'This view was written to the audit log.';
+        box.appendChild(logged);
+
+        var content = contentOf ? contentOf(detail) : null;
+        if (content && content.messages && content.messages.length) {
+          box.appendChild(bubbles(content.messages));
+        }
+      }).catch(function (error) {
+        button.disabled = false;
+        failed('Could not show the sender')(error);
+      });
+    });
+    return box;
+  }
+
+  /* The last bubbles of a reported thread, with "mine" meaning the reporter. */
+  function bubbles(messages) {
+    var wrap = document.createElement('div');
+    wrap.className = 'bubbles';
+    messages.forEach(function (message) {
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble' + (message.mine ? ' mine' : '');
+      var who = document.createElement('div');
+      who.className = 'who';
+      who.textContent = (message.mine ? 'Reporter' : senderLabel(message.sender))
+        + ' · ' + when(message.createdAt);
+      bubble.appendChild(who);
+      var text = document.createElement('div');
+      text.textContent = message.system ? '(' + message.system + ')' : message.text;
+      bubble.appendChild(text);
+      wrap.appendChild(bubble);
+    });
+    return wrap;
+  }
+
+  /* --------------------------------------------------------- terms tab */
+
+  el('termForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    el('error').textContent = '';
+    el('termAdd').disabled = true;
+    request('/admin/api/screening-terms', {
+      method: 'POST',
+      body: JSON.stringify({ term: el('termText').value, severity: el('termSeverity').value })
+    }).then(function () {
+      el('termText').value = '';
+      loadTerms();
+    }).catch(failed('Could not add the term'))
+      .then(function () { el('termAdd').disabled = false; });
+  });
+
+  function loadTerms() {
+    clearMessages();
+    el('status').textContent = 'Loading...';
+    request('/admin/api/screening-terms')
+      .then(renderTerms)
+      .catch(failed('Could not load the terms'));
+  }
+
+  function renderTerms(rows) {
+    var body = el('termRows');
+    body.textContent = '';
+    el('status').textContent = counted(rows, 'term', 'terms');
+
+    rows.forEach(function (term) {
+      var tr = document.createElement('tr');
+      tr.appendChild(cell(term.term));
+      tr.appendChild(cell(term.severity === 'hard' ? 'Hard - block' : 'Soft - warn'));
+      tr.appendChild(cell(when(term.createdAt)));
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', function () {
+        if (!window.confirm('Delete this term? Messages stop being screened for it.\n\n'
+              + term.term)) { return; }
+        remove.disabled = true;
+        request('/admin/api/screening-terms/' + encodeURIComponent(term.id), { method: 'DELETE' })
+          .then(loadTerms)
+          .catch(function (error) {
+            remove.disabled = false;
+            failed('Delete failed')(error);
+          });
+      });
+      actions.appendChild(remove);
+      tr.appendChild(actions);
+
+      body.appendChild(tr);
+    });
+  }
+
+  /* ------------------------------------------------------------ shared */
+
+  function cell(text) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    return td;
+  }
+
+  function heading(text) {
+    var h = document.createElement('h2');
+    h.textContent = text;
+    return h;
+  }
+
+  function facts(pairs) {
+    var dl = document.createElement('dl');
+    pairs.forEach(function (pair) {
+      var dt = document.createElement('dt');
+      dt.textContent = pair[0];
+      var dd = document.createElement('dd');
+      dd.textContent = pair[1] === null || pair[1] === undefined || pair[1] === '' ? '-' : pair[1];
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    });
+    return dl;
+  }
+
+  function excerpt(content) {
+    var text = content && content.text;
+    if (!text) { return '-'; }
+    return text.length > 90 ? text.slice(0, 90) + '…' : text;
+  }
+
+  /* The sender exactly as a member sees them: a level, chips, or a name. */
+  function senderLabel(sender) {
+    if (!sender) { return 'Anonymous'; }
+    if (sender.level === 'named') { return sender.name || 'Named'; }
+    if (sender.level === 'hint') {
+      var hints = sender.hints || {};
+      var chips = [hints.section, hints.country, hints.letter ? hints.letter + '.' : null]
+        .filter(Boolean);
+      return 'Hint: ' + (chips.length ? chips.join(' · ') : 'none');
+    }
+    return 'Anonymous';
+  }
+
+  function when(iso) {
+    if (!iso) { return '-'; }
+    var date = new Date(iso);
+    return isNaN(date.getTime()) ? iso : date.toLocaleString();
   }
 
   /* Resume a session that is still in this tab. */

@@ -21,6 +21,7 @@ import app.brand.message.MessageDtos.WallSnapshotDto;
 import app.brand.safety.BlockService;
 import app.brand.safety.ContentScreener;
 import app.brand.safety.ContentScreener.ScreeningResult;
+import app.brand.safety.RateLimiter;
 import app.brand.safety.RecipientPolicy;
 import app.brand.safety.Report;
 import app.brand.safety.ReportService;
@@ -83,6 +84,7 @@ public class MessageService {
     private final MeMapper meMapper;
     private final BlockService blocks;
     private final RecipientPolicy recipients;
+    private final RateLimiter rateLimiter;
     private final ContentScreener screener;
     private final ReportService reports;
     private final ApplicationEventPublisher publisher;
@@ -97,6 +99,7 @@ public class MessageService {
                           MeMapper meMapper,
                           BlockService blocks,
                           RecipientPolicy recipients,
+                          RateLimiter rateLimiter,
                           ContentScreener screener,
                           ReportService reports,
                           ApplicationEventPublisher publisher,
@@ -110,6 +113,7 @@ public class MessageService {
         this.meMapper = meMapper;
         this.blocks = blocks;
         this.recipients = recipients;
+        this.rateLimiter = rateLimiter;
         this.screener = screener;
         this.reports = reports;
         this.publisher = publisher;
@@ -237,6 +241,11 @@ public class MessageService {
         Anonymity anonymity = Anonymity.from(request.anonymityLevel(),
                 AllowedHints.orNone(request.allowedHints()),
                 sender.getSection() == null ? null : sender.getSection().getId());
+        // CLAUDE.md §5: per-sender rate limit on anonymous content. Named and hint
+        // levels are untouched — the limit is about the surface nobody can be seen on.
+        if (anonymity.level() == AnonymityLevel.ANONYMOUS) {
+            rateLimiter.check(senderId, RateLimiter.Kind.ANONYMOUS_MESSAGES);
+        }
 
         // [B9] Rechecked here, never trusted from the composer's own /messages/screen
         // call: acknowledgement gets a soft match through, and never a hard one.

@@ -261,3 +261,14 @@ discard mock accounts and events. Production requires EXPO_PUBLIC_API_URL.
 - Full Jest suite: 375 tests across 40 suites pass. TypeScript and whitespace checks pass. Web, Android and iOS bundle exports pass.
 - Added English/Turkish navigation regressions and checked responsive gallery sheets in the browser. Native runtime validation remains pending: no Android device/emulator was connected, and no iOS runtime was available.
 - See [FRONTEND_REVIEW.md](FRONTEND_REVIEW.md) for evidence, remaining device checks and backend boundaries. No intentional product-contract deviations; no backend, admin, migration or design-reference changes in this review.
+
+## Backend step B-5 touch (2026-09-14)
+
+The one frontend change the backend plan allowed: `expo-notifications`,
+`expo-device` and `expo-constants` were added, `ApiClient` gained
+`registerDevice` / `unregisterDevice` (`PUT`/`DELETE /me/devices`), and
+`src/push/usePushRegistration.ts` (mounted from `RootNavigator`) registers the
+Expo push token once per approved account and language and unregisters it on
+sign-out through a new `SessionValue.onBeforeLogout` hook, which runs before
+the tokens are cleared so the call still authenticates. Every failure is
+swallowed; Expo Go on Android cannot produce a token. `tsc` clean, 381 tests.

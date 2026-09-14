@@ -35,4 +35,15 @@ public class TestEndpointsConfig {
     public MutableClock mutableClock() {
         return new MutableClock();
     }
+
+    /**
+     * [B8] The push transport. Primary over the configured sender, so no test ever
+     * reaches Expo and a test that wants to can read back exactly what the drain
+     * would have delivered.
+     */
+    @Bean
+    @Primary
+    public RecordingPushSender recordingPushSender() {
+        return new RecordingPushSender();
+    }
 }

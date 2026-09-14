@@ -97,6 +97,25 @@ brand:
     # A retry of an opening that already succeeded replays its request key [B7]
     # and is not counted again. 0 turns the limit off.
     thread-openings-per-day: ${BRAND_THREAD_OPENINGS_PER_DAY:20}
+    # CLAUDE.md §5, "per-sender rate limits on anonymous posts". Rolling one-hour
+    # windows counted over what the account has already written; the one past the
+    # limit answers 429 rate_limited. Only anonymous content is counted and only
+    # anonymous content is refused — a named message carries a person and the
+    # ordinary product rules already govern it. 0 turns a limit off.
+    anonymous-messages-per-hour: ${BRAND_ANONYMOUS_MESSAGES_PER_HOUR:30}
+    anonymous-posts-per-hour: ${BRAND_ANONYMOUS_POSTS_PER_HOUR:30}
+  # Brief §3: the entitlement layer is present from day one and switched OFF in
+  # stages 1–2. These are the config flags; nothing gates on them yet, and
+  # GET /me/entitlements is the only reader. Stage 3 flips them.
+  entitlements:
+    # Inbox cards past the free allowance render as locked cards [D3].
+    locked-cards: ${BRAND_LOCKED_CARDS:false}
+    # Free inbox reads per period. 0 = unlimited, which is stage 1.
+    free-inbox-reads: ${BRAND_FREE_INBOX_READS:0}
+    # Cold thread opens per day. 0 = unused; stage 1 has no cold DMs at all.
+    cold-open-limit: ${BRAND_COLD_OPEN_LIMIT:0}
+    # The reveal action costs. Stage 1 is free and unlimited.
+    reveal-paid: ${BRAND_REVEAL_PAID:false}
   housekeeping:
     # [B5] The background pass that finalises expired rejection undo windows [B6]
     # and rejects posts left pending on a closed or ended board [D4]. Both are
@@ -109,6 +128,21 @@ brand:
     # [B7] Milliseconds between request-key purges. Nothing is retrying a
     # week-old key, so hourly is far more often than it needs to be.
     request-key-interval: ${BRAND_REQUEST_KEY_PURGE_INTERVAL_MS:3600000}
+  push:
+    # [B8] Off by default, and off is not a stub: the outbox is written, the copy
+    # is rendered in the device's language and the drain runs exactly as it will
+    # in production — it hands each row to LoggingPushSender instead of Expo.
+    # Switching this on (with an Expo access token) is the only difference
+    # between "nothing buzzes" and "phones buzz".
+    enabled: ${BRAND_PUSH_ENABLED:false}
+    # From expo.dev; blank sends the requests unauthenticated, which Expo allows
+    # until the project enables enhanced security.
+    expo-access-token: ${BRAND_EXPO_ACCESS_TOKEN:}
+    # Milliseconds between outbox drains. Shares brand.housekeeping.enabled as its
+    # scheduling switch, so tests drive PushHousekeeping.run() themselves.
+    interval: ${BRAND_PUSH_INTERVAL_MS:5000}
+    # Rows per pass, capped at the 100 messages Expo accepts in one request.
+    batch-size: ${BRAND_PUSH_BATCH_SIZE:100}
 
 # [B12] The realtime layer has no configuration. The STOMP endpoint (/ws), the
 # simple in-memory broker and its 10 s/10 s heartbeats are fixed in

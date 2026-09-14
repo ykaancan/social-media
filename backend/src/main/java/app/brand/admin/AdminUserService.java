@@ -2,6 +2,7 @@ package app.brand.admin;
 
 import app.brand.auth.RefreshTokenRepository;
 import app.brand.common.ApiException;
+import app.brand.common.events.AccountApproved;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.MeMapper;
@@ -10,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,17 +30,20 @@ public class AdminUserService {
     private final AuditLogRepository auditLog;
     private final RefreshTokenRepository refreshTokens;
     private final MeMapper meMapper;
+    private final ApplicationEventPublisher publisher;
     private final Clock clock;
 
     public AdminUserService(AdminUserRepository users,
                             AuditLogRepository auditLog,
                             RefreshTokenRepository refreshTokens,
                             MeMapper meMapper,
+                            ApplicationEventPublisher publisher,
                             Clock clock) {
         this.users = users;
         this.auditLog = auditLog;
         this.refreshTokens = refreshTokens;
         this.meMapper = meMapper;
+        this.publisher = publisher;
         this.clock = clock;
     }
 
@@ -75,6 +80,8 @@ public class AdminUserService {
         user.setApprovedAt(now);
         user.setApprovedBy(adminId);
         record(adminId, AuditAction.APPROVE_USER, user, now);
+        // The person has been waiting for exactly this; the push layer tells them.
+        publisher.publishEvent(new AccountApproved(user.getId()));
         return toDto(user);
     }
 

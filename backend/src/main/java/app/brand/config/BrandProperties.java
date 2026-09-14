@@ -22,10 +22,16 @@ public record BrandProperties(
         /** Absolute base of this server, used for avatar URLs and the reset link. */
         @NotBlank String publicBaseUrl,
         @NotNull @Valid Mail mail,
-        @NotNull @Valid Cors cors) {
+        @NotNull @Valid Cors cors,
+        /**
+         * Brief §3 "Entitlement layer (present, switched off)". Present from day
+         * one, OFF in stages 1–2; absent configuration reads as the defaults.
+         */
+        Entitlements entitlements) {
 
     public BrandProperties {
         publicBaseUrl = publicBaseUrl == null ? null : publicBaseUrl.replaceAll("/+$", "");
+        entitlements = entitlements == null ? Entitlements.OFF : entitlements;
     }
 
     /** [B3] HS256 access tokens plus the lifetime of an opaque refresh token. */
@@ -48,5 +54,31 @@ public record BrandProperties(
         public Cors {
             allowedOrigins = allowedOrigins == null ? List.of() : List.copyOf(allowedOrigins);
         }
+    }
+
+    /**
+     * Brief §3 and principle 3: the monetization gates exist in the model from day
+     * one and are <b>server-side config flags, default OFF</b>. Stage 1 and stage 2
+     * ship with every value here at its default; stage 3 flips them.
+     *
+     * <p>Nothing reads them yet beyond {@code GET /me/entitlements}, which exists so
+     * the app's {@code useEntitlements} has one honest place to ask. [D3] "Renders
+     * unlocked" is the client's half of the same rule: while {@code lockedCards} is
+     * false a {@code LockedCard} is an ordinary card, and nothing in stage 1 looks
+     * different for a reason the user cannot see.
+     *
+     * @param lockedCards     inbox cards past the free allowance render locked
+     * @param freeInboxReads  free inbox reads per period; {@code 0} = unlimited
+     * @param coldOpenLimit   cold thread opens per day; {@code 0} = unused (stage 1
+     *                        has no cold DMs at all — brief §6)
+     * @param revealPaid      the reveal action costs; stage 1 is free and unlimited
+     */
+    public record Entitlements(boolean lockedCards,
+                               int freeInboxReads,
+                               int coldOpenLimit,
+                               boolean revealPaid) {
+
+        /** Every gate off, which is what stages 1–2 run on. */
+        public static final Entitlements OFF = new Entitlements(false, 0, 0, false);
     }
 }

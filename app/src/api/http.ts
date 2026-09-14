@@ -9,6 +9,7 @@ import {
   ApiError,
   type ApiClient,
   type AuthResult,
+  type DeviceRegistration,
   type LoginRequest,
   type Me,
   type ProfileRequest,
@@ -203,6 +204,16 @@ export class HttpApi implements ApiClient {
 
   getSection(id: string): Promise<SectionDetail> {
     return this.request<SectionDetail>(`/sections/${encodeURIComponent(id)}`);
+  }
+
+  /* ---------------- devices ---------------- */
+
+  registerDevice(input: DeviceRegistration): Promise<void> {
+    return this.request('/me/devices', { method: 'PUT', body: input });
+  }
+
+  unregisterDevice(token: string): Promise<void> {
+    return this.request('/me/devices/' + encodeURIComponent(token), { method: 'DELETE' });
   }
 
   /* ---------------- plumbing ---------------- */

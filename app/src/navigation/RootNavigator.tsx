@@ -15,6 +15,7 @@ import {
   SignUp,
   Splash,
 } from '../screens';
+import { usePushRegistration } from '../push';
 import { useSession } from '../session';
 import { useTheme } from '../theme';
 import { Shell } from './Shell';
@@ -45,6 +46,11 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { phase, me, bootError, retryBoot } = useSession();
   const { colors } = useTheme();
+
+  // [B8] Registers this phone for notifications while an approved session is on
+  // screen, and unregisters it when that session ends. It renders nothing and it
+  // never blocks: a person who declines notifications sees no difference at all.
+  usePushRegistration();
 
   // Boot: the splash colour and nothing else. No spinner and no "loading" copy —
   // this is normally a single frame, and a message would flash.

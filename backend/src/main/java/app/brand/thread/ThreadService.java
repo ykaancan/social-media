@@ -5,6 +5,7 @@ import app.brand.board.BoardPostRepository;
 import app.brand.board.BoardPostState;
 import app.brand.common.ApiException;
 import app.brand.common.Ids;
+import app.brand.common.events.ThreadMessageSent;
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
 import app.brand.content.AnonymityLevel;
@@ -211,10 +212,14 @@ public class ThreadService {
         // at whatever they are elsewhere: answering an anonymous post must not out them.
         participants.saveAndFlush(ThreadParticipant.of(thread.getId(), author.getId(),
                 Anonymity.copyOf(origin.anonymity()), now));
-        append(thread, viewerId, text, mine.copy(), null, now);
+        ThreadMessage first = append(thread, viewerId, text, mine.copy(), null, now);
 
         store(viewerId, key, fingerprint, thread.getId(), now);
         publisher.publishEvent(new ThreadsChanged(Set.of(viewerId, author.getId())));
+        // [B8] The push layer notifies the author after commit, if their thread
+        // notifications are on. The system "revealed" row never publishes this.
+        publisher.publishEvent(new ThreadMessageSent(thread.getId(), first.getId(),
+                viewerId, author.getId()));
         return new OpenedDto(thread.getId().toString());
     }
 
@@ -341,9 +346,12 @@ public class ThreadService {
 
         ThreadParticipant mine = participantOf(thread.getId(), viewerId);
         Instant now = Instant.now(clock);
-        append(thread, viewerId, text, Anonymity.copyOf(mine.getAnonymity()), null, now);
+        ThreadMessage row = append(thread, viewerId, text, Anonymity.copyOf(mine.getAnonymity()),
+                null, now);
         store(viewerId, key, fingerprint, null, now);
         publisher.publishEvent(new ThreadsChanged(Set.of(viewerId, other.getUserId())));
+        publisher.publishEvent(new ThreadMessageSent(thread.getId(), row.getId(),
+                viewerId, other.getUserId()));
     }
 
     /* ---------------------------------------------------- PUT /threads/{id}/read */

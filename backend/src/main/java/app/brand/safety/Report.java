@@ -36,7 +36,12 @@ public class Report {
     public static final Set<String> REASONS =
             Set.of("harassment", "hate", "sexual", "identity", "spam");
 
+    /** {@code status} values, matching the CHECK constraint on the column. */
     public static final String OPEN = "open";
+    public static final String DISMISSED = "dismissed";
+    public static final String HIDDEN = "hidden";
+    public static final String WARNED = "warned";
+    public static final String BANNED = "banned";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -73,6 +78,22 @@ public class Report {
     // "insert ... on conflict do nothing" rather than a persist that can poison
     // the caller's transaction. Nothing here constructs a Report.
     protected Report() {
+    }
+
+    /**
+     * The admin's decision, taken once. The caller checks {@link #OPEN} first and
+     * answers 409 otherwise — a report is resolved by one person, and a second
+     * admin working the same queue must be told rather than silently overwrite
+     * the first decision.
+     */
+    public void resolve(String status, UUID resolvedBy, Instant at) {
+        this.status = status;
+        this.resolvedBy = resolvedBy;
+        this.resolvedAt = at;
+    }
+
+    public boolean isOpen() {
+        return OPEN.equals(status);
     }
 
     public UUID getId() {

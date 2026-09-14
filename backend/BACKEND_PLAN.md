@@ -581,3 +581,53 @@ under `select ... for update` on the thread row.
 **Not done (later steps).** Push rows for thread messages (B-5). Account
 deletion's thread clean-up (B-5). The threads list screen was checked through
 the API, not on the device.
+
+---
+
+## B-5 record (2026-09-14)
+
+**Built.** Account: `PUT /me/section` (audit row, 30-day cooldown → 429, no
+re-approval [D7]), `GET /me/export` (own data and privacy-filtered received
+content, one per minute), `DELETE /me` (real deletion in one transaction in
+the mock's order, events created by the user lose their creator and close,
+other members' content survives, avatar file removed), `safety/RateLimiter`
+for anonymous wall messages and room posts (30 per hour each), and the
+entitlement flags declared and OFF with `GET /me/entitlements`. Push:
+`push/` with `PUT`/`DELETE /me/devices`, a self-contained `push_outbox`
+rendered in the device's language at enqueue time, after-commit listeners for
+inbox delivery, thread messages, moderation outcomes, approval and warnings,
+`ExpoPushSender` behind `PushSender` with a logging sender while
+`brand.push.enabled` is false, and a housekeeping drain with retries and
+`DeviceNotRegistered` pruning; the app registers its Expo push token on
+approval (`usePushRegistration`) and unregisters it through a new
+`onBeforeLogout` hook on the session so the call still authenticates. Admin:
+`/admin/api/reports` (list without identity, detail with identity that writes
+an `identity_view` audit row before the response, dismiss/hide/warn/ban),
+`/admin/api/flagged` (soft-screened content), `/admin/api/screening-terms`
+with a `ScreeningTermsChanged` event the screener listens to, and the admin
+page's Users / Reports / Flagged / Screening terms tabs with an explicit
+"Show sender" step that names the audit.
+
+**Verified.** `./gradlew test --rerun`: 293 tests, 0 failures (66 new); app:
+`tsc` clean and 381 Jest tests. Through the API: section change then 429 on
+the second, entitlement defaults, a `tr` device receiving an `inbox_new` row
+drained by the logging sender, export with the right keys and no other user's
+id or email, export throttle, a report listed anonymously and its detail
+writing exactly one audit row per view, a hard screening term blocking the
+very next send, and a throwaway account's real deletion leaving no rows and
+the event intact. In the browser: the admin Reports tab, the audit notice
+before "Show sender", and the identity after. On the emulator: Settings loaded
+live values and the section change flowed through with its cooldown copy.
+
+**Deviations, all deliberate.** Push copy lives in the existing
+`messages_en/tr.properties`. Expo messages are sent one per token. Dismiss
+writes no audit row (no such action value; a migration would be needed).
+`sender.section` in the admin detail is a flat "name · country" string.
+Export omits a thread the owner has blocked the other side of. The export
+throttle is in memory. `entitlement_usage` was added to the deletion order.
+The screening term limit is 80 characters.
+
+**Not done.** A real push cannot be verified in Expo Go on Android (a
+development build, the Expo access token and project id are on the founder
+list). `KeywordScreener.invalidate()` is now event-driven, closing the review
+note. Next: B-6 release readiness.

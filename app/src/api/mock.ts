@@ -17,6 +17,7 @@ import {
   LIMITS,
   type ApiClient,
   type AuthResult,
+  type DeviceRegistration,
   type LoginRequest,
   type Me,
   type Person,
@@ -167,6 +168,20 @@ export class MockApi implements ApiClient {
     if(![...this.blockEntries.values()].some(row=>row.owner===owner&&row.blocked===blocked))this.blockEntries.set('block-'+ ++this.blockSeq,{owner,blocked,sender:cloneSettings(sender)});
     this.emitThreads([owner]);
   }
+  /**
+   * [B8] Devices, keyed by push token exactly as the server keys them: a token is
+   * one phone, and registering it again re-binds it to whoever is signed in now.
+   * Nothing reads these back — they exist so the registration call is real.
+   */
+  private devices=new Map<string,{userId:string;platform:DeviceRegistration['platform'];locale:DeviceRegistration['locale']}>();
+  async registerDevice(input:DeviceRegistration):Promise<void>{
+    await this.wait();const me=this.approvedAccount();const token=input?.token?.trim();
+    if(!token)throw new ApiError('validation','push token required',422);
+    if(!['ios','android','web'].includes(input.platform))throw new ApiError('validation','unknown platform',422);
+    if(!['en','tr'].includes(input.locale))throw new ApiError('validation','unsupported locale',422);
+    this.devices.set(token,{userId:me.id,platform:input.platform,locale:input.locale});
+  }
+  async unregisterDevice(token:string):Promise<void>{await this.wait();const me=this.approvedAccount(),row=this.devices.get(token);if(row&&row.userId===me.id)this.devices.delete(token);}
   async getBlocked():Promise<BlockedEntry[]>{await this.wait();const me=this.approvedAccount();return [...this.blockEntries].filter(([,row])=>row.owner===me.id).map(([id,row])=>({id,sender:cloneSettings(row.sender)}));}
   async unblock(id:string):Promise<void>{await this.wait();const me=this.approvedAccount(),row=this.blockEntries.get(id);if(!row||row.owner!==me.id)throw new ApiError('unknown','block unavailable',404);this.blocks.get(me.id)?.delete(row.blocked);this.blockEntries.delete(id);this.emitThreads([me.id]);}
   async editProfile(input:Omit<ProfileRequest,'sectionId'>):Promise<Me>{
@@ -201,6 +216,7 @@ export class MockApi implements ApiClient {
     this.boardReports=this.boardReports.filter(row=>row.reporterId!==me.id&&this.boardPosts.has(row.postId));
     for(const [id,row] of this.blockEntries)if(row.owner===me.id||row.blocked===me.id)this.blockEntries.delete(id);
     this.blocks.delete(me.id);this.blocks.forEach(ids=>ids.delete(me.id));this.settings.delete(me.id);
+    for(const [token,row] of this.devices)if(row.userId===me.id)this.devices.delete(token);
     this.sectionChanges=this.sectionChanges.filter(row=>row.userId!==me.id);
     for(const event of this.events.values()){
       event.members.delete(me.id);event.mods?.delete(me.id);

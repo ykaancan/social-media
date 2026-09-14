@@ -7,8 +7,10 @@ import app.brand.board.BoardDtos.RejectionReceiptDto;
 import app.brand.board.BoardDtos.SendBoardPostRequest;
 import app.brand.common.ApiException;
 import app.brand.common.Ids;
+import app.brand.common.events.PostModerated;
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
+import app.brand.content.AnonymityLevel;
 import app.brand.content.MessageSenderDto;
 import app.brand.content.SenderPresenter;
 import app.brand.event.Event;
@@ -28,6 +30,7 @@ import app.brand.message.MessageState;
 import app.brand.realtime.BoardChanged;
 import app.brand.safety.ContentScreener;
 import app.brand.safety.ContentScreener.ScreeningResult;
+import app.brand.safety.RateLimiter;
 import app.brand.safety.Report;
 import app.brand.safety.ReportService;
 import app.brand.user.AppUser;
@@ -110,6 +113,7 @@ public class BoardService {
     private final SenderPresenter presenter;
     private final MeMapper meMapper;
     private final ContentScreener screener;
+    private final RateLimiter rateLimiter;
     private final ReportService reports;
     private final ApplicationEventPublisher publisher;
     private final Clock clock;
@@ -126,6 +130,7 @@ public class BoardService {
                         SenderPresenter presenter,
                         MeMapper meMapper,
                         ContentScreener screener,
+                        RateLimiter rateLimiter,
                         ReportService reports,
                         ApplicationEventPublisher publisher,
                         Clock clock) {
@@ -141,6 +146,7 @@ public class BoardService {
         this.presenter = presenter;
         this.meMapper = meMapper;
         this.screener = screener;
+        this.rateLimiter = rateLimiter;
         this.reports = reports;
         this.publisher = publisher;
         this.clock = clock;
@@ -272,6 +278,11 @@ public class BoardService {
         Anonymity anonymity = Anonymity.from(request.anonymityLevel(),
                 AllowedHints.orNone(request.allowedHints()),
                 sender.getSection() == null ? null : sender.getSection().getId());
+        // CLAUDE.md §5: per-sender rate limit on anonymous posts. Named and hint
+        // levels are untouched — the limit is about the surface nobody can be seen on.
+        if (anonymity.level() == AnonymityLevel.ANONYMOUS) {
+            rateLimiter.check(viewerId, RateLimiter.Kind.ANONYMOUS_POSTS);
+        }
 
         // [B9] Rechecked here, never trusted from the composer's /messages/screen call.
         ScreeningResult screening = screener.screen(text);
@@ -350,6 +361,13 @@ public class BoardService {
         rows.forEach(post -> post.approve(BoardPost.MODERATOR));
         posts.saveAllAndFlush(rows);
         publisher.publishEvent(new BoardChanged(eventId, senderIds(rows)));
+        // [B8] The sender is told their post is up. Published per post, after the
+        // batch is durable, so a 409 that rolled the whole batch back notifies
+        // nobody.
+        for (BoardPost post : rows) {
+            publisher.publishEvent(new PostModerated(post.getId(), eventId, post.getSenderId(),
+                    PostModerated.Outcome.APPROVED));
+        }
     }
 
     /* ------------------------------ POST /events/{id}/posts/{post}/reject */
@@ -572,23 +590,33 @@ public class BoardService {
         boolean over = event.getClosedAt() != null || !now.isBefore(event.getEndsAt());
         List<BoardPost> changed = new ArrayList<>();
         Set<UUID> affected = new LinkedHashSet<>();
+        List<PostModerated> moderated = new ArrayList<>();
         for (BoardPost post : pending) {
+            PostModerated.Outcome outcome;
             if (over) {
                 post.finaliseRejection(BoardPost.REASON_BOARD_CLOSED, null, now);
+                outcome = PostModerated.Outcome.BOARD_CLOSED;
             } else if (post.getRejectionUndoUntil() != null
                     && !now.isBefore(post.getRejectionUndoUntil())) {
                 post.finaliseRejection(BoardPost.REASON_MODERATOR, post.getRejectedBy(),
                         post.getRejectionUndoUntil());
+                outcome = PostModerated.Outcome.REJECTED;
             } else {
                 continue;
             }
             changed.add(post);
             affected.add(post.getSenderId());
+            moderated.add(new PostModerated(post.getId(), event.getId(), post.getSenderId(), outcome));
         }
         if (changed.isEmpty()) {
             return Set.of();
         }
         posts.saveAllAndFlush(changed);
+        // [B8] One place for all three ways a queued post ends: the lazy pass on a
+        // board read, the housekeeping job [B5] and closing the board [D4]. The
+        // push is the sender's only news of it, and it is never sent early — the
+        // five-second undo window [B6] has already passed by the time we are here.
+        moderated.forEach(publisher::publishEvent);
         return affected;
     }
 
