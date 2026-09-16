@@ -1,6 +1,7 @@
 {
   "_meta": { "locale": "en", "register": "warm, friendly, second person", "brand": "[BRAND]" },
   "common": {
+    "refreshError": "Couldn’t refresh. Your last loaded content is still here.",
     "next": "Next", "back": "Back", "done": "Done", "cancel": "Cancel", "save": "Save", "delete": "Delete", "report": "Report", "block": "Block",
     "copy": "Copy", "copied": "Copied", "share": "Share", "more": "More", "close": "Close", "retry": "Try again", "you": "You", "loading": "Loading",
     "blockName": "Block {name}",
@@ -15,10 +16,10 @@
   "onboarding": {
     "splashTitle": "Say it. Keep your name out of it.",
     "splashSub": "Anonymous notes for exchange students, at the events you're actually at.",
-    "signUp": "Sign up", "logIn": "Log in", "signUpSub": "Two fields and you're nearly in.", "logInSub": "Good to see you again.",
+    "signUp": "Sign up", "logIn": "Log in", "signUpSub": "Start with your email and a password.", "logInSub": "Good to see you again.",
     "email": "Email", "emailPlaceholder": "the.real.you@uni.edu",
     "password": "Password", "passwordPlaceholderNew": "Something only you'd guess", "passwordPlaceholder": "Your password", "passwordHint": "8 characters minimum.",
-    "phone": "Phone", "phonePlaceholder": "+90 …", "phoneHint": "Optional. For the day you forget the one above.",
+    "phone": "Phone (optional)", "phonePlaceholder": "+90 …", "phoneHint": "You can leave this blank.",
     "forgotPassword": "Forgot password", "resetSent": "Reset link sent, if the address exists",
     "continue": "Continue", "haveAccount": "Already in? Log in", "noAccount": "First time here? Sign up",
     "errorEmailInUse": "That email already has an account. Log in instead.",
@@ -226,6 +227,8 @@
   "endRequired": "Every event has an end time. Archived boards remain readable."
 },
   "threadFlow": {
+    "latest": "Jump to latest",
+    "rowLabel": "{sender}. {event}. {unread}. Updated {time}. Open thread.",
   "open": "Open thread",
   "unread": "{n} unread messages",
   "from": "From {event}",

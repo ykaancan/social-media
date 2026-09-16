@@ -44,6 +44,7 @@ export interface PostCardSender {
 }
 
 export interface PostCardAction {
+  loading?: boolean;
   label: string;
   icon?: IconName;
   onPress?: () => void;
@@ -132,6 +133,7 @@ function ReactionPill({
       accessibilityRole="button"
       accessibilityLabel={`${emoji} ${count}`}
       accessibilityState={{ selected: mine }}
+      style={styles.reactionHit}
       onPress={() => {
         if (!reduced) {
           burstScale.value = reactBurst(dur.slow);
@@ -278,7 +280,8 @@ export function PostCard({
     ? { borderWidth: 2, borderColor: event.cover, padding: space.cardPad - 1 }
     : { borderWidth: 1, borderColor: colors.border, padding: space.cardPad };
 
-  const showFooter = Boolean(onReact || onReply || onMore || shown.length);
+  const moreInHeader = Boolean(onMore && !onReact && !onReply && !shown.length);
+  const showFooter = Boolean(onReact || onReply || (onMore && !moreInHeader) || shown.length);
 
   return (
     <Animated.View
@@ -301,11 +304,15 @@ export function PostCard({
           labels={labels}
           size="md"
         />
+        <View style={styles.headerActions}>
         {time ? (
           <Text variant="caption" color={colors.text3} nums numberOfLines={1} style={styles.time}>
             {time}
           </Text>
         ) : null}
+        {moreInHeader && <IconButton icon="Ellipsis" label={L.more} size="sm" onPress={onMore}
+          testID={testID ? `${testID}-more` : undefined} />}
+        </View>
       </View>
 
       <Text variant={large ? 'postLg' : 'post'} color={colors.text}>
@@ -360,7 +367,7 @@ export function PostCard({
               testID={testID ? `${testID}-reply` : undefined}
             />
           ) : null}
-          {onMore ? (
+          {onMore && !moreInHeader ? (
             <IconButton
               icon="Ellipsis"
               label={L.more}
@@ -381,6 +388,7 @@ export function PostCard({
               variant={a.variant ?? (i === 0 ? 'primary' : 'secondary')}
               icon={a.icon}
               onPress={a.onPress}
+              loading={a.loading}
             >
               {a.label}
             </Button>
@@ -396,6 +404,8 @@ export function PostCard({
 const styles = StyleSheet.create({
   root: { flexDirection: 'column', gap: 12 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  reactionHit: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   // `flex:none` + `white-space:nowrap` on .c-post__time
   time: { flexGrow: 0, flexShrink: 0 },
   meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
@@ -404,14 +414,14 @@ const styles = StyleSheet.create({
   react: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 32,
+    minHeight: 32,
     paddingLeft: 8,
     paddingRight: 10,
     gap: 5,
   },
   reactEmoji: { fontSize: 16, lineHeight: 16 },
   tray: { flexDirection: 'row', gap: 2, padding: 2, borderWidth: 1, alignSelf: 'flex-start' },
-  trayButton: { width: 36, height: 32, alignItems: 'center', justifyContent: 'center' },
+  trayButton: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   trayEmoji: { fontSize: 18, lineHeight: 22 },
   actions: {
     flexDirection: 'row',

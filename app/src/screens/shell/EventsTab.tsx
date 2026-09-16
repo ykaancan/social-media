@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useApi, type EventSummary } from '../../api';
 import { Avatar, Button, Text } from '../../components/core';
 import { EventCard } from '../../components/cards';
-import { BottomBar, CoachMark, Empty, Screen, JoinSheet, CreateSheet, EventDatePicker, EventScanner, LoadState, type EventDraft } from '../../components/patterns';
+import { BottomBar, CoachMark, Empty, Screen, RefreshNotice, TabHeader, JoinSheet, CreateSheet, EventDatePicker, EventScanner, LoadState, type EventDraft } from '../../components/patterns';
 import { useLocale, useTranslation } from '../../i18n';
 import type { TabScreenProps } from '../../navigation/types';
 import { useCoachMark } from '../../prefs';
@@ -47,12 +47,11 @@ export function EventsTab({ navigation }: TabScreenProps<'Events'>) {
     } catch { setCreateError(t('eventFlow.createError')); }
     finally { submitting.current = false; setBusy(false); }
   };
-  return <Screen testID="events-screen" header={<View style={styles.header}>
-    <Text variant="displayLg" upper>{t('events.title')}</Text>
+  return <Screen testID="events-screen" header={<TabHeader title={t('events.title')} right={<>
     <Pressable testID="events-avatar" accessibilityRole="button" accessibilityLabel={t('tabs.profile')} onPress={() => navigation.navigate('Profile')}>
       <Avatar name={me?.name ?? ''} src={me?.avatarUrl} size="sm" />
     </Pressable>
-  </View>} bottom={<>
+  </>}/>} bottom={<>
     {coach.visible && events?.length === 0 && !sheet && <CoachMark testID="coach-mark" title={t('onboarding.coachTitle')}
       body={t('onboarding.coachBody')} dismissLabel={t('onboarding.coachDismiss')} onDismiss={coach.dismiss} tailOffset={60} style={styles.coach} />}
     <BottomBar row>
@@ -75,7 +74,8 @@ export function EventsTab({ navigation }: TabScreenProps<'Events'>) {
       datePicker={pick && <EventDatePicker key={pick} value={pick === 'start' ? start : end}
         onChange={pick === 'start' ? setStart : setEnd} onClose={() => setPick(null)} />} />}
   </>}>
-    {error || !events ? <LoadState error={error} onRetry={() => { setError(false); setVersion(v => v + 1); }} /> : events.length === 0 ?
+    {error && events && <RefreshNotice onRetry={() => setVersion(v => v + 1)}/>}
+    {!events ? <LoadState error={error} onRetry={() => { setError(false); setVersion(v => v + 1); }} /> : events.length === 0 ?
       <Empty testID="events-empty" icon="CalendarDays" text={t('events.empty')} style={styles.empty} /> :
       (['live', 'upcoming', 'archived'] as const).map(status => {
         const group = events.filter(e => e.status === status);
@@ -89,5 +89,5 @@ export function EventsTab({ navigation }: TabScreenProps<'Events'>) {
       })}
   </Screen>;
 }
-const styles = StyleSheet.create({ header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  group: { gap: 12 }, empty: { paddingTop: 88, paddingBottom: 0 }, coach: { position: 'absolute', left: 16, right: 16, bottom: 158, zIndex: 6 }, join: { flex: 1 } });
+const styles = StyleSheet.create({
+  group: { gap: 12 }, empty: { flex: 1, justifyContent: 'center', paddingVertical: 24 }, coach: { position: 'absolute', left: 16, right: 16, bottom: 158, zIndex: 6 }, join: { flex: 1 } });

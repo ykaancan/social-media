@@ -25,6 +25,8 @@ export interface SheetProps {
   /** When given, the header shows a close button and the scrim is tappable. */
   onClose?: () => void;
   children?: React.ReactNode;
+  /** Actions outside the body scroller, above the safe area and keyboard. */
+  footer?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   /** Overrides the i18n default for the close button's label. */
   labels?: { close?: string };
@@ -39,7 +41,7 @@ const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
  * The web positions the sheet absolutely inside the phone frame; in RN it has
  * to be a real `Modal`, or it would sit under the tab bar and the status bar.
  */
-export function Sheet({ open = true, title, onClose, children, style, labels, testID }: SheetProps) {
+export function Sheet({ open = true, title, onClose, children, footer, style, labels, testID }: SheetProps) {
   const { colors, space, shadows } = useTheme();
   const { dur, easing } = useMotion();
   const { height: windowHeight } = useWindowDimensions();
@@ -155,6 +157,7 @@ export function Sheet({ open = true, title, onClose, children, style, labels, te
                 a gesture to an inner ScrollView when both sides opt in (the
                 PersonPicker's 220px roster is the case that needs it). */}
             <ScrollView
+              testID={testID ? `${testID}-body` : undefined}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
               style={styles.bodyScroll}
@@ -162,6 +165,8 @@ export function Sheet({ open = true, title, onClose, children, style, labels, te
             >
               {children}
             </ScrollView>
+            {footer ? <View testID={testID ? `${testID}-footer` : undefined}
+              style={[styles.footer, { borderTopColor: colors.border }]}>{footer}</View> : null}
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -200,4 +205,5 @@ const styles = StyleSheet.create({
   title: { flexShrink: 1 },
   bodyScroll: { flexGrow: 0, flexShrink: 1 },
   body: { flexDirection: 'column', gap: 12 },
+  footer: { flexShrink: 0, gap: 8, borderTopWidth: 1, marginTop: 12, paddingTop: 12 },
 });

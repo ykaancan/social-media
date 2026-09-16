@@ -1,6 +1,7 @@
 {
   "_meta": { "locale": "tr", "register": "sen (samimi), sıcak", "brand": "[BRAND]" },
   "common": {
+    "refreshError": "Yenilenemedi. Son yüklenen içerik hâlâ burada.",
     "next": "İleri", "back": "Geri", "done": "Tamam", "cancel": "Vazgeç", "save": "Kaydet", "delete": "Sil", "report": "Şikâyet et", "block": "Engelle",
     "copy": "Kopyala", "copied": "Kopyalandı", "share": "Paylaş", "more": "Daha fazla", "close": "Kapat", "retry": "Tekrar dene", "you": "Sen", "loading": "Yükleniyor",
     "blockName": "{name} kişisini engelle",
@@ -15,10 +16,10 @@
   "onboarding": {
     "splashTitle": "Söyle. İsmin karışmasın.",
     "splashSub": "Değişim öğrencileri için anonim notlar, gerçekten bulunduğun etkinliklerde.",
-    "signUp": "Kayıt ol", "logIn": "Giriş yap", "signUpSub": "İki alan, neredeyse içeridesin.", "logInSub": "Seni yeniden görmek güzel.",
+    "signUp": "Kayıt ol", "logIn": "Giriş yap", "signUpSub": "E-postan ve bir şifreyle başla.", "logInSub": "Seni yeniden görmek güzel.",
     "email": "E-posta", "emailPlaceholder": "the.real.you@uni.edu",
     "password": "Şifre", "passwordPlaceholderNew": "Sadece senin tahmin edebileceğin bir şey", "passwordPlaceholder": "Şifren", "passwordHint": "En az 8 karakter.",
-    "phone": "Telefon", "phonePlaceholder": "+90 …", "phoneHint": "İsteğe bağlı. Yukarıdakini unuttuğun gün lazım olur.",
+    "phone": "Telefon (isteğe bağlı)", "phonePlaceholder": "+90 …", "phoneHint": "Bu alanı boş bırakabilirsin.",
     "forgotPassword": "Şifremi unuttum", "resetSent": "Adres kayıtlıysa sıfırlama bağlantısı gönderildi",
     "continue": "Devam", "haveAccount": "Zaten üye misin? Giriş yap", "noAccount": "İlk kez mi geldin? Kayıt ol",
     "errorEmailInUse": "Bu e-postayla açılmış bir hesap var. Giriş yap.",
@@ -70,7 +71,7 @@
     "boardOpens": "Pano {date} açılıyor. O zamana kadar Yaklaşan'da duracak.",
     "openEvent": "Etkinliği aç", "scanTitle": "QR tara", "scanHint": "Kamera · etkinliğin QR'ına tut",
     "enterCodeInstead": "Bunun yerine kodu gir",
-    "createTitle": "Etkinlik oluştur", "mySection": "Section'ım · {name}",
+    "createTitle": "Etkinlik oluştur", "mySection": "Şubem · {name}",
     "endAfterStart": "Bitiş, başlangıçtan sonra olmalı.",
     "multiDay": "Çok günlük. Pano baştan sona açık kalır.",
     "oneNight": "Tek gece. Çok günlük olsun istersen bitişi başka bir güne al.",
@@ -226,6 +227,8 @@
   "endRequired": "Her etkinliğin bir bitiş zamanı vardır. Arşivlenen panolar okunabilir."
 },
   "threadFlow": {
+    "latest": "Son mesajlara git",
+    "rowLabel": "{sender}. {event}. {unread}. Son güncelleme {time}. Sohbeti aç.",
   "open": "Sohbeti aç",
   "unread": "{n} okunmamış mesaj",
   "from": "{event} etkinliğinden",

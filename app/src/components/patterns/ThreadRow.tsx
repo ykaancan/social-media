@@ -9,10 +9,14 @@ import { Text } from '../core';
 
 export function ThreadRow({thread,onPress}:{thread:ThreadSummary;onPress:()=>void}) {
   const {t}=useTranslation(),locale=useLocale(),{colors}=useTheme();
-  return <Pressable accessibilityRole="button" accessibilityLabel={t('threadFlow.open')} onPress={onPress} testID={`thread-row-${thread.id}`}
+  const other = thread.other;
+  const sender = other.level === 'named' ? other.name : other.level === 'hint'
+    ? [t('anon.hint'), other.hints?.section, other.hints?.country, other.hints?.letter?.slice(0, 1)].filter(Boolean).join(', ')
+    : t('anon.anonymous');
+  return <Pressable accessibilityRole="button" accessibilityLabel={t('threadFlow.rowLabel', {sender: sender ?? t('anon.anonymous'), event: thread.source, unread: t('threadFlow.unread',{n:thread.unreadCount}), time: new Date(thread.updatedAt).toLocaleString(locale)})} onPress={onPress} testID={`thread-row-${thread.id}`}
     style={[styles.root,{borderBottomColor:colors.border}]}>
     <View style={styles.header}><AnonymityBadge {...thread.other}/><Text variant="caption" color={colors.text3}>{new Date(thread.updatedAt).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit'})}</Text></View>
-    <View style={styles.header}><Text variant={thread.unreadCount?'bodySmStrong':'bodySm'} numberOfLines={1} style={{flex:1}}>
+    <View style={styles.header}><Text variant={thread.unreadCount?'bodySmStrong':'bodySm'} numberOfLines={2} style={{flex:1}}>
       {thread.lastMessage.mine&&!thread.lastMessage.system?t('threadFlow.youPrefix'):''}{threadMessageText(thread.lastMessage)}
     </Text>{thread.unreadCount>0&&<View accessibilityLabel={t('threadFlow.unread',{n:thread.unreadCount})} style={[styles.dot,{backgroundColor:colors.text}]}/>}</View>
     {thread.other.level!=='named'&&<Text variant="caption" color={colors.text2}>{t('threadFlow.from',{event:thread.source})}</Text>}

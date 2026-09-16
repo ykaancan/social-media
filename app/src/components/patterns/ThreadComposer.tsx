@@ -6,7 +6,7 @@ import { BottomBar } from './BottomBar';
 import { Note } from './Note';
 import { IconButton, Input, Text } from '../core';
 
-export function ThreadComposer({onScreen,onSend}:{onScreen:(text:string)=>Promise<{warning:boolean}>;onSend:(text:string,ack:boolean)=>Promise<void>}) {
+export function ThreadComposer({onScreen,onSend,latestAction}:{latestAction?:React.ReactNode;onScreen:(text:string)=>Promise<{warning:boolean}>;onSend:(text:string,ack:boolean)=>Promise<void>}) {
   const {t}=useTranslation(),{colors}=useTheme();
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(false),[warned,setWarned]=useState<string>();
   const running=useRef(false),body=text.trim(),warning=warned===body;
@@ -15,6 +15,7 @@ export function ThreadComposer({onScreen,onSend}:{onScreen:(text:string)=>Promis
     catch{setError(true);}finally{running.current=false;setBusy(false);}
   };
   return <BottomBar>
+    {latestAction}
     {warning&&<Note icon="TriangleAlert"><Text variant="bodySm">{t('composer.screeningWarning')} {t('composer.screeningDetail')}</Text></Note>}
     {error&&<Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
     <View style={{flexDirection:'row',alignItems:'center',gap:8}}>

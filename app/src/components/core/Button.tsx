@@ -116,13 +116,14 @@ export function Button({
       onPressOut={() => {
         scale.value = withTiming(1, { duration: dur.fast, easing: easing.out });
       }}
-      style={full ? styles.full : undefined}
+      style={[styles.hit, full ? styles.full : undefined]}
     >
       <Animated.View
         style={[
           styles.root,
           {
-            height: sizing.height,
+            minHeight: sizing.height,
+            paddingVertical: 6,
             paddingHorizontal: sizing.paddingHorizontal,
             borderRadius: radius.button,
             backgroundColor: skin.background,
@@ -143,11 +144,12 @@ export function Button({
           <Text
             variant="bodyStrong"
             color={skin.foreground}
-            numberOfLines={1}
             style={{
               fontFamily: Figtree_600SemiBold,
               fontSize: sizing.fontSize,
               lineHeight: Math.round(sizing.fontSize * 1.45),
+              flexShrink: 1,
+              textAlign: 'center',
             }}
           >
             {children}
@@ -162,12 +164,14 @@ export function Button({
 }
 
 const styles = StyleSheet.create({
+  hit: { minWidth: 44, minHeight: 44, maxWidth: '100%', justifyContent: 'center' },
   root: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   full: { alignSelf: 'stretch', width: '100%' },
   spinner: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },

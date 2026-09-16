@@ -1,9 +1,33 @@
 # [BRAND] — release sign-off for the first event
 
-Written 2026-09-14 at the end of backend step B-6. Everything below is what
-separates the current build (frontend steps 1–8, backend steps B-1 to B-6, all
-verified against each other) from a first event with real volunteers. Items are
-grouped by who has to act. Nothing here needs a code change unless marked.
+Updated 2026-09-14 during readiness Step 1. Core implementation and historical
+verification are recorded below; they are not production sign-off. Engineering
+gaps, release configuration and physical-device checks remain outstanding.
+
+## 0. Engineering and verification before release
+
+- [ ] **Required CI checks.** After pushing the workflows and observing their
+      first successful runs, configure the target branch rules to require
+      `frontend checks` and `gradle test`. Workflow files alone do not prevent
+      merging. Both workflows run on every pull request without path filters.
+- [ ] **Model screening (code).** Only `KeywordScreener` implements
+      `ContentScreener`; the model half required by AGENTS.md is deferred in
+      the backend plan. Implement and verify it before declaring compliance.
+- [ ] **Authentication abuse protection (code).** Add and test throttling for
+      login, registration and password-reset requests. Content rate limits do
+      not protect these public endpoints.
+- [ ] **Mobile release configuration.** Replace generic app identity, configure
+      Android/iOS application identifiers, EAS project ID and build profiles.
+- [ ] **Push completion (code and devices).** Verify delivery and notification
+      tap routing, foreground/background behavior, logout and language changes.
+      Registration exists; notification-tap navigation is not implemented.
+- [ ] **Operational recovery.** Restore database and avatars into fresh volumes,
+      keep a backup outside the server and verify failure alerting. The default
+      backup destination is on the same host.
+- [ ] **Physical-device rehearsal.** Complete the English/Turkish matrix in
+      `app/FRONTEND_REVIEW.md` on Android and iPhone against the deployed API,
+      including multi-account moderation, reveal history, block and reconnect.
+      That document's backend-boundary section is historical, not current status.
 
 ## 1. Decisions and inputs only the founder can give
 
@@ -35,7 +59,7 @@ grouped by who has to act. Nothing here needs a code change unless marked.
 - [ ] **SMTP** for password-reset mail (`SPRING_MAIL_*`, `BRAND_MAIL_ENABLED=true`).
       Without it the reset link is only logged on the server.
 - [ ] **Expo account + EAS project**: `eas init` in `app/` gives the `projectId`;
-      an Expo access token goes in `BRAND_PUSH_EXPO_ACCESS_TOKEN` with
+      an Expo access token goes in `BRAND_EXPO_ACCESS_TOKEN` with
       `BRAND_PUSH_ENABLED=true`. Push cannot work in Expo Go on Android; the
       volunteers need a development or store build.
 - [ ] **Apple Developer and Google Play accounts** for the store builds
@@ -70,7 +94,16 @@ grouped by who has to act. Nothing here needs a code change unless marked.
 
 ## 5. What was verified, for the record
 
-- Backend: 293 integration tests on Testcontainers; every step walked on an
+- Readiness Step 1, 2026-09-14: clean `npm ci` restored 924 packages without
+      changing the lockfile; TypeScript passed; Jest passed 381 tests across 42
+      suites. Backend `test --no-daemon --rerun-tasks` rebuilt and passed 294
+      tests with zero failures, errors or skips using Java 21 and Docker.
+      Workflow YAML parsing and `git diff --check` passed. See `VERIFICATION.md`
+      for repeatable commands and local environment recovery.
+- Frontend CI is added and both workflows now run on every pull request.
+      GitHub execution and required branch checks are not yet verified or
+      configured; the changes are local and have not been pushed.
+- Historical B-6 record: 294 backend tests on Testcontainers; every step walked on an
   Android emulator against the real server; a code review of B-1 to B-3 with
   all ten findings fixed. Frontend: 381 tests, English and Turkish.
 - Not verified on hardware: iOS at all, real push delivery, camera QR scanning

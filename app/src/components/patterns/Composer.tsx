@@ -141,7 +141,24 @@ export function Composer({
   const showApproveFirstHint = target === 'room' && boardMode === 'approve_first' && !isModerator;
 
   return (
-    <Sheet title={title} onClose={busy ? undefined : onClose} style={styles.sheet} testID="composer">
+    <Sheet title={title} onClose={busy ? undefined : onClose} style={styles.sheet} testID="composer" footer={<>
+      {warning && <Note icon="TriangleAlert" testID="composer-screening-warning">
+        <Text variant="bodyStrong">{t('composer.screeningWarning')}</Text>
+        <Text>{t('composer.screeningDetail')}</Text>
+      </Note>}
+      {error && <Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
+      <Button
+        size="lg"
+        full
+        icon="Send"
+        disabled={!canSend || busy}
+        loading={busy}
+        onPress={() => { void submit(); }}
+        testID="composer-send"
+      >
+        {t(warning ? 'messageFlow.sendAnyway' : 'composer.send')}
+      </Button>
+      </>}>
       {wallOwner ? null : (
         <Tabs
           variant="segmented"
@@ -248,22 +265,6 @@ export function Composer({
       ) : null}
 
       {namedOnly && <Note>{t('messageFlow.namedOnly')}</Note>}
-      {warning && <Note icon="TriangleAlert" testID="composer-screening-warning">
-        <Text variant="bodyStrong">{t('composer.screeningWarning')}</Text>
-        <Text>{t('composer.screeningDetail')}</Text>
-      </Note>}
-      {error && <Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
-      <Button
-        size="lg"
-        full
-        icon="Send"
-        disabled={!canSend || busy}
-        loading={busy}
-        onPress={() => { void submit(); }}
-        testID="composer-send"
-      >
-        {t(warning ? 'messageFlow.sendAnyway' : 'composer.send')}
-      </Button>
     </Sheet>
   );
 }

@@ -84,6 +84,17 @@ describe('PostCard', () => {
     expect(screen.queryByLabelText('React')).toBeNull();
   });
 
+  it('keeps a single working overflow action on an inbox card', async () => {
+    const more = jest.fn(), approve = jest.fn();
+    await wrap(<PostCard text="A note" onMore={more}
+      actions={[{ label: 'Approve to wall', onPress: approve }]} />);
+    expect(screen.getAllByLabelText('More')).toHaveLength(1);
+    await fireEvent.press(screen.getByLabelText('More'));
+    await fireEvent.press(screen.getByText('Approve to wall'));
+    expect(more).toHaveBeenCalledTimes(1);
+    expect(approve).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the source and approved-from-board meta chips', async () => {
     await wrap(
       <PostCard text="x" source="National Platform" approvedFromBoard time="1h" />

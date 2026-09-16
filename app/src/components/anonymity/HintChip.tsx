@@ -39,6 +39,7 @@ export function HintChip({ kind = 'section', value, size = 'md', style, testID }
     fontFamily: bodyFamily(600), // --body-sm-strong family, size overridden per chip
     fontSize: s.fontSize,
     lineHeight: Math.round(s.fontSize * 1.4),
+    flexShrink: 1,
   };
 
   return (
@@ -94,5 +95,5 @@ export function HintChip({ kind = 'section', value, size = 'md', style, testID }
 }
 
 const styles = StyleSheet.create({
-  root: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' },
+  root: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', maxWidth: '100%', flexShrink: 1 },
 });

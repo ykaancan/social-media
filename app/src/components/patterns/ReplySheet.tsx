@@ -125,7 +125,21 @@ export function ReplySheet({
   };
 
   return (
-    <Sheet title={t('inbox.replyPrivately')} onClose={busy?undefined:onClose} style={styles.sheet} testID="reply-sheet">
+    <Sheet title={t('inbox.replyPrivately')} onClose={busy?undefined:onClose} style={styles.sheet} testID="reply-sheet" footer={<>
+      {warning&&<Note icon="TriangleAlert"><Text variant="bodySm">{t('composer.screeningWarning')} {t('composer.screeningDetail')}</Text></Note>}
+      {error&&<Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
+      <Button
+        testID="reply-send"
+        loading={busy}
+        size="lg"
+        full
+        icon="Send"
+        disabled={!canSend||busy}
+        onPress={()=>{void submit();}}
+      >
+        {t(warning?'messageFlow.sendAnyway':'composer.send')}
+      </Button>
+      </>}>
       <View style={styles.previewBlock}>
         <Text variant="captionCaps" upper color={colors.text2}>
           {t('composer.replyingTo')}
@@ -164,19 +178,6 @@ export function ReplySheet({
         </Text>
       </View>
 
-      {warning&&<Note icon="TriangleAlert"><Text variant="bodySm">{t('composer.screeningWarning')} {t('composer.screeningDetail')}</Text></Note>}
-      {error&&<Text accessibilityRole="alert" color={colors.danger}>{t('messageFlow.sendError')}</Text>}
-      <Button
-        testID="reply-send"
-        loading={busy}
-        size="lg"
-        full
-        icon="Send"
-        disabled={!canSend||busy}
-        onPress={()=>{void submit();}}
-      >
-        {t(warning?'messageFlow.sendAnyway':'composer.send')}
-      </Button>
     </Sheet>
   );
 }

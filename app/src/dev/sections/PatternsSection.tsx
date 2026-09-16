@@ -4,7 +4,7 @@ import { AnonymityBadge } from '../../components/anonymity';
 import { QueueCard } from '../../components/cards';
 import { Button, IconButton, StatusPill, Switch } from '../../components/core';
 import {
-  Back,
+  Back, TabHeader, RefreshNotice, EventActions,
   BlockedRow,
   ChoiceRow,
   ThreadRow,
@@ -195,7 +195,7 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
           Screen fills its parent and BottomBar pins itself to the bottom of it.
           The nested SafeAreaView pads the top a second time in here (the gallery
           already ate the real inset) — on a real screen there is only one. */}
-      <Specimen label="Screen · header + body (gap 16, pad 4/16/130) + BottomBar, in a 300px window">
+      <Specimen label="Screen · header + body (gap 16, measured bottom inset) + BottomBar, in a 300px window">
         <View style={frame}>
           <Screen
             header={<Back title={t('onboarding.profileTitle')} onBack={() => undefined} />}
@@ -381,6 +381,11 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
       </Specimen>
       <Specimen label="BlockedRow · anonymous / hint / named">
         <Group><BlockedRow sender={{level:'anonymous'}} onUnblock={()=>undefined}/><BlockedRow sender={{level:'hint',hints:{section:me.section,country:me.country}}} onUnblock={()=>undefined}/><BlockedRow sender={{level:'named',name:me.name}} busy onUnblock={()=>undefined}/></Group>
+      </Specimen>
+      <Specimen label="Screen polish · header, retained content and board actions">
+        <View testID="step4-gallery"><TabHeader title={t('events.title')}/><EventActions onProjector={()=>{}} onControls={()=>{}} onMods={()=>{}}/><RefreshNotice onRetry={()=>{}}/>
+        <MessageCard busy message={{id:'saving',text:posts.bus,sender:{level:'anonymous'},createdAt:'2026-09-10T18:30:00Z',approvedFromBoard:false,state:'new'}} onStateChange={()=>{}}/>
+        <WallHeader user={{name:'Deniz Çağla Yıldırım',section:'ESN İstanbul Teknik Üniversitesi',country:'Türkiye',bio:OWNER.bio}} count={128}/></View>
       </Specimen>
       <PatternSheets />
       <Specimen label="EventHeader · upcoming / live / archived">

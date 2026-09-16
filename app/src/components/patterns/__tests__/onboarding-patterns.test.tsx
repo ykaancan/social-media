@@ -278,7 +278,13 @@ describe('CoachMark', () => {
 });
 
 describe('Screen and BottomBar', () => {
-  it('lays the body out as S.body: pad 4/16/130, gap 16', async () => {
+  it('updates content clearance when a bottom action grows', async () => {
+    await wrap(<Screen testID="measured" bottom={<BottomBar testID="actions"><></></BottomBar>}><></></Screen>);
+    await fireEvent(screen.getByTestId('actions'), 'layout', { nativeEvent: { layout: { height: 210, width: 390, x: 0, y: 0 } } });
+    const container = screen.getByTestId('measured-scroll').children[0] as { children: unknown[] };
+    expect(flat(container.children[0] as { props: { style?: unknown } })).toMatchObject({ paddingBottom: 226 });
+  });
+  it('uses a modest bottom gap plus the safe area without bottom actions', async () => {
     await wrap(
       <Screen testID="s">
         <></>
@@ -292,7 +298,7 @@ describe('Screen and BottomBar', () => {
       gap: 16,
       paddingTop: 4,
       paddingHorizontal: 16,
-      paddingBottom: 130,
+      paddingBottom: 50,
     });
     expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
   });
