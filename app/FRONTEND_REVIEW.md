@@ -1,8 +1,8 @@
 # MVP frontend review
 
-Reviewed 2026-09-10. Steps 1–7 are implemented against the development mock.
-Step 8 automated and browser review is complete; native device sign-off remains pending.
-This is not production or backend integration sign-off.
+Reviewed 2026-09-10; status lines updated 2026-09-14. Steps 1–7 are implemented,
+and every flow was later walked on an Android emulator against the real backend
+(`backend/BACKEND_PLAN.md`, B-1 to B-6). Physical-device sign-off remains pending.
 
 ## Fixes from this review
 
@@ -37,31 +37,30 @@ This is not production or backend integration sign-off.
 
 ## Remaining device sign-off
 
-Android SDK and a Pixel_8 AVD are present, but `adb devices -l` returned no connected
-devices. No Android runtime review was performed. No iOS runtime was available.
+Done since this review, on the Pixel_8 emulator against the real server, in
+English and Turkish: register, profile, pending and approved; join by code;
+walls, inbox and approve-to-wall; live board, queue, reject with undo, close;
+reply from a post, live counterpart reply, reveal; settings and section change;
+projector mode in landscape; cold start in Expo Go.
 
-Start the emulator from Android Studio's Device Manager, then launch the app from
-the `app` directory using the project's Expo workflow. Test both English and Turkish:
+Still pending, and on the founder list in `RELEASE.md`:
 
-- Register/profile/pending and approved preview; logout and offline recovery.
-- Create/join an event, camera permission and QR scanning, date/time controls,
-  clipboard and sharing.
-- Wall/inbox actions, moderation rejection undo, reply/reveal/block, settings,
-  section change, export share sheet and failed deletion recovery.
-- Native keyboard avoidance, Android back, safe-area insets, small-screen scrolling,
-  larger system fonts, screen reader labels and reduced motion.
-- Projector landscape/readability and awake behavior; background/resume behavior.
+- A physical Android phone: camera permission and QR scanning, clipboard and
+  sharing, export share sheet, native keyboard avoidance, Android back,
+  safe-area insets, larger system fonts, screen reader labels, reduced motion,
+  background/resume, and a real push notification (needs a development build,
+  not Expo Go).
+- An iPhone or an iOS simulator on a Mac: the whole matrix above.
 
-Repeat on an iPhone or an iOS simulator on a Mac. Record device/OS, locale, result
-and any failure before changing Step 8 to fully signed off.
+Record device/OS, locale, result and any failure before changing Step 8 to
+fully signed off.
 
 ## Backend and release boundaries
 
-Persistence, server authorization, screening, rate limits, audited identity access,
-real deletion/export, push permission/token registration and delivery, and live
-STOMP multi-device behavior still require backend implementation and integration.
-The development mock is memory-only; it does not seed messages or conversations.
-The minimal admin interface and published privacy/terms documents are outstanding.
-
-No backend, migrations, admin interface or read-only design files changed in this
-review. No intentional product-contract deviations. Changes have not been pushed.
+The boundaries this review listed (persistence, server authorization,
+screening, rate limits, audited identity access, real deletion and export, push
+registration and delivery, live STOMP multi-device behaviour, the admin page)
+are implemented and merged as backend steps B-1 to B-6. What remains before a
+first event is the founder's list in `RELEASE.md`: brand name, published
+privacy and terms documents, domain and server, SMTP, Expo and store
+credentials, and the device checks above.

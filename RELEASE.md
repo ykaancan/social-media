@@ -101,8 +101,8 @@ gaps, release configuration and physical-device checks remain outstanding.
       Workflow YAML parsing and `git diff --check` passed. See `VERIFICATION.md`
       for repeatable commands and local environment recovery.
 - Frontend CI is added and both workflows now run on every pull request.
-      GitHub execution and required branch checks are not yet verified or
-      configured; the changes are local and have not been pushed.
+      Required branch checks are not yet configured. See the PR for GitHub
+      execution results; local verification is recorded in `VERIFICATION.md`.
 - Historical B-6 record: 294 backend tests on Testcontainers; every step walked on an
   Android emulator against the real server; a code review of B-1 to B-3 with
   all ten findings fixed. Frontend: 381 tests, English and Turkish.

@@ -310,6 +310,11 @@ left out, and any deviation from `CLAUDE.md`.
 Order matters: B-2 before B-3 because a board post to a person is an inbox
 message; B-3 before B-4 because a thread's origin is a post or a message.
 
+**Status (2026-09-14): all six steps are done and merged to `main`** (pull
+request #1). The per-step records follow section 6. The one B-6 item not done
+as written is the physical-phone matrix, which needs a phone and is on the
+founder list.
+
 ---
 
 ## 5. Project layout (created in B-1)
@@ -350,15 +355,10 @@ brand exists (one `sed`, one commit).
 
 ## 6. Things that need the founder, not an agent
 
-- The confirmed list of Türkiye ESN sections for `V2__reference_data.sql` [B13].
-- SMTP credentials for password-reset mail, or accept "log the link" until launch.
-- An Expo account access token for push [B8] and the app's `projectId`.
-- Where the server runs (a single container host with managed Postgres is
-  enough for stage 1) and the domain, so `EXPO_PUBLIC_API_URL` and the
-  privacy/terms URLs can be set.
-- KVKK documents: privacy policy and terms URLs; VERBİS is outside the code.
-
-None of these block B-1 through B-4.
+Moved to [`../RELEASE.md`](../RELEASE.md) at the end of B-6, which is the
+maintained list: brand name, section list, domain, privacy and terms URLs,
+KVKK, bootstrap admin email, screening terms, server and secrets, SMTP, Expo
+and store credentials, and the pre-event checks.
 
 ---
 
