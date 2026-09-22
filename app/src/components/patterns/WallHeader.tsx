@@ -94,10 +94,11 @@ export function WallHeader({
           <Text variant={nameVariant} upper color={user.name ? colors.text : colors.text3}>
             {user.name || t('onboarding.previewName')}
           </Text>
-          {chip}
+
         </View>
       </View>
 
+      {chip}
       {preview ? (
         <Text variant="body" color={user.bio ? colors.text : colors.text3}>
           {user.bio || t('onboarding.previewBio')}

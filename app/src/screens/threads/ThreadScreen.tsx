@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, ScrollView, View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useApi, type ReportReason } from '../../api';
 import { AnonymityBadge } from '../../components/anonymity';
@@ -10,6 +10,7 @@ import { useLocale, useTranslation } from '../../i18n';
 import type { RootScreenProps } from '../../navigation/types';
 import { useSession } from '../../session';
 import { useMessages } from '../../messages/MessagesProvider';
+import { useConversationScroll } from '../../threads/useConversationScroll';
 import { useThread } from '../../threads/useThread';
 import { useThreads } from '../../threads/ThreadsProvider';
 import { useSendAttempt } from '../../threads/FirstReply';
@@ -20,8 +21,9 @@ export function ThreadScreen({route,navigation}:RootScreenProps<'Thread'>) {
   const {t}=useTranslation(),locale=useLocale(),{me}=useSession(),toast=useToast(),attempt=useSendAttempt();
   const [sheet,setSheet]=useState<string|null>(null),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false);
   const working=useRef(false),lastRead=useRef(''),focused=useIsFocused();
-  const scroll=useRef<ScrollView>(null);
+
   const latest=thread?.messages.at(-1)?.id;
+  const reading=useConversationScroll(latest);
   // Reading acknowledges only the messages rendered by this foreground screen.
   const markRead=useCallback(()=>{
     if(!focused||!latest||lastRead.current===latest||AppState.currentState!=='active')return;
@@ -36,10 +38,10 @@ export function ThreadScreen({route,navigation}:RootScreenProps<'Thread'>) {
     catch{setFailed(true);}finally{working.current=false;setBusy(false);}
   };
   const open=(value:string)=>{setFailed(false);setSheet(value);};
-  return <Screen testID="thread-screen" scrollRef={scroll} onContentSizeChange={()=>scroll.current?.scrollToEnd({animated:false})} keyboard contentStyle={{paddingBottom:240}} header={<Back middle={thread&&<View style={{gap:4}}><AnonymityBadge {...thread.other}/>{thread.other.level!=='named'&&<Text variant="caption">{t('threadFlow.from',{event:thread.source})}</Text>}</View>} onBack={()=>navigation.goBack()}
+  return <Screen testID="thread-screen" scrollRef={reading.scroll} onScroll={reading.onScroll} onViewportChange={reading.onContentSizeChange} onContentSizeChange={reading.onContentSizeChange} keyboard header={<Back middle={thread&&<View style={{gap:4}}><AnonymityBadge {...thread.other}/>{thread.other.level!=='named'&&<Text variant="caption">{t('threadFlow.from',{event:thread.source})}</Text>}</View>} onBack={()=>navigation.goBack()}
     right={thread&&<IconButton icon="Ellipsis" label={t('common.more')} testID="thread-more" onPress={()=>open('more')}/>}/>}
-    bottom={thread&&<ThreadComposer key={thread.id} onScreen={text=>api.screenMessage(text,'thread')} onSend={async(text,ack)=>{
-      const payload={text,screeningAcknowledged:ack};await api.sendThreadMessage(thread.id,{...payload,requestId:attempt.key(payload)});attempt.complete();await refresh();await refreshList();
+    bottom={thread&&<ThreadComposer latestAction={reading.showLatest?<Button size="sm" variant="secondary" onPress={reading.jump}>{t('threadFlow.latest')}</Button>:undefined} key={thread.id} onScreen={text=>api.screenMessage(text,'thread')} onSend={async(text,ack)=>{
+      const payload={text,screeningAcknowledged:ack};await api.sendThreadMessage(thread.id,{...payload,requestId:attempt.key(payload)});attempt.complete();reading.jump();await refresh();await refreshList();
     }}/> }>
     {!thread?<LoadState error={error} onRetry={()=>{void refresh();}}/>:<>
       {error&&<Note><Text>{t('threadFlow.actionError')}</Text><Button variant="ghost" onPress={()=>{void refresh();}}>{t('common.retry')}</Button></Note>}

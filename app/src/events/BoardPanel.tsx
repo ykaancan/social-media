@@ -3,7 +3,7 @@ import React, { useRef, useState } from 'react';
 import { useApi, type BoardPost, type BoardSnapshot, type ReportReason } from '../api';
 import { Sheet, IconButton, Button, Tabs, StatusPill, Text } from '../components/core';
 import { PostCard, QueueCard } from '../components/cards';
-import { Empty, Note, Swipe, UnpublishedPost, MoreSheet, ReportSheet, ConfirmSheet, ControlsSheet, ModsSheet, EventDatePicker, closeBoardConfirmBody, useToast } from '../components/patterns';
+import { Empty, EventActions, Note, Swipe, UnpublishedPost, MoreSheet, ReportSheet, ConfirmSheet, ControlsSheet, ModsSheet, EventDatePicker, closeBoardConfirmBody, useToast } from '../components/patterns';
 import { useLocale, useTranslation } from '../i18n';
 import { useSession } from '../session';
 import { BoardComposer } from './BoardComposer';
@@ -33,12 +33,7 @@ export function BoardPanel({tab,board,refresh,composing,onComposerClose,onProjec
   const pendingIds=selected.filter(id=>board.queue.some(row=>row.id===id));
   const readOnlyRows=board.reviewed.filter(p=>p.state===filter);
   return <>
-    <Button variant="secondary" icon="Projector" testID="board-projector" onPress={onProjector}>{t('events.projector')}</Button>
-    {event.isModerator && <>
-      <Button variant="ghost" icon="Settings" testID="board-controls" onPress={()=>open('controls')} disabled={event.status==='archived'}>{t('events.boardControls')}</Button>
-      {board.canManageModerators && <Button variant="ghost" icon="Users" onPress={()=>open('mods')} disabled={event.status==='archived'}>{t('events.coModerators')}</Button>}
-
-    </>}
+    <EventActions onProjector={onProjector} disabled={event.status==='archived'} onControls={event.isModerator?()=>open('controls'):undefined} onMods={event.isModerator&&board.canManageModerators?()=>open('mods'):undefined}/>
     {tab==='queue' && event.isModerator ? <>
       <Tabs variant="segmented" value={filter} onChange={value=>{setFilter(value);setSelecting(false);setSelected([]);}}
         items={['pending','approved','rejected'].map(id=>({id,label:t(`boardFlow.${id === 'rejected' ? 'rejectedLabel' : id}`)}))}/>

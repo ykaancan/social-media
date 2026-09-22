@@ -84,8 +84,7 @@ export function Chip({
         <Text
           variant="bodySmStrong"
           color={foreground}
-          numberOfLines={1}
-          style={{ fontSize: s.fontSize, lineHeight: Math.round(s.fontSize * 1.4) }}
+          style={{ fontSize: s.fontSize, lineHeight: Math.round(s.fontSize * 1.4), flexShrink: 1 }}
         >
           {children}
         </Text>
@@ -96,7 +95,8 @@ export function Chip({
   );
 
   const box: ViewStyle = {
-    height: s.height,
+    minHeight: s.height,
+    paddingVertical: 3,
     paddingHorizontal: s.paddingHorizontal,
     gap: s.gap,
     borderRadius: radius.chip,
@@ -140,6 +140,7 @@ const styles = StyleSheet.create({
     // never changes size when it becomes selected
     borderWidth: 1.5,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
-  press: { alignSelf: 'flex-start' },
+  press: { alignSelf: 'flex-start', maxWidth: '100%', minWidth: 44, minHeight: 44, justifyContent: 'center' },
 });

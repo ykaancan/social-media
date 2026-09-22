@@ -74,6 +74,15 @@ export function CardsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) =
         />
       </Specimen>
 
+      <Specimen label="PostCard · long hints and source · compact inbox actions">
+        <PostCard testID="polish-long-card"
+          text={posts.speakerTr}
+          sender={{ level: 'hint', hints: { section: 'ESN İstanbul Teknik Üniversitesi', country: 'Türkiye', letter: 'Ş' } }}
+          time="23:59" source="National Platform · İstanbul Teknik Üniversitesi"
+          onMore={() => undefined}
+          actions={[{ label: t('inbox.approveToWall'), icon: 'Check' }, { label: t('inbox.keepPrivate'), variant: 'secondary' }]}
+        />
+      </Specimen>
       <Specimen label="PostCard · wall">
         <PostCard
           text={posts.speakerTr}

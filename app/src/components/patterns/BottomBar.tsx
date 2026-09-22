@@ -1,6 +1,7 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { BottomInsetContext } from './Screen';
 import { useTheme } from '../../theme';
 
 export interface BottomBarProps {
@@ -32,6 +33,8 @@ const FADE = 20;
  */
 export function BottomBar({ children, row = false, style, testID }: BottomBarProps) {
   const { colors } = useTheme();
+  const reportHeight = useContext(BottomInsetContext);
+  useEffect(() => () => reportHeight(0), [reportHeight]);
   // useSafeAreaInsets() throws without a provider, and the gallery mounts this
   // bare — read the context and fall back, exactly like TabBar and Sheet do.
   const insets = useContext(SafeAreaInsetsContext) ?? NO_INSETS;
@@ -39,6 +42,7 @@ export function BottomBar({ children, row = false, style, testID }: BottomBarPro
   return (
     <View
       testID={testID}
+      onLayout={event => reportHeight(event.nativeEvent.layout.height)}
       style={[
         styles.root,
         { paddingBottom: Math.max(insets.bottom, 34) },

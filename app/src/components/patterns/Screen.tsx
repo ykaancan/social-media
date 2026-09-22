@@ -1,17 +1,21 @@
-import React from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   View,
+  type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 
+export const BottomInsetContext = createContext<(height: number) => void>(() => {});
 export interface ScreenProps {
+  onScroll?: ScrollViewProps['onScroll'];
+  onViewportChange?: ScrollViewProps['onLayout'];
   scrollRef?: React.Ref<ScrollView>;
   onContentSizeChange?: (width:number,height:number)=>void;
   children: React.ReactNode;
@@ -33,21 +37,15 @@ export interface ScreenProps {
 }
 
 /**
- * The screen scaffold every product screen composes: `S.frame` + `S.header` +
- * `S.body` + `S.bottom` from `prototypes/onboarding-app.jsx`.
- *
- * The prototype's frame chrome (390x844 rounded phone, the fake status bar and
- * the `#e8e8e8` page behind it) is scaffolding, not product — HANDOFF §0 — so
- * the frame becomes a plain `SafeAreaView` on `--bg` with the real top inset.
- *
- * `S.body` is `padding: 4px 16px 130px` with `gap: 16`. The 130px is what makes
- * the last card scroll clear of the `BottomBar`; keep it even on a screen with
- * no bar, so two screens in the same stack scroll to the same place.
+ * Shared screen scaffold with a fixed header and scrolling body.
+ * BottomBar reports its actual height so the last row clears visible actions.
  */
 export function Screen({
   children,
   scrollRef,
   onContentSizeChange,
+  onScroll,
+  onViewportChange,
   header,
   scroll = true,
   bottom,
@@ -57,14 +55,19 @@ export function Screen({
   testID,
 }: ScreenProps) {
   const { colors } = useTheme();
+  const [bottomHeight, setBottomHeight] = useState(0);
+  const insets = useContext(SafeAreaInsetsContext);
 
   // The gap lives on this View rather than on the ScrollView's content
   // container so the non-scrolling body is laid out identically.
-  const body = <View style={[styles.body, contentStyle]}>{children}</View>;
+  const body = <View style={[styles.body, { paddingBottom: Math.max(bottomHeight, insets?.bottom ?? 0) + 16 }, contentStyle]}>{children}</View>;
 
   const content = scroll ? (
     <ScrollView
       ref={scrollRef}
+      onScroll={onScroll}
+      onLayout={onViewportChange}
+      scrollEventThrottle={16}
       onContentSizeChange={onContentSizeChange}
       testID={testID ? `${testID}-scroll` : undefined}
       style={styles.fill}
@@ -81,7 +84,7 @@ export function Screen({
     <>
       {header ?? null}
       {content}
-      {bottom ?? null}
+      <BottomInsetContext.Provider value={setBottomHeight}>{bottom ?? null}</BottomInsetContext.Provider>
     </>
   );
 
@@ -108,5 +111,5 @@ const styles = StyleSheet.create({
   // `flexGrow` (not `flex`) so a short body can still centre an Empty state
   // while a long one keeps scrolling.
   scrollContent: { flexGrow: 1 },
-  body: { flexGrow: 1, gap: 16, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 130 },
+  body: { flexGrow: 1, gap: 16, paddingTop: 4, paddingHorizontal: 16, paddingBottom: 16 },
 });

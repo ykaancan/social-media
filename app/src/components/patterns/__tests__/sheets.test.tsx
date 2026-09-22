@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen } from '@testing-library/react-native';
+import { configure, fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet, Text as RNText, type ViewStyle } from 'react-native';
 import { initI18n, setLocale, t } from '../../../i18n';
@@ -747,6 +747,8 @@ describe('Composer delivery screening', () => {
     await fireEvent.press(screen.getByTestId('composer-send'));
     expect(onSend).not.toHaveBeenCalled();
     expect(screen.getByTestId('composer-screening-warning')).toBeTruthy();
+    expect(within(screen.getByTestId('composer-footer')).getByTestId('composer-screening-warning')).toBeTruthy();
+    expect(within(screen.getByTestId('composer-body')).queryByTestId('composer-send')).toBeNull();
     await fireEvent.changeText(screen.getByTestId('composer-text'), 'Edited draft');
     await fireEvent.press(screen.getByTestId('composer-send'));
     expect(onScreen).toHaveBeenCalledTimes(2);
@@ -760,5 +762,6 @@ describe('Composer delivery screening', () => {
     await fireEvent.press(screen.getByTestId('composer-send'));
     expect(screen.getByTestId('composer-text').props.value).toBe('Keep my draft');
     expect(screen.getByText(t('messageFlow.sendError'))).toBeTruthy();
+    expect(within(screen.getByTestId('composer-footer')).getByText(t('messageFlow.sendError'))).toBeTruthy();
   });
 });

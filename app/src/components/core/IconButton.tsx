@@ -130,7 +130,7 @@ export function IconButton({
 }
 
 const styles = StyleSheet.create({
-  hit: { alignSelf: 'flex-start' },
+  hit: { alignSelf: 'flex-start', minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   root: { alignItems: 'center', justifyContent: 'center', flexGrow: 0, flexShrink: 0 },
   badge: {
     position: 'absolute',

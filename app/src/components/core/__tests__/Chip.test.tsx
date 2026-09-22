@@ -32,7 +32,7 @@ describe('Chip', () => {
     expect(s.backgroundColor).toBe(colors.surfaceMuted);
     expect(s.borderColor).toBe('transparent');
     expect(s.borderWidth).toBe(1.5);
-    expect(s.height).toBe(32);
+    expect(s.minHeight).toBe(32);
     expect(screen.getByText('ESN Ankara · Türkiye')).toBeTruthy();
   });
 
@@ -67,14 +67,14 @@ describe('Chip', () => {
     expect(styleOf('chip').backgroundColor).toBe(colors.liveSoft);
   });
 
-  it('shrinks to 26px at size sm', async () => {
+  it('has a 26px minimum visual height at size sm', async () => {
     await wrap(
       <Chip testID="chip" size="sm">
         First letter
       </Chip>
     );
     const s = styleOf('chip');
-    expect(s.height).toBe(26);
+    expect(s.minHeight).toBe(26);
     expect(s.paddingHorizontal).toBe(10);
   });
 

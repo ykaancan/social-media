@@ -6,7 +6,7 @@ name: backend
 #
 # Push is filtered by branch rather than by path: a `v*` tag push carries no file
 # diff, so a `paths:` filter would skip exactly the event that publishes the
-# release image. Pull requests keep the path filter.
+# release image. Pull requests are unfiltered so required checks always run.
 on:
   push:
     branches:
@@ -14,10 +14,7 @@ on:
     tags:
       - 'v*'
   pull_request:
-    paths:
-      - 'backend/**'
-      - 'admin/**'
-      - '.github/workflows/backend.yml'
+  workflow_dispatch:
 
 jobs:
   test:
