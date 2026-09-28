@@ -1,6 +1,7 @@
 import type { AccountSettings, BlockedEntry } from './settings';
 import type { OpenThreadRequest, ThreadDetail, ThreadsSnapshot } from './threads';
 import { Client } from '@stomp/stompjs';
+import { File as FsFile } from 'expo-file-system';
 import { Platform } from 'react-native';
 import type { BoardSnapshot, SendBoardPost, RejectionReceipt } from './board';
 import type { ReportReason } from './messages';
@@ -186,13 +187,16 @@ export class HttpApi implements ApiClient {
 
   private async uploadPhoto(uri: string): Promise<void> {
     const form = new FormData();
-    // React Native's FormData takes this {uri,name,type} shape; the DOM lib
-    // types only know Blob, hence the cast.
-    form.append('photo', {
-      uri,
-      name: 'avatar.jpg',
-      type: 'image/jpeg',
-    } as unknown as Blob);
+    // Expo 57 installs `expo/fetch` as the global fetch on native. Its multipart
+    // encoder takes strings, Blobs and objects with `bytes()`, and throws
+    // "Unsupported FormDataPart implementation" on React Native's old
+    // {uri,name,type} part. An expo-file-system File has `bytes()`, `name` and
+    // `type`. On web the picker hands back a blob/data URL instead.
+    if (Platform.OS === 'web') {
+      form.append('photo', await (await fetch(uri)).blob(), 'avatar.jpg');
+    } else {
+      form.append('photo', new FsFile(uri) as unknown as Blob);
+    }
     await this.request<{ avatarUrl: string }>('/me/photo', { method: 'POST', body: form });
   }
 
