@@ -16,6 +16,7 @@ import app.brand.section.SectionRepository;
 import app.brand.security.JwtService;
 import app.brand.support.AbstractIntegrationTest;
 import app.brand.support.MutableClock;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -57,6 +58,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @RecordApplicationEvents
 class AccountIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String FIRE = "🔥";
 
@@ -371,13 +376,14 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
                 .filter(candidate -> candidate.getOrganisationId().equals(esn))
                 .min(Comparator.comparing(Section::getName)).orElseThrow();
 
-        AppUser member = account(section, "Member");
+        // Accounts without the default membership: each case writes its own.
+        AppUser member = account(null, "Member");
         membership(esn, member.getId(), "approved", "member", section.getId(), null);
-        AppUser admin = account(section, "Admin");
+        AppUser admin = account(null, "Admin");
         membership(esn, admin.getId(), "approved", "admin", section.getId(), null);
         membership(bar, admin.getId(), "approved", "admin", null, null);
         // Someone the admin approved: the approval survives with approved_by nulled.
-        AppUser approvedByAdmin = account(section, "Approved");
+        AppUser approvedByAdmin = account(null, "Approved");
         membership(bar, approvedByAdmin.getId(), "approved", "member", null, admin.getId());
 
         for (AppUser leaving : List.of(member, admin)) {
@@ -403,13 +409,16 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
         Section section = sections.findAll().stream()
                 .filter(candidate -> candidate.getOrganisationId().equals(esn))
                 .min(Comparator.comparing(Section::getName)).orElseThrow();
-        AppUser me = account(section, "Exporter");
+        AppUser me = account(null, "Exporter");
         membership(esn, me.getId(), "approved", "admin", section.getId(), null);
         membership(bar, me.getId(), "pending", "member", null, null);
 
-        JsonNode memberships = json(mockMvc.perform(
+        JsonNode export = json(mockMvc.perform(
                         get("/me/export").header(HttpHeaders.AUTHORIZATION, bearer(me)))
-                .andExpect(status().isOk())).get("memberships");
+                .andExpect(status().isOk()));
+        // [D15] No account-level section: the memberships carry it.
+        assertThat(export.get("profile").has("section")).isFalse();
+        JsonNode memberships = export.get("memberships");
 
         assertThat(memberships).hasSize(2);
         JsonNode first = memberships.get(0);
@@ -696,8 +705,10 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
         AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            testMemberships.approvedInEsn(saved.getId(), section.getId());
+        }
         created.add(saved.getId());
         return saved;
     }

@@ -2,11 +2,13 @@ package app.brand.section;
 
 import app.brand.common.ApiException;
 import app.brand.common.TextNormalizer;
+import app.brand.organisation.MembershipStatus;
+import app.brand.organisation.OrganisationMemberRepository;
+import app.brand.organisation.OrganisationRepository;
 import app.brand.section.SectionDtos.SectionDetailDto;
 import app.brand.section.SectionDtos.SectionSummaryDto;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
-import app.brand.user.AppUserRepository;
 import app.brand.user.MeMapper;
 import app.brand.user.PersonDto;
 import app.brand.user.SectionRefDto;
@@ -20,10 +22,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Sections are membership tags, not tenants: every signed-in account may read
- * every section and every roster, at any status. The profile-setup screen needs
- * the picker before there is any approval at all, and hints and event people need
- * cross-section rosters.
+ * Sections are membership tags, not tenants, and [D15] each belongs to one
+ * organisation (TENANT_PLAN.md §3 rule 5):
+ *
+ * <ul>
+ *   <li>An organisation's section list is readable by any active account,
+ *       because the section picker of {@code POST /organisations/join} runs
+ *       before a membership exists.</li>
+ *   <li>A section's page and roster are readable only by an approved member of
+ *       the section's organisation; anyone else gets {@code 404}, so "exists but
+ *       not yours" looks like "does not exist" [B14].</li>
+ * </ul>
+ *
+ * <p>A person is a member of a section when their membership in its organisation
+ * is {@code approved} and has that section, and their account is {@code active}.
  *
  * <p>Nothing here is an administrative surface — a section has no powers to
  * expose.
@@ -40,27 +52,38 @@ public class SectionService {
                     .thenComparing(user -> user.getId().toString());
 
     private final SectionRepository sections;
-    private final AppUserRepository users;
+    private final OrganisationRepository organisations;
+    private final OrganisationMemberRepository memberships;
     private final SharedEventLookup sharedEvents;
     private final MeMapper meMapper;
 
     public SectionService(SectionRepository sections,
-                          AppUserRepository users,
+                          OrganisationRepository organisations,
+                          OrganisationMemberRepository memberships,
                           SharedEventLookup sharedEvents,
                           MeMapper meMapper) {
         this.sections = sections;
-        this.users = users;
+        this.organisations = organisations;
+        this.memberships = memberships;
         this.sharedEvents = sharedEvents;
         this.meMapper = meMapper;
     }
 
-    /** Every section, with its real active-account count, ordered by normalised name. */
+    /**
+     * {@code GET /organisations/{id}/sections}: the organisation's sections with
+     * their real member counts, ordered by normalised name. Unknown organisation →
+     * 404; an organisation without sections → an empty list.
+     */
     @Transactional(readOnly = true)
-    public List<SectionSummaryDto> list() {
-        Map<UUID, Long> counts = sections.countMembersByStatus(AccountStatus.ACTIVE).stream()
+    public List<SectionSummaryDto> listOf(UUID organisationId) {
+        if (!organisations.existsById(organisationId)) {
+            throw ApiException.notFound("no such organisation");
+        }
+        Map<UUID, Long> counts = sections
+                .countMembers(organisationId, MembershipStatus.APPROVED, AccountStatus.ACTIVE).stream()
                 .collect(Collectors.toMap(SectionMemberCount::sectionId, SectionMemberCount::members));
 
-        return sections.findAll().stream()
+        return sections.findByOrganisationId(organisationId).stream()
                 .sorted(Comparator.comparing(section -> TextNormalizer.normalizeForSearch(section.getName())))
                 .map(section -> new SectionSummaryDto(
                         section.getId().toString(),
@@ -71,39 +94,49 @@ public class SectionService {
     }
 
     /**
-     * The section page. The viewer comes first in their own section whatever their
-     * status — someone waiting for approval still sees themselves in the section
-     * they picked — and everyone after them is an active account in it. Interim
-     * until step T-2 [D15]: the roster is still read from {@code app_user.section_id}.
+     * {@code GET /sections/{id}}, for an approved member of the section's
+     * organisation only (404 otherwise). The viewer comes first when the section
+     * is their own; everyone after them is a member of it, by normalised name.
+     *
+     * <p>The viewer is always an approved member of an active account here (the
+     * access filter and the check below see to that), so when they are listed they
+     * are also in the count: {@code rosterTotal} is the member count and nobody is
+     * counted twice.
      */
     @Transactional(readOnly = true)
     public SectionDetailDto detail(UUID viewerId, UUID sectionId) {
         Section section = sections.findById(sectionId)
                 .orElseThrow(() -> ApiException.notFound("no such section"));
+        boolean approvedMember = memberships
+                .findByOrganisationIdAndUserId(section.getOrganisationId(), viewerId)
+                .map(membership -> membership.getStatus() == MembershipStatus.APPROVED)
+                .orElse(false);
+        if (!approvedMember) {
+            throw ApiException.notFound("no such section");
+        }
         SectionRefDto ref = meMapper.toSectionRef(section);
 
-        AppUser viewer = users.findById(viewerId).orElse(null);
-        List<AppUser> members = users.findBySection_IdAndStatus(sectionId, AccountStatus.ACTIVE).stream()
+        List<AppUser> members = sections
+                .findMembers(sectionId, MembershipStatus.APPROVED, AccountStatus.ACTIVE).stream()
                 .filter(member -> member.getName() != null && !member.getName().isBlank())
                 .sorted(BY_NAME)
                 .toList();
         long memberCount = members.size();
 
-        boolean viewerListed = viewer != null
-                && viewer.getSection() != null
-                && viewer.getSection().getId().equals(sectionId)
-                && viewer.getName() != null
-                && !viewer.getName().isBlank();
+        AppUser viewer = members.stream()
+                .filter(member -> member.getId().equals(viewerId))
+                .findFirst()
+                .orElse(null);
 
         List<AppUser> page = new ArrayList<>();
-        if (viewerListed) {
+        if (viewer != null) {
             page.add(viewer);
         }
         for (AppUser member : members) {
             if (page.size() >= ROSTER_PAGE) {
                 break;
             }
-            if (!viewerListed || !member.getId().equals(viewer.getId())) {
+            if (viewer == null || !member.getId().equals(viewerId)) {
                 page.add(member);
             }
         }
@@ -124,18 +157,12 @@ public class SectionService {
                     wallEvent == null ? null : wallEvent.toString()));
         }
 
-        // The viewer is in the roster but not in the active count while they are
-        // not active, so they are added once here — "and N more" is never
-        // negative and nobody is counted twice.
-        long rosterTotal = memberCount
-                + (viewerListed && viewer.getStatus() != AccountStatus.ACTIVE ? 1 : 0);
-
         return new SectionDetailDto(
                 section.getId().toString(),
                 section.getName(),
                 section.getCountry().getName(),
                 memberCount,
                 roster,
-                rosterTotal);
+                memberCount);
     }
 }

@@ -28,6 +28,7 @@ import app.brand.support.MutableClock;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -66,6 +67,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @RecordApplicationEvents
 class ThreadIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -333,8 +338,8 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
 
         // [B4] The chips are the snapshot's: changing section later does not
         // rewrite what a card already said.
-        f.author.setSection(f.sectionB);
-        users.saveAndFlush(f.author);
+        jdbc.update("update organisation_member set section_id = ? where user_id = ? and organisation_id = ?",
+                f.sectionB.getId(), f.author.getId(), testMemberships.esnTurkiye());
         JsonNode after = thread(f.viewer, threadId).get("other");
         assertThat(after.get("hints").get("section").asText()).isEqualTo(f.sectionA.getName());
     }
@@ -967,8 +972,9 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 
     private String bearer(AppUser user) {

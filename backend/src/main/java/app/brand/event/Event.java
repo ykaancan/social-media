@@ -17,9 +17,13 @@ import java.util.UUID;
  * A time-boxed board. There is no {@code status} column [B5]/[D4] — see
  * {@link EventStatus}.
  *
- * <p>{@code section} is always the creator's section at creation time [D11]: the
- * DTO shows it only when {@code scope = section}, but the country is read from it
- * either way, because country is not a field of its own anywhere in this product.
+ * <p>{@code section} is the creator's section <em>in the event's organisation</em>
+ * (their membership's section) at creation time [D11]/[D15]: the DTO shows it only
+ * when {@code scope = section}, but the country is read from it either way,
+ * because country is not a field of its own anywhere in this product.
+ *
+ * <p>TENANT_PLAN.md P9: in an organisation without sections an event has neither
+ * a section nor a scope, so both are optional.
  */
 @Entity
 @Table(name = "event")
@@ -33,18 +37,16 @@ public class Event {
     @Column(name = "name", nullable = false)
     private String name;
 
-    /** {@code section | national}. */
-    @Column(name = "scope", nullable = false)
+    /** {@code section | national}; null in an organisation without sections (P9). */
+    @Column(name = "scope")
     private String scope;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "section_id", nullable = false)
+    /** Null in an organisation without sections (P9). */
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    @JoinColumn(name = "section_id")
     private Section section;
 
-    /**
-     * [D13] The organisation that owns this event. In step T-1 it is always the
-     * organisation of the creator's section; step T-2 lets the request name it.
-     */
+    /** [D13] The organisation that owns this event, named by the create request. */
     @Column(name = "organisation_id", nullable = false, updatable = false)
     private UUID organisationId;
 

@@ -13,7 +13,7 @@ import app.brand.organisation.Organisation;
 import app.brand.organisation.OrganisationMember;
 import app.brand.organisation.OrganisationMemberRepository;
 import app.brand.organisation.OrganisationRepository;
-import app.brand.section.Section;
+import app.brand.organisation.SectionChoice;
 import app.brand.section.SectionRepository;
 import app.brand.security.AppPrincipal;
 import app.brand.user.AccountStatus;
@@ -58,6 +58,7 @@ public class AdminOrganisationService {
     private final OrganisationMemberRepository members;
     private final AdminUserRepository users;
     private final SectionRepository sections;
+    private final SectionChoice sectionChoice;
     private final EventRepository events;
     private final EventMemberRepository eventMembers;
     private final AuditLogRepository auditLog;
@@ -69,6 +70,7 @@ public class AdminOrganisationService {
                                     OrganisationMemberRepository members,
                                     AdminUserRepository users,
                                     SectionRepository sections,
+                                    SectionChoice sectionChoice,
                                     EventRepository events,
                                     EventMemberRepository eventMembers,
                                     AuditLogRepository auditLog,
@@ -79,6 +81,7 @@ public class AdminOrganisationService {
         this.members = members;
         this.users = users;
         this.sections = sections;
+        this.sectionChoice = sectionChoice;
         this.events = events;
         this.eventMembers = eventMembers;
         this.auditLog = auditLog;
@@ -172,7 +175,7 @@ public class AdminOrganisationService {
             existing.setRole(MembershipRole.ADMIN);
             members.saveAndFlush(existing);
         } else {
-            UUID sectionId = sectionFor(organisation, rawSectionId);
+            UUID sectionId = sectionChoice.sectionFor(organisation, rawSectionId);
             members.saveAndFlush(OrganisationMember.approvedAdmin(
                     organisationId, user.getId(), sectionId, adminId, now));
         }
@@ -304,30 +307,6 @@ public class AdminOrganisationService {
     private Organisation requireOrganisation(UUID organisationId) {
         return organisations.findById(organisationId)
                 .orElseThrow(() -> ApiException.notFound("no such organisation"));
-    }
-
-    /** [D15] Required and of this organisation iff it has sections; absent otherwise. */
-    private UUID sectionFor(Organisation organisation, String rawSectionId) {
-        boolean given = rawSectionId != null && !rawSectionId.isBlank();
-        if (!organisation.hasSections()) {
-            if (given) {
-                throw ApiException.validation("this organisation has no sections", "sectionId");
-            }
-            return null;
-        }
-        if (!given) {
-            throw ApiException.validation("a section is required in this organisation", "sectionId");
-        }
-        UUID sectionId;
-        try {
-            sectionId = UUID.fromString(rawSectionId.trim());
-        } catch (IllegalArgumentException ex) {
-            throw ApiException.validation("unknown section", "sectionId");
-        }
-        return sections.findById(sectionId)
-                .filter(section -> section.getOrganisationId().equals(organisation.getId()))
-                .map(Section::getId)
-                .orElseThrow(() -> ApiException.validation("not a section of this organisation", "sectionId"));
     }
 
     private void auditOrganisation(UUID adminId, AuditAction action, UUID organisationId, Instant now) {

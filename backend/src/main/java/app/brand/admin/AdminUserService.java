@@ -129,7 +129,6 @@ public class AdminUserService {
                 user.getName(),
                 user.getBio(),
                 meMapper.avatarUrl(user.getAvatarKey()),
-                meMapper.toSectionRef(user.getSection()),
                 user.getStatus(),
                 user.getRole(),
                 user.getCreatedAt(),

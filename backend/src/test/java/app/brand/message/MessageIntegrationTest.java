@@ -25,6 +25,7 @@ import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.UserSettings;
 import app.brand.user.UserSettingsRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -60,6 +61,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @RecordApplicationEvents
 class MessageIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -373,8 +378,10 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
         sendAt(f.sender, note(f.eventId, f.owner, "All of me", "named"), 3);
 
         // The sender moves section [D7] and changes their name, after sending.
+        // [D15] The section is the membership's, in the event's organisation.
+        jdbc.update("update organisation_member set section_id = ? where user_id = ? and organisation_id = ?",
+                f.sectionB.getId(), f.sender.getId(), testMemberships.esnTurkiye());
         AppUser sender = users.findById(f.sender.getId()).orElseThrow();
-        sender.setSection(f.sectionB);
         sender.setName("Zeynep Acar");
         users.saveAndFlush(sender);
 
@@ -821,8 +828,11 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            testMemberships.approvedInEsn(saved.getId(), section.getId());
+        }
+        return saved;
     }
 
     private String bearer(AppUser user) {

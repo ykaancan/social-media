@@ -18,6 +18,7 @@ import app.brand.event.EventRepository;
 import app.brand.message.InboxMessage;
 import app.brand.message.InboxMessageRepository;
 import app.brand.message.MessageState;
+import app.brand.organisation.MembershipSections;
 import app.brand.realtime.ThreadsChanged;
 import app.brand.safety.BlockService;
 import app.brand.safety.ContentScreener;
@@ -106,6 +107,7 @@ public class ThreadService {
     private final EventRepository events;
     private final EventAccess access;
     private final AppUserRepository users;
+    private final MembershipSections membershipSections;
     private final SenderPresenter presenter;
     private final BlockService blocks;
     private final ContentScreener screener;
@@ -123,6 +125,7 @@ public class ThreadService {
                          EventRepository events,
                          EventAccess access,
                          AppUserRepository users,
+                         MembershipSections membershipSections,
                          SenderPresenter presenter,
                          BlockService blocks,
                          ContentScreener screener,
@@ -139,6 +142,7 @@ public class ThreadService {
         this.events = events;
         this.access = access;
         this.users = users;
+        this.membershipSections = membershipSections;
         this.presenter = presenter;
         this.blocks = blocks;
         this.screener = screener;
@@ -184,7 +188,7 @@ public class ThreadService {
 
         requireOpeningAllowance(viewerId);
 
-        AppUser viewer = users.findById(viewerId).orElseThrow(ThreadService::refused);
+        users.findById(viewerId).orElseThrow(ThreadService::refused);
         Origin origin = resolveOrigin(viewerId, body.origin());
 
         AppUser author = origin.senderId() == null
@@ -200,7 +204,7 @@ public class ThreadService {
         String text = requireText(body.text(), Thread.OPENING_TEXT_MAX);
         requireDeliverable(text, body.acknowledged());
         Anonymity mine = Anonymity.from(body.anonymityLevel(), AllowedHints.orNone(body.allowedHints()),
-                viewer.getSection() == null ? null : viewer.getSection().getId());
+                sectionSnapshot(origin.eventId(), viewerId));
 
         Instant now = Instant.now(clock);
         Thread thread = threads.saveAndFlush(origin.isPost()
@@ -394,10 +398,10 @@ public class ThreadService {
         if (mine.isNamed()) {
             return;
         }
-        AppUser viewer = users.findById(viewerId).orElseThrow(ThreadService::refused);
+        users.findById(viewerId).orElseThrow(ThreadService::refused);
         Instant now = Instant.now(clock);
         mine.reveal(Anonymity.from(AnonymityLevel.NAMED, AllowedHints.NONE,
-                viewer.getSection() == null ? null : viewer.getSection().getId()), now);
+                sectionSnapshot(thread.getEventId(), viewerId)), now);
         participants.saveAndFlush(mine);
 
         append(thread, viewerId, "", Anonymity.copyOf(mine.getAnonymity()),
@@ -461,6 +465,19 @@ public class ThreadService {
                 .filter(row -> !row.getUserId().equals(viewerId))
                 .findFirst()
                 .orElseThrow(() -> ApiException.notFound("no such thread"));
+    }
+
+    /**
+     * [D15] The section a thread row snapshots: the sender's membership section in
+     * the organisation of the event the thread comes from (the origin post's or
+     * inbox message's event). Null when there is no event, or no approved
+     * membership with a section there — and then a section or country hint is
+     * refused by {@link Anonymity#from}.
+     */
+    private UUID sectionSnapshot(UUID eventId, UUID userId) {
+        UUID organisationId = eventId == null ? null
+                : events.findById(eventId).map(Event::getOrganisationId).orElse(null);
+        return membershipSections.sectionIdIn(organisationId, userId);
     }
 
     /** One 403 for "they are gone" and for "they blocked you"; never which. */

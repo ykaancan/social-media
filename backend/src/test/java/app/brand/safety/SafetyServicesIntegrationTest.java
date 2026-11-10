@@ -18,6 +18,7 @@ import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.UserSettings;
 import app.brand.user.UserSettingsRepository;
+import app.brand.support.TestMemberships;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.UUID;
@@ -33,6 +34,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * wave 2 builds the inbox and the wall on.
  */
 class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private BlockService blocks;
@@ -70,11 +75,11 @@ class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
         AppUser blocked = account();
 
         Block first = blocks.block(blocker.getId(), blocked.getId(),
-                Anonymity.from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, blocked.getSection().getId()));
+                Anonymity.from(AnonymityLevel.ANONYMOUS, AllowedHints.NONE, anySection().getId()));
         // A later, more revealing message must not upgrade the frozen row: the
         // Blocked list is not a way to find out who an anonymous sender was.
         Block again = blocks.block(blocker.getId(), blocked.getId(),
-                Anonymity.from(AnonymityLevel.NAMED, AllowedHints.NONE, blocked.getSection().getId()));
+                Anonymity.from(AnonymityLevel.NAMED, AllowedHints.NONE, anySection().getId()));
 
         assertThat(again.getId()).isEqualTo(first.getId());
         assertThat(again.getDisplay().level()).isEqualTo(AnonymityLevel.ANONYMOUS);
@@ -290,8 +295,9 @@ class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName("Member");
-        user.setSection(anySection());
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), anySection().getId());
+        return saved;
     }
 
     private Section anySection() {

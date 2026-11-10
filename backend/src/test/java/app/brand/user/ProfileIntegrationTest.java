@@ -11,6 +11,7 @@ import app.brand.section.Section;
 import app.brand.section.SectionRepository;
 import app.brand.security.JwtService;
 import app.brand.support.AbstractIntegrationTest;
+import app.brand.support.TestMemberships;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -33,6 +34,10 @@ import org.springframework.test.web.servlet.MvcResult;
  * every status; the write routes are where the statuses differ.
  */
 class ProfileIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -64,7 +69,7 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /me answers for an active account and carries section and country")
+    @DisplayName("GET /me answers for an active account; section and country ride on the membership [D15]")
     void meForActiveAccount() throws Exception {
         Section section = anySection();
         AppUser user = account(AccountStatus.ACTIVE, "Elif", section);
@@ -74,15 +79,16 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("active"))
                 .andExpect(jsonPath("$.emailConfirmed").value(true))
                 .andExpect(jsonPath("$.name").value("Elif"))
-                .andExpect(jsonPath("$.section.id").value(section.getId().toString()))
-                .andExpect(jsonPath("$.section.country").value("Türkiye"));
+                .andExpect(jsonPath("$.section").doesNotExist())
+                .andExpect(jsonPath("$.memberships[0].section.id").value(section.getId().toString()))
+                .andExpect(jsonPath("$.memberships[0].section.country").value("Türkiye"));
     }
 
     /* ------------------------------------------------------- PUT /me/profile */
 
     @Test
-    @DisplayName("submitting a profile with a section makes the account active; T-1 still stores the section")
-    void submitProfileWithSectionMakesActive() throws Exception {
+    @DisplayName("[D15] submitting a profile makes the account active; a sectionId in the body is ignored")
+    void submitProfileIgnoresSectionId() throws Exception {
         AppUser user = account(AccountStatus.INCOMPLETE, null, null);
         Section section = anySection();
 
@@ -96,15 +102,17 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                 // Trimmed on the way in; the client never has to.
                 .andExpect(jsonPath("$.name").value("Kaan Can"))
                 .andExpect(jsonPath("$.bio").value("exchange in Ankara"))
-                .andExpect(jsonPath("$.section.id").value(section.getId().toString()))
-                .andExpect(jsonPath("$.section.name").value(section.getName()))
-                .andExpect(jsonPath("$.section.country").value("Türkiye"));
+                .andExpect(jsonPath("$.section").doesNotExist())
+                .andExpect(jsonPath("$.memberships").isEmpty());
 
         AppUser stored = users.findById(user.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(stored.getSubmittedAt()).isNotNull();
-        // INTERIM, step T-1: the section still lands on the account; T-2 removes it.
-        assertThat(stored.getSection().getId()).isEqualTo(section.getId());
+        // Nothing is stored for the section: not on the account, not as a membership.
+        assertThat(accountSectionColumn(user)).isNull();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from organisation_member where user_id = ?", Integer.class, user.getId()))
+                .isZero();
     }
 
     @Test
@@ -122,7 +130,7 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
 
         AppUser stored = users.findById(user.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
-        assertThat(stored.getSection()).isNull();
+        assertThat(accountSectionColumn(user)).isNull();
         // Profile submit never creates a membership.
         assertThat(jdbc.queryForObject(
                 "select count(*) from organisation_member where user_id = ?", Integer.class, user.getId()))
@@ -148,7 +156,7 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("name, bio and section are validated with the field the app points at")
+    @DisplayName("name and bio are validated with the field the app points at")
     void submitProfileValidation() throws Exception {
         AppUser user = account(AccountStatus.INCOMPLETE, null, null);
         String sectionId = anySection().getId().toString();
@@ -156,8 +164,6 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
         submitInvalid(user, profile("   ", sectionId, null), "name");
         submitInvalid(user, profile("x".repeat(41), sectionId, null), "name");
         submitInvalid(user, profile("Deniz", sectionId, "y".repeat(81)), "bio");
-        submitInvalid(user, profile("Deniz", UUID.randomUUID().toString(), null), "sectionId");
-        submitInvalid(user, profile("Deniz", "not-a-uuid", null), "sectionId");
 
         // Nothing was written by any of those.
         assertThat(users.findById(user.getId()).orElseThrow().getStatus())
@@ -237,10 +243,12 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("active"))
                 .andExpect(jsonPath("$.name").value("Ada L"))
                 .andExpect(jsonPath("$.bio").value("one line"))
-                .andExpect(jsonPath("$.section.id").value(section.getId().toString()));
+                .andExpect(jsonPath("$.memberships[0].section.id").value(section.getId().toString()));
 
         AppUser stored = users.findById(user.getId()).orElseThrow();
-        assertThat(stored.getSection().getId()).isEqualTo(section.getId());
+        assertThat(jdbc.queryForObject(
+                "select section_id from organisation_member where user_id = ?", UUID.class, user.getId()))
+                .isEqualTo(section.getId());
         assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 
@@ -290,6 +298,11 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.getResponse().getContentAsString()).doesNotContain("passwordHash");
     }
 
+    /** [D15] The unmapped {@code app_user.section_id} column, read straight from the table. */
+    private UUID accountSectionColumn(AppUser user) {
+        return jdbc.queryForObject("select section_id from app_user where id = ?", UUID.class, user.getId());
+    }
+
     /** Null values are meaningful here, so this is not {@code Map.of}. */
     private static Map<String, Object> profile(String name, String sectionId, String bio) {
         Map<String, Object> body = new HashMap<>();
@@ -311,8 +324,11 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            testMemberships.approvedInEsn(saved.getId(), section.getId());
+        }
+        return saved;
     }
 
     private Section anySection() {

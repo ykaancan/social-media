@@ -11,8 +11,8 @@ import org.springframework.stereotype.Repository;
 /**
  * [D7] The {@code section_change} audit trail: one row per move, which is both the
  * record the brief asks for and the whole implementation of the 30-day rule —
- * {@code sectionChangeAvailableAt} is {@code max(changed_at) + 30 days} and there
- * is no cooldown column to keep in step with it.
+ * {@code sectionChangeAvailableAt} is {@code max(changed_at) + 30 days} in one
+ * organisation [D15] and there is no cooldown column to keep in step with it.
  *
  * <p>There is deliberately no entity. Three statements over four columns do not
  * need one, and a change here must never look like something an ORM could cascade
@@ -21,23 +21,24 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class SectionChangeLog {
 
+    /**
+     * [D7]/[D15] One section change per this many days, per organisation: the one
+     * figure the change route and {@code Me.memberships[].sectionChangeAvailableAt}
+     * both read.
+     */
+    public static final int COOLDOWN_DAYS = 30;
+
     private final JdbcTemplate jdbc;
 
     public SectionChangeLog(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    /** The most recent {@code changed_at}, or empty if this account never moved. */
-    public Optional<Instant> lastChangedAt(UUID userId) {
-        Timestamp last = jdbc.queryForObject(
-                "select max(changed_at) from section_change where user_id = ?", Timestamp.class, userId);
-        return Optional.ofNullable(last).map(Timestamp::toInstant);
-    }
-
     /**
      * [D7]/[D15] The most recent {@code changed_at} of this account in one
-     * organisation, or empty if it never moved there. Read by
-     * {@code Me.memberships[].sectionChangeAvailableAt}.
+     * organisation, or empty if it never moved there. Read by the change route and
+     * by {@code Me.memberships[].sectionChangeAvailableAt}: the 30 days are counted
+     * per organisation, so a move in one never blocks a move in another.
      */
     public Optional<Instant> lastChangedAt(UUID userId, UUID organisationId) {
         Timestamp last = jdbc.queryForObject(
@@ -50,9 +51,8 @@ public class SectionChangeLog {
      * [D7] Records a move. {@code fromSectionId} is null for an account that had no
      * section — the column allows it, so the export has to as well.
      *
-     * <p>[D15] {@code organisationId} is the organisation of the <em>target</em>
-     * section. Step T-1 only stores it; {@link #lastChangedAt} still counts the
-     * 30 days per account until step T-2 counts them per organisation.
+     * <p>[D15] {@code organisationId} is the organisation of the membership whose
+     * section moved; both sections belong to it.
      */
     public void record(UUID userId, UUID organisationId, UUID fromSectionId, UUID toSectionId, Instant changedAt) {
         jdbc.update("""

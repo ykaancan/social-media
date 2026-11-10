@@ -2,7 +2,6 @@ package app.brand.settings;
 
 import app.brand.content.MessageSenderDto;
 import app.brand.safety.WritingPolicy;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /** The settings DTOs from {@code app/src/api/settings.ts}. */
@@ -14,17 +13,14 @@ public final class SettingsDtos {
     /**
      * {@code AccountSettings}.
      *
-     * <p>{@code sectionChangeAvailableAt} is {@code string | null} in the app — not
-     * an optional key — so it is the one field here that is emitted even when it
-     * is null, against the global {@code non_null} inclusion. Null means "no
-     * section change has ever been made"; a value in the past means the cooldown
-     * [D7] has already run out.
+     * <p>[D7]/[D15] There is no {@code sectionChangeAvailableAt} here: the 30 days
+     * are counted per organisation, so the date lives on each membership in
+     * {@code Me.memberships}.
      */
     public record AccountSettingsDto(
             WritingPolicy writingPolicy,
             List<String> mutedWords,
-            NotificationsDto notifications,
-            @JsonInclude(JsonInclude.Include.ALWAYS) String sectionChangeAvailableAt) {
+            NotificationsDto notifications) {
     }
 
     /** {@code NotificationPreferences}: three booleans, all three always present. */

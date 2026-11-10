@@ -7,7 +7,18 @@ import app.brand.event.EventDtos.EventDetailDto;
 import app.brand.event.EventDtos.EventJoinResultDto;
 import app.brand.event.EventDtos.EventPersonDto;
 import app.brand.event.EventDtos.EventSummaryDto;
+import app.brand.common.Ids;
+import app.brand.organisation.MembershipDtos.OrganisationRefDto;
+import app.brand.organisation.MembershipReader;
+import app.brand.organisation.MembershipSections;
+import app.brand.organisation.MembershipStatus;
+import app.brand.organisation.Organisation;
+import app.brand.organisation.OrganisationMember;
+import app.brand.organisation.OrganisationMemberInserts;
+import app.brand.organisation.OrganisationMemberRepository;
+import app.brand.organisation.OrganisationRepository;
 import app.brand.section.Section;
+import app.brand.section.SectionRepository;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.MeMapper;
@@ -25,6 +36,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,9 +49,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * mock's rules unchanged.
  *
  * <p>Three of them shape everything here: status is derived and never stored
- * [B5]/[D4]; the event's section is the <em>creator's</em> section, never a field
- * the client picks [D11]; and a board you are not a member of answers 404, not
- * 403, so a join code cannot be probed for.
+ * [B5]/[D4]; the event's section is the <em>creator's</em> section in the event's
+ * organisation, never a field the client picks [D11]/[D15]; and a board you are
+ * not a member of answers 404, not 403, so a join code cannot be probed for.
+ *
+ * <p>[D13] Every event belongs to an organisation, named by the create request.
+ * [D16] Who may create one there is that organisation's switch. [D17] Joining by
+ * code goes through the person's membership in the event's organisation.
  */
 @Service
 public class EventService {
@@ -56,26 +73,41 @@ public class EventService {
     private final EventRepository events;
     private final EventMemberRepository members;
     private final AppUserRepository users;
+    private final OrganisationRepository organisations;
+    private final OrganisationMemberRepository memberships;
+    private final OrganisationMemberInserts membershipInserts;
+    private final SectionRepository sections;
     private final EventAccess access;
     private final JoinCodeGenerator joinCodes;
     private final MeMapper meMapper;
+    private final MembershipSections membershipSections;
     private final Clock clock;
     private final TransactionTemplate transactions;
 
     public EventService(EventRepository events,
                         EventMemberRepository members,
                         AppUserRepository users,
+                        OrganisationRepository organisations,
+                        OrganisationMemberRepository memberships,
+                        OrganisationMemberInserts membershipInserts,
+                        SectionRepository sections,
                         EventAccess access,
                         JoinCodeGenerator joinCodes,
                         MeMapper meMapper,
+                        MembershipSections membershipSections,
                         Clock clock,
                         PlatformTransactionManager transactionManager) {
         this.events = events;
         this.members = members;
         this.users = users;
+        this.organisations = organisations;
+        this.memberships = memberships;
+        this.membershipInserts = membershipInserts;
+        this.sections = sections;
         this.access = access;
         this.joinCodes = joinCodes;
         this.meMapper = meMapper;
+        this.membershipSections = membershipSections;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
     }
@@ -93,9 +125,12 @@ public class EventService {
         List<UUID> ids = joined.stream().map(Event::getId).toList();
         Map<UUID, Long> memberCounts = counts(members.countMembers(ids));
         Map<UUID, Long> postCounts = counts(events.countPublishedPosts(ids));
+        Map<UUID, Organisation> owners = organisations
+                .findAllById(joined.stream().map(Event::getOrganisationId).distinct().toList()).stream()
+                .collect(Collectors.toMap(Organisation::getId, Function.identity()));
 
         return joined.stream()
-                .map(event -> summary(event, now,
+                .map(event -> summary(event, owners.get(event.getOrganisationId()), now,
                         memberCounts.getOrDefault(event.getId(), 0L),
                         postCounts.getOrDefault(event.getId(), 0L)))
                 .toList();
@@ -104,27 +139,38 @@ public class EventService {
     /* ---------------------------------------------------------- POST /events */
 
     /**
-     * The creator joins their own board as its moderator, and the section comes off
-     * their account: {@code scope} decides whether the DTO shows the section, not
-     * which section it is.
+     * The creator joins their own board as its moderator.
+     *
+     * <ul>
+     *   <li>[D13] {@code organisationId} is required (422 when missing).</li>
+     *   <li>[D16] The caller needs an {@code approved} membership there that the
+     *       organisation's switch allows ({@code event_creation = members}, or role
+     *       {@code admin}) — {@link MembershipReader#canCreateEvents}, the same rule
+     *       {@code Membership.canCreateEvents} shows. Otherwise
+     *       {@code 403 event_creation_not_allowed}: also for no membership, a
+     *       pending or rejected one, an unknown organisation and a malformed id —
+     *       none is an organisation this person can create in, and the answer does
+     *       not tell them apart. Checked before the other fields.</li>
+     *   <li>[D15]/P9 With sections: {@code scope} is required ({@code section |
+     *       national}) and the event's section is the creator's <em>membership</em>
+     *       section; {@code scope} decides whether the DTO shows the section, not
+     *       which section it is. Without sections: {@code scope} must be absent
+     *       (422 when sent) and the event has no section and no scope.</li>
+     * </ul>
      *
      * <p>The insert runs in its own transaction per attempt, because a unique-index
      * collision on the join code poisons the transaction it happens in — the retry
      * has to be a fresh one.
      */
     public EventDetailDto create(UUID creatorId, CreateEventRequestDto request) {
-        AppUser creator = users.findById(creatorId)
-                .orElseThrow(() -> ApiException.notFound("no such account"));
-        if (creator.getSection() == null) {
-            // INTERIM, step T-1: PUT /me/profile no longer requires a section, so an
-            // active account without one is refused here until step T-2 moves event
-            // creation onto the organisation membership [D13]/[D16].
-            throw ApiException.validation("account has no section", "scope");
-        }
-
         if (request == null) {
             throw ApiException.validation("missing event", "name");
         }
+        if (request.organisationId() == null || request.organisationId().isBlank()) {
+            throw ApiException.validation("missing organisation", "organisationId");
+        }
+        CreationRight right = transactions.execute(status -> creationRight(creatorId, request.organisationId()));
+
         String name = request.name() == null ? "" : request.name().trim();
         if (name.length() < NAME_MIN || name.length() > NAME_MAX) {
             throw ApiException.validation("name must be 2-40 characters", "name");
@@ -134,7 +180,14 @@ public class EventService {
         if (!endsAt.isAfter(startsAt)) {
             throw ApiException.validation("endsAt must be after startsAt", "endsAt");
         }
-        String scope = oneOf(request.scope(), SCOPES, "scope");
+        String scope;
+        if (right.organisation().hasSections()) {
+            scope = oneOf(request.scope(), SCOPES, "scope");
+        } else if (request.scope() != null) {
+            throw ApiException.validation("this organisation has no sections, so an event has no scope", "scope");
+        } else {
+            scope = null;
+        }
         String boardMode = oneOf(request.boardMode(), BOARD_MODES, "boardMode");
         String cover = oneOf(request.cover(), COVERS, "cover");
 
@@ -149,7 +202,7 @@ public class EventService {
             try {
                 final String joinCode = code;
                 eventId = transactions.execute(status ->
-                        insert(creator, name, scope, startsAt, endsAt, cover, boardMode, joinCode, now));
+                        insert(creatorId, right, name, scope, startsAt, endsAt, cover, boardMode, joinCode, now));
             } catch (DataIntegrityViolationException collision) {
                 lastCollision = collision;
             }
@@ -164,7 +217,33 @@ public class EventService {
         return transactions.execute(status -> detail(creatorId, created));
     }
 
-    private UUID insert(AppUser creator,
+    /** The organisation the event goes into, and the creator's section there (null without sections). */
+    private record CreationRight(Organisation organisation, UUID sectionId) {
+    }
+
+    /** [D16] See {@link #create}: every refusal is the same 403. */
+    private CreationRight creationRight(UUID creatorId, String rawOrganisationId) {
+        UUID organisationId = Ids.orNull(rawOrganisationId.trim());
+        Organisation organisation = organisationId == null
+                ? null
+                : organisations.findById(organisationId).orElse(null);
+        OrganisationMember membership = organisation == null
+                ? null
+                : memberships.findByOrganisationIdAndUserId(organisationId, creatorId).orElse(null);
+        if (membership == null || !MembershipReader.canCreateEvents(organisation, membership)) {
+            throw ApiException.forbidden("event_creation_not_allowed",
+                    "this account may not create events in this organisation");
+        }
+        if (organisation.hasSections() && membership.getSectionId() == null) {
+            // [D15] Every membership of an organisation with sections carries one:
+            // the join and admin routes never write one without.
+            throw new IllegalStateException("membership without a section in an organisation with sections");
+        }
+        return new CreationRight(organisation, organisation.hasSections() ? membership.getSectionId() : null);
+    }
+
+    private UUID insert(UUID creatorId,
+                        CreationRight right,
                         String name,
                         String scope,
                         Instant startsAt,
@@ -173,10 +252,10 @@ public class EventService {
                         String boardMode,
                         String joinCode,
                         Instant now) {
-        // [D13] Step T-1: the event belongs to the organisation of the creator's section.
-        Event event = events.saveAndFlush(Event.create(name, scope, creator.getSection(),
-                creator.getSection().getOrganisationId(), startsAt, endsAt, cover, boardMode, joinCode, creator.getId(), now));
-        members.saveAndFlush(EventMember.join(event.getId(), creator.getId(), true, now));
+        Section section = right.sectionId() == null ? null : sections.findById(right.sectionId()).orElseThrow();
+        Event event = events.saveAndFlush(Event.create(name, scope, section, right.organisation().getId(),
+                startsAt, endsAt, cover, boardMode, joinCode, creatorId, now));
+        members.saveAndFlush(EventMember.join(event.getId(), creatorId, true, now));
         return event.getId();
     }
 
@@ -188,6 +267,19 @@ public class EventService {
      *
      * <p>An archived board can still be joined — it is read-only for everyone, and
      * refusing would hide an event someone was given the code for.
+     *
+     * <p>[D17] The checks, in order:
+     * <ol>
+     *   <li>unknown or empty code → {@code not_found};</li>
+     *   <li>already in the event → {@code already_joined};</li>
+     *   <li>the caller's membership in the event's organisation:
+     *     {@code approved} → joined; {@code pending} → {@code membership_pending};
+     *     {@code rejected} → {@code membership_rejected}; none, in an organisation
+     *     with approval off and no sections → an {@code approved} membership (role
+     *     member, no section) is created and the event joined in this request;
+     *     none, otherwise → {@code membership_required}, and this call writes
+     *     nothing.</li>
+     * </ol>
      */
     @Transactional
     public EventJoinResultDto join(UUID viewerId, String rawCode) {
@@ -199,16 +291,58 @@ public class EventService {
         if (event == null) {
             return EventJoinResultDto.notFound();
         }
-        // The insert is the membership check: asking first and inserting after
-        // loses a race with the person's second tap, and losing it used to be a
-        // 500 on the primary key. `do nothing` also means a moderator rejoining
-        // their own board keeps the flag [see EventMemberRepository#joinIfAbsent].
-        int joined = members.joinIfAbsent(event.getId(), viewerId,
-                OffsetDateTime.ofInstant(Instant.now(clock), ZoneOffset.UTC));
+        if (members.existsByEventIdAndUserId(event.getId(), viewerId)) {
+            return EventJoinResultDto.alreadyJoined(event.getName());
+        }
+
+        Organisation organisation = organisations.findById(event.getOrganisationId()).orElseThrow();
+        Instant now = Instant.now(clock);
+        OrganisationMember membership = memberships
+                .findByOrganisationIdAndUserId(organisation.getId(), viewerId)
+                .orElse(null);
+        if (membership == null) {
+            if (organisation.isApprovalRequired() || organisation.hasSections()) {
+                return refusal("membership_required", organisation, event);
+            }
+            // Nothing to pick and nobody to wait for. A lost race with an
+            // identical request reads that request's row instead of failing.
+            membershipInserts.insertIfAbsent(organisation.getId(), viewerId, MembershipStatus.APPROVED,
+                    null, null, now);
+            membership = memberships.findForUpdate(organisation.getId(), viewerId).orElseThrow();
+        }
+        if (membership.getStatus() != MembershipStatus.APPROVED && !organisation.isApprovalRequired()) {
+            // [D14] Approval was switched off after this person asked (or was turned
+            // down): the organisation no longer gates entry and nobody is watching
+            // the queue, so they are let in. The section already on the row stays.
+            membership = memberships.findForUpdate(organisation.getId(), viewerId).orElseThrow();
+            membership.setStatus(MembershipStatus.APPROVED);
+            membership.setApprovedAt(now);
+            membership.setPendingEventId(null);
+            memberships.saveAndFlush(membership);
+        }
+        switch (membership.getStatus()) {
+            case PENDING:
+                return refusal("membership_pending", organisation, event);
+            case REJECTED:
+                return refusal("membership_rejected", organisation, event);
+            case APPROVED:
+            default:
+                break;
+        }
+        // The insert is the last check: a second tap that got past the check above
+        // loses here and is told "already joined", never a 500 on the primary key.
+        // `do nothing` also means a moderator rejoining their own board keeps the
+        // flag [see EventMemberRepository#joinIfAbsent].
+        int joined = members.joinIfAbsent(event.getId(), viewerId, OffsetDateTime.ofInstant(now, ZoneOffset.UTC));
         if (joined == 0) {
             return EventJoinResultDto.alreadyJoined(event.getName());
         }
         return EventJoinResultDto.joined(detail(viewerId, event.getId()));
+    }
+
+    private static EventJoinResultDto refusal(String reason, Organisation organisation, Event event) {
+        return EventJoinResultDto.membership(reason, OrganisationRefDto.of(organisation),
+                organisation.isApprovalRequired(), event.getName());
     }
 
     /* ----------------------------------------------------- GET /events/{id} */
@@ -235,16 +369,17 @@ public class EventService {
     public EventDetailDto detail(Event event, boolean isModerator, UUID viewerId,
                                  List<EventMember> memberRows) {
         Instant now = Instant.now(clock);
-        List<EventPersonDto> people = roster(memberRows, viewerId);
+        List<EventPersonDto> people = roster(event, memberRows, viewerId);
         long postCount = counts(events.countPublishedPosts(List.of(event.getId())))
                 .getOrDefault(event.getId(), 0L);
 
         // The membership count, not the roster's length: an account with no name
         // yet is still a member, and `GET /events` counts it. The two lists must
         // agree with each other.
-        EventSummaryDto summary = summary(event, now, memberRows.size(), postCount);
+        Organisation organisation = organisations.findById(event.getOrganisationId()).orElseThrow();
+        EventSummaryDto summary = summary(event, organisation, now, memberRows.size(), postCount);
         return new EventDetailDto(
-                summary.id(), summary.name(), summary.scope(), summary.startsAt(), summary.endsAt(),
+                summary.id(), summary.name(), summary.organisation(), summary.scope(), summary.startsAt(), summary.endsAt(),
                 summary.cover(), summary.boardMode(), summary.status(), summary.section(),
                 summary.country(), summary.closedAt(), summary.memberCount(), summary.postCount(),
                 event.getJoinCode(), isModerator, people);
@@ -252,11 +387,14 @@ public class EventService {
 
     /* -------------------------------------------------------------- mapping */
 
-    private EventSummaryDto summary(Event event, Instant now, long memberCount, long postCount) {
+    private EventSummaryDto summary(Event event, Organisation organisation, Instant now,
+                                    long memberCount, long postCount) {
         SectionRefDto section = meMapper.toSectionRef(event.getSection());
         return new EventSummaryDto(
                 event.getId().toString(),
                 event.getName(),
+                OrganisationRefDto.of(organisation),
+                // Null, and so absent, in an organisation without sections (P9).
                 event.getScope(),
                 event.getStartsAt(),
                 event.getEndsAt(),
@@ -264,7 +402,8 @@ public class EventService {
                 event.getBoardMode(),
                 EventStatus.of(event, now),
                 // [D11] The section rides along only for a section-scoped event; the
-                // country is read off it either way and is never a field of its own.
+                // country is read off it whenever the event has one, and is never a
+                // field of its own. No section, no country.
                 "section".equals(event.getScope()) ? section : null,
                 section == null ? null : section.country(),
                 event.getClosedAt(),
@@ -276,8 +415,12 @@ public class EventService {
      * The whole guest list, viewer first, then everyone else by normalised name —
      * "Boğaziçi" and "Bogazici" have to sort together, which the database collation
      * does not do.
+     *
+     * <p>[D15] Each person's {@code section} is their membership section in this
+     * event's organisation — absent where the organisation has no sections — so a
+     * person with sections in two organisations shows the right one in each event.
      */
-    private List<EventPersonDto> roster(List<EventMember> memberRows, UUID viewerId) {
+    private List<EventPersonDto> roster(Event event, List<EventMember> memberRows, UUID viewerId) {
         List<UUID> memberIds = memberRows.stream()
                 .map(EventMember::getUserId)
                 .toList();
@@ -289,13 +432,15 @@ public class EventService {
                         .thenComparing(user -> user.getId().toString()))
                 .toList();
 
+        Map<UUID, Section> sectionsHere = membershipSections.sectionsIn(event.getOrganisationId(),
+                people.stream().map(AppUser::getId).toList());
         List<EventPersonDto> roster = new ArrayList<>(people.size());
         for (AppUser person : people) {
             roster.add(new EventPersonDto(
                     person.getId().toString(),
                     person.getName(),
                     meMapper.avatarUrl(person.getAvatarKey()),
-                    meMapper.toSectionRef(person.getSection()),
+                    meMapper.toSectionRef(sectionsHere.get(person.getId())),
                     person.getBio()));
         }
         return roster;

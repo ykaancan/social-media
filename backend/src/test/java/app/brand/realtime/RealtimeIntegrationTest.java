@@ -11,6 +11,7 @@ import app.brand.support.AbstractWebSocketIntegrationTest;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import java.lang.reflect.Type;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
@@ -53,6 +54,10 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
  * who gets told and who does not.
  */
 class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -376,8 +381,9 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName("Member " + UUID.randomUUID().toString().substring(0, 4));
-        user.setSection(anySection());
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), anySection().getId());
+        return saved;
     }
 
     /** Plain SQL: this suite is about frames, not about /events. */
@@ -386,7 +392,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
         Instant starts = Instant.now().minus(1, ChronoUnit.HOURS);
         jdbc.update("insert into event (organisation_id, id, name, scope, section_id, starts_at, ends_at, cover, board_mode,"
                         + " join_code, creator_id) values ((select id from organisation where name = 'ESN Türkiye'), ?, ?, 'section', ?, ?, ?, 'azure', 'approve_first', ?, ?)",
-                id, "Realtime night", creator.getSection().getId(),
+                id, "Realtime night", anySection().getId(),
                 Timestamp.from(starts), Timestamp.from(starts.plus(4, ChronoUnit.HOURS)),
                 joinCode(), creator.getId());
         fixtureEvents.add(id);

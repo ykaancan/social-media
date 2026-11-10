@@ -1,11 +1,8 @@
 package app.brand.user;
 
 import app.brand.common.ApiException;
-import app.brand.common.Ids;
 import app.brand.media.AvatarImageProcessor;
 import app.brand.media.AvatarStore;
-import app.brand.section.Section;
-import app.brand.section.SectionRepository;
 import app.brand.user.ProfileDtos.AvatarUploadedDto;
 import app.brand.user.ProfileDtos.ProfileEditRequest;
 import app.brand.user.ProfileDtos.ProfileSubmitRequest;
@@ -33,20 +30,17 @@ public class ProfileService {
     public static final int BIO_MAX = 80;
 
     private final AppUserRepository users;
-    private final SectionRepository sections;
     private final MeMapper meMapper;
     private final AvatarStore avatars;
     private final AvatarImageProcessor imageProcessor;
     private final Clock clock;
 
     public ProfileService(AppUserRepository users,
-                          SectionRepository sections,
                           MeMapper meMapper,
                           AvatarStore avatars,
                           AvatarImageProcessor imageProcessor,
                           Clock clock) {
         this.users = users;
-        this.sections = sections;
         this.meMapper = meMapper;
         this.avatars = avatars;
         this.imageProcessor = imageProcessor;
@@ -67,23 +61,13 @@ public class ProfileService {
             throw ApiException.forbidden("account_restricted", "account is restricted");
         }
         if (user.getStatus() == AccountStatus.ACTIVE) {
-            // Changing an active profile is PATCH /me/profile, and changing the
-            // section is PUT /me/section [D7].
+            // Changing an active profile is PATCH /me/profile, and changing a
+            // section is PUT /me/memberships/{organisationId}/section [D7]/[D15].
             throw ApiException.validation("use profile editing and section change", null);
         }
 
         String name = requireName(request == null ? null : request.name());
         String bio = optionalBio(request == null ? null : request.bio());
-        // INTERIM, step T-1 only (TENANT_PLAN.md §6): the section is optional and,
-        // when sent, still lands on app_user.section_id, because events and hints
-        // read the account's section until step T-2 moves them to the membership
-        // [D15]. T-2 removes sectionId from this request and this block with it.
-        // No membership row is created here.
-        String rawSectionId = request == null ? null : request.sectionId();
-        if (rawSectionId != null && !rawSectionId.isBlank()) {
-            user.setSection(requireSection(rawSectionId));
-        }
-
         user.setName(name);
         user.setBio(bio);
         user.setStatus(AccountStatus.ACTIVE);
@@ -170,18 +154,5 @@ public class ProfileService {
             throw ApiException.validation("bio too long", "bio");
         }
         return bio.isEmpty() ? null : bio;
-    }
-
-    /**
-     * 422, not 404: this is a form field the person just picked from a list, so a
-     * malformed id and an id that is not a section get the same answer.
-     */
-    private Section requireSection(String rawId) {
-        UUID id = Ids.orNull(rawId == null ? null : rawId.trim());
-        if (id == null) {
-            throw ApiException.validation("unknown section", "sectionId");
-        }
-        return sections.findById(id)
-                .orElseThrow(() -> ApiException.validation("unknown section", "sectionId"));
     }
 }

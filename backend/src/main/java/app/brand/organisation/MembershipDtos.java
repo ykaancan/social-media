@@ -9,8 +9,17 @@ public final class MembershipDtos {
     private MembershipDtos() {
     }
 
+    /** {@code MembershipRequest}: {@code POST /organisations/join} [D17]. */
+    public record MembershipRequestDto(String code, String sectionId) {
+    }
+
     /** {@code OrganisationRef}. */
     public record OrganisationRefDto(String id, String name, boolean hasSections) {
+
+        public static OrganisationRefDto of(Organisation organisation) {
+            return new OrganisationRefDto(organisation.getId().toString(), organisation.getName(),
+                    organisation.hasSections());
+        }
     }
 
     /**

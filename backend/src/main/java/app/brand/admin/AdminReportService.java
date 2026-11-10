@@ -12,6 +12,7 @@ import app.brand.board.BoardPost;
 import app.brand.board.BoardPostRepository;
 import app.brand.common.ApiException;
 import app.brand.common.events.UserWarned;
+import app.brand.content.Anonymity;
 import app.brand.content.MessageSenderDto;
 import app.brand.content.SenderPresenter;
 import app.brand.content.SenderRow;
@@ -21,6 +22,7 @@ import app.brand.message.InboxMessage;
 import app.brand.realtime.BoardChanged;
 import app.brand.safety.Report;
 import app.brand.section.Section;
+import app.brand.section.SectionRepository;
 import app.brand.thread.Thread;
 import app.brand.thread.ThreadMessage;
 import app.brand.thread.ThreadMessageRepository;
@@ -84,6 +86,7 @@ public class AdminReportService {
     private final ThreadParticipantRepository threadParticipants;
     private final EventRepository events;
     private final AppUserRepository users;
+    private final SectionRepository sections;
     private final AuditLogRepository auditLog;
     private final AdminUserService adminUsers;
     private final SenderPresenter presenter;
@@ -99,6 +102,7 @@ public class AdminReportService {
                               ThreadParticipantRepository threadParticipants,
                               EventRepository events,
                               AppUserRepository users,
+                              SectionRepository sections,
                               AuditLogRepository auditLog,
                               AdminUserService adminUsers,
                               SenderPresenter presenter,
@@ -113,6 +117,7 @@ public class AdminReportService {
         this.threadParticipants = threadParticipants;
         this.events = events;
         this.users = users;
+        this.sections = sections;
         this.auditLog = auditLog;
         this.adminUsers = adminUsers;
         this.presenter = presenter;
@@ -158,7 +163,8 @@ public class AdminReportService {
                 report.getTargetKind(), report.getId(),
                 details(Map.of("reason", report.getReason())), Instant.now(clock)));
 
-        return ReportDetailDto.of(row(report, rendered), identityOf(rendered.senderId()));
+        return ReportDetailDto.of(row(report, rendered),
+                identityOf(rendered.senderId(), rendered.snapshotSectionId()));
     }
 
     /* ------------------------------------------------------------- actions */
@@ -275,7 +281,7 @@ public class AdminReportService {
         return new FlaggedDetailDto(message.getId().toString(),
                 contentOf(message, eventNames),
                 senders.present(message),
-                identityOf(message.getSenderId()));
+                identityOf(message.getSenderId(), snapshotOf(message.getAnonymity())));
     }
 
     /* ------------------------------------------------------------- helpers */
@@ -333,14 +339,25 @@ public class AdminReportService {
                 reporter == null ? null : reporter.getName());
     }
 
-    private SenderIdentityDto identityOf(UUID senderId) {
+    /**
+     * [D15] The section shown is the reported row's own snapshot
+     * ({@code sender_section_id}): the section the sender was in, in the
+     * organisation of the event the content belongs to, when they sent it. The
+     * account has no section of its own any more.
+     */
+    private SenderIdentityDto identityOf(UUID senderId, UUID snapshotSectionId) {
         AppUser sender = users.findById(senderId).orElse(null);
         if (sender == null) {
             // The account was really deleted (KVKK); the content row outlived it.
             return new SenderIdentityDto(senderId.toString(), null, null, null);
         }
+        Section section = snapshotSectionId == null ? null : sections.findById(snapshotSectionId).orElse(null);
         return new SenderIdentityDto(sender.getId().toString(), sender.getName(), sender.getEmail(),
-                sectionLabel(sender.getSection()));
+                sectionLabel(section));
+    }
+
+    private static UUID snapshotOf(Anonymity anonymity) {
+        return anonymity == null ? null : anonymity.senderSectionId();
     }
 
     /** [D11] The country is read through the section and never shown on its own. */
@@ -399,7 +416,8 @@ public class AdminReportService {
                     InboxMessage message = messages.get(targetId);
                     if (message != null) {
                         rendered.put(report.getId(), new Rendered(contentOf(message, eventNames),
-                                senders.present(message), message.getSenderId()));
+                                senders.present(message), message.getSenderId(),
+                                snapshotOf(message.getAnonymity())));
                     }
                 }
                 case Report.BOARD_POST -> {
@@ -408,7 +426,8 @@ public class AdminReportService {
                         rendered.put(report.getId(), new Rendered(
                                 ReportContentDto.of(Report.BOARD_POST, post.getText(), post.getCreatedAt(),
                                         eventNames.get(post.getEventId())),
-                                senders.present(post), post.getSenderId()));
+                                senders.present(post), post.getSenderId(),
+                                snapshotOf(post.getAnonymity())));
                     }
                 }
                 case Report.THREAD -> {
@@ -445,7 +464,8 @@ public class AdminReportService {
         // [D5] The sender display follows the participant's current level, exactly
         // as the reporter sees the other side of the thread today; each bubble
         // below is still rendered from its own row.
-        return new Rendered(content, senders.present(other), other.getUserId());
+        return new Rendered(content, senders.present(other), other.getUserId(),
+                snapshotOf(other.getAnonymity()));
     }
 
     /** The last {@value #THREAD_BUBBLES} bubbles, oldest first, as the reporter read them. */
@@ -521,13 +541,18 @@ public class AdminReportService {
         }
     }
 
-    /** One report's content and sender, rendered. {@code senderId} never leaves the server. */
-    private record Rendered(ReportContentDto content, MessageSenderDto senderDisplay, UUID senderId) {
+    /**
+     * One report's content and sender, rendered. {@code senderId} never leaves the
+     * server; {@code snapshotSectionId} is the reported row's own
+     * {@code sender_section_id}, read only by the audited identity view.
+     */
+    private record Rendered(ReportContentDto content, MessageSenderDto senderDisplay, UUID senderId,
+                            UUID snapshotSectionId) {
 
         /** The content is gone (real account deletion); the report itself is still a row. */
         static Rendered missing(String kind) {
             return new Rendered(ReportContentDto.of(kind, null, null, null),
-                    MessageSenderDto.anonymous(), null);
+                    MessageSenderDto.anonymous(), null, null);
         }
     }
 }

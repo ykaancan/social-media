@@ -14,6 +14,7 @@ import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.Role;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
@@ -33,6 +34,10 @@ import org.springframework.test.web.servlet.MvcResult;
  * an unaudited ban is a bug, not a detail.
  */
 class AdminApiIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -127,9 +132,9 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(row.get("status").asText()).isEqualTo("active");
         assertThat(row.get("role").asText()).isEqualTo("member");
         assertThat(row.get("submittedAt").asText()).startsWith("2026-01-01");
-        // [D11] country rides on the section and is never a field of its own.
-        assertThat(row.get("section").get("name").asText()).isEqualTo(section.getName());
-        assertThat(row.get("section").get("country").asText()).isEqualTo(section.getCountry().getName());
+        // [D15] The account has no section (the person has one through a membership),
+        // and [D11] there is never a country field of its own.
+        assertThat(row.has("section")).isFalse();
         assertThat(row.has("country")).isFalse();
         // Optional fields are absent, never null, as everywhere else in the API.
         assertThat(row.has("avatarUrl")).isFalse();
@@ -367,10 +372,10 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         AppUser user = users.findById(created.id).orElseThrow();
         user.setName(name);
         user.setBio(bio);
-        user.setSection(sections.findById(section.getId()).orElseThrow());
         user.setSubmittedAt(submittedAt);
         user.setStatus(AccountStatus.ACTIVE);
         users.save(user);
+        testMemberships.approvedInEsn(created.id, section.getId());
         return created;
     }
 

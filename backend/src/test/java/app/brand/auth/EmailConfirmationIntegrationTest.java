@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -66,6 +67,9 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MutableClock clock;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private ListAppender<ILoggingEvent> senderLog;
 
@@ -143,7 +147,7 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("[D18] an unconfirmed account is refused on profile setup, photo, sections and /ws; auth and GET /me work")
+    @DisplayName("[D18] an unconfirmed account is refused on profile setup, photo and /ws; auth and GET /me work")
     void unconfirmedAccountReachesOnlyMeAndAuth() throws Exception {
         String email = uniqueEmail();
         String bearer = bearer(register(email));
@@ -192,12 +196,19 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a confirmed incomplete account keeps profile setup, photo, sections and /ws")
+    @DisplayName("a confirmed incomplete account keeps profile setup, photo and /ws, but not the section routes [D15]")
     void confirmedIncompleteAccountKeepsTheOnboardingRoutes() throws Exception {
         String email = uniqueEmail();
         String bearer = bearer(register(email));
         mockMvc.perform(get("/confirm").param("token", links.lastTokenFor(email)))
                 .andExpect(status().isOk());
+
+        // [D15] The section is no longer part of the profile: the section routes
+        // need an active account. Asked first, while the account is incomplete.
+        UUID esn = jdbc.queryForObject("select id from organisation where name = 'ESN Türkiye'", UUID.class);
+        mockMvc.perform(get("/organisations/" + esn + "/sections").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("account_not_active"));
 
         for (MockHttpServletRequestBuilder request : profileSetupRoutes()) {
             // Whatever the route itself answers, the access filter does not refuse it.
@@ -206,8 +217,6 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
                             .doesNotContain("email_unconfirmed")
                             .doesNotContain("account_not_active"));
         }
-        mockMvc.perform(get("/sections").header(HttpHeaders.AUTHORIZATION, bearer))
-                .andExpect(status().isOk());
     }
 
     /** The routes [D18] closes to an unconfirmed account and keeps open to a confirmed incomplete one. */
@@ -217,7 +226,6 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
                 patch("/me/profile").contentType(MediaType.APPLICATION_JSON).content("{\"bio\":\"hi\"}"),
                 multipart("/me/photo").file(new MockMultipartFile(
                         "photo", "a.png", MediaType.IMAGE_PNG_VALUE, new byte[] {1, 2, 3})),
-                get("/sections"),
                 get("/ws"));
     }
 

@@ -36,9 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class MembershipReader {
 
-    /** [D7] One section change per 30 days, the same figure SettingsService uses. */
-    private static final int SECTION_CHANGE_COOLDOWN_DAYS = 30;
-
     private final OrganisationMemberRepository members;
     private final OrganisationRepository organisations;
     private final SectionRepository sections;
@@ -65,22 +62,35 @@ public class MembershipReader {
         Instant now = clock.instant();
         List<MembershipDto> out = new ArrayList<>();
         for (OrganisationMember member : members.findByUserIdOrderByCreatedAtAsc(userId)) {
-            Organisation organisation = organisations.findById(member.getOrganisationId()).orElseThrow();
-            out.add(new MembershipDto(
-                    new OrganisationRefDto(organisation.getId().toString(), organisation.getName(),
-                            organisation.hasSections()),
-                    member.getStatus(),
-                    member.getRole(),
-                    sectionRef(member.getSectionId()),
-                    canCreateEvents(organisation, member),
-                    sectionChangeAvailableAt(userId, organisation.getId(), now),
-                    pendingEventName(member)));
+            out.add(toDto(member, now));
         }
         return out;
     }
 
-    /** [D16] */
-    static boolean canCreateEvents(Organisation organisation, OrganisationMember member) {
+    /**
+     * The caller's one membership in one organisation — the answer of
+     * {@code POST /organisations/join} [D17]. Same shape and rules as {@link #of(UUID)}.
+     */
+    @Transactional(readOnly = true)
+    public MembershipDto of(UUID userId, UUID organisationId) {
+        OrganisationMember member = members.findByOrganisationIdAndUserId(organisationId, userId).orElseThrow();
+        return toDto(member, clock.instant());
+    }
+
+    private MembershipDto toDto(OrganisationMember member, Instant now) {
+        Organisation organisation = organisations.findById(member.getOrganisationId()).orElseThrow();
+        return new MembershipDto(
+                OrganisationRefDto.of(organisation),
+                member.getStatus(),
+                member.getRole(),
+                sectionRef(member.getSectionId()),
+                canCreateEvents(organisation, member),
+                sectionChangeAvailableAt(member.getUserId(), organisation.getId(), now),
+                pendingEventName(member));
+    }
+
+    /** [D16] Also the rule {@code POST /events} applies. */
+    public static boolean canCreateEvents(Organisation organisation, OrganisationMember member) {
         return member.getStatus() == MembershipStatus.APPROVED
                 && (organisation.getEventCreation() == EventCreation.MEMBERS
                 || member.getRole() == MembershipRole.ADMIN);
@@ -102,7 +112,7 @@ public class MembershipReader {
 
     private String sectionChangeAvailableAt(UUID userId, UUID organisationId, Instant now) {
         return sectionChanges.lastChangedAt(userId, organisationId)
-                .map(last -> last.plus(SECTION_CHANGE_COOLDOWN_DAYS, ChronoUnit.DAYS))
+                .map(last -> last.plus(SectionChangeLog.COOLDOWN_DAYS, ChronoUnit.DAYS))
                 .filter(availableAt -> availableAt.isAfter(now))
                 .map(Instant::toString)
                 .orElse(null);

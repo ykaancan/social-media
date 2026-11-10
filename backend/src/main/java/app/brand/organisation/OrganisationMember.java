@@ -108,6 +108,11 @@ public class OrganisationMember {
         return sectionId;
     }
 
+    /** [D17] A pending or re-submitted request carries the section of its latest ask. */
+    public void setSectionId(UUID sectionId) {
+        this.sectionId = sectionId;
+    }
+
     public UUID getPendingEventId() {
         return pendingEventId;
     }
@@ -118,6 +123,11 @@ public class OrganisationMember {
 
     public Instant getSubmittedAt() {
         return submittedAt;
+    }
+
+    /** TENANT_PLAN.md P8: a rejected member who asks again is submitted again. */
+    public void setSubmittedAt(Instant submittedAt) {
+        this.submittedAt = submittedAt;
     }
 
     public Instant getApprovedAt() {

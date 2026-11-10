@@ -1,15 +1,11 @@
 package app.brand.user;
 
-import app.brand.section.Section;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
@@ -21,6 +17,11 @@ import java.util.UUID;
  * <p>Deletion of this row is real deletion (KVKK), which is why almost every
  * foreign key pointing here is RESTRICT: the deletion service removes content in
  * a fixed order and the database refuses a half-done job.
+ *
+ * <p>[D15] The {@code section_id} column of {@code app_user} is not mapped: a
+ * section belongs to a membership ({@code organisation_member.section_id}), and
+ * nothing reads the account's section any more. The column stays in the database
+ * because migrations are never edited.
  */
 @Entity
 @Table(name = "app_user")
@@ -59,10 +60,6 @@ public class AppUser {
     /** [B10] File name under {@code brand.media.dir}; the URL is built by MeMapper. */
     @Column(name = "avatar_key")
     private String avatarKey;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "section_id")
-    private Section section;
 
     /** Invite chain — stage 2 uses it, the column exists from migration 1. */
     @Column(name = "inviter_id")
@@ -166,14 +163,6 @@ public class AppUser {
 
     public void setAvatarKey(String avatarKey) {
         this.avatarKey = avatarKey;
-    }
-
-    public Section getSection() {
-        return section;
-    }
-
-    public void setSection(Section section) {
-        this.section = section;
     }
 
     public UUID getInviterId() {

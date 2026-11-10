@@ -208,6 +208,22 @@ Each line is one test the step must add and pass. Existing tests that assert the
   - Rejecting a member clears the stored event. If the person asks again, the new request stores the event of the code they use then.
 - Not verified: sending the confirmation mail through a real SMTP server (only the logged-link path is tested); the app against this backend (the app still expects the old account shape until T-3).
 
+### T-2 — 2026-11-10, backend events, joining, sections, hints
+- Two Opus agents, one after the other. Lead read the join-request service, the join and event-creation code and the hint check, found nothing to fix, and ran the suite without the build cache.
+- **Result: 352 backend tests, 0 failed, 0 skipped** (lead's own run). No migration was added or edited.
+- Built: `POST /events/join` with `membership_required / membership_pending / membership_rejected`; `POST /organisations/join`; `POST /events` with `organisationId` and the creation switch (`403 event_creation_not_allowed`); `GET /organisations/{id}/sections`; `GET /sections/{id}` for approved members of that organisation only; `PUT /me/memberships/{organisationId}/section` with the 30-day limit per organisation; hint snapshot from the sender's approved membership in the event's organisation (boards, inbox messages, threads, reveal); people lists and wall header show the section in the event's organisation; acceptance tests 13–27.
+- Removed: `GET /sections`, `PUT /me/section`, `Me.section`, `sectionId` on `PUT /me/profile`, `sectionChangeAvailableAt` in the settings response, the section on the super admin's account list, and every interim behaviour left by T-1. `AppUser` no longer maps a section; the column `app_user.section_id` is still in the database, unread.
+- Rules set by the lead in the agent briefs, not in the plan before:
+  - Asking again while pending keeps the request pending and replaces its section and stored event.
+  - An approved member who sends a join request is only joined to the event; their membership and section do not change.
+  - Event creation that is not allowed answers the same for "no membership", "pending", "rejected" and "no such organisation".
+  - A person counts in a section when their membership there is approved and their account is active.
+  - An account without a profile can no longer read section lists.
+- Details settled by the agents: a section or country hint with no section to back it is a 422 on the hints field; a person whose membership in the event's organisation is pending or rejected shows no section in that event's people list; the section change locks the membership row, so two changes at the same instant cannot both pass the 30-day check; admin report views show the section from the reported row's own snapshot.
+- **Decided by Kaan 2026-11-10 and applied by the lead (354 tests, 0 failed):** when an organisation's approval is switched off, a person whose request was left pending or was rejected is let in the next time they use an event code or send a join request. Through the event code the section already on their request is kept; through a join request the section sent then is used. Nobody is let in automatically at the moment the switch changes: it happens when the person next asks.
+- Known and left: the export's section-change history lists section names without the organisation name; a membership without a section in an organisation with sections would make event creation fail with a server error (no route can write such a row).
+- Not verified: the app against this backend (T-3); real mail delivery.
+
 ## 11. Not in this plan
 
 Verified badge and SMS, "verified only" writing setting, message requests, removing a member from an organisation, organiser statistics, payments. Each is its own later step.

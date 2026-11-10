@@ -36,7 +36,6 @@ public class MeMapper {
                 user.getName(),
                 user.getBio(),
                 avatarUrl(user.getAvatarKey()),
-                toSectionRef(user.getSection()),
                 // [D14] the caller's own memberships, read by the caller's own id.
                 memberships.of(user.getId()));
     }

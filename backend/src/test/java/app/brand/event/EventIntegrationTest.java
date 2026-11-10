@@ -13,6 +13,7 @@ import app.brand.section.SectionRepository;
 import app.brand.security.JwtService;
 import app.brand.support.AbstractIntegrationTest;
 import app.brand.support.MutableClock;
+import app.brand.support.TestMemberships;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
@@ -38,8 +39,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>The ones worth naming: status is derived, so the boundaries are tested by
  * moving the clock rather than by waiting [B5]; the event's section is the
- * creator's and is never sent by the client [D11]; and a board you are not in is
- * 404, not 403, so a join code cannot be probed for.
+ * creator's membership section and is never sent by the client [D11]/[D15]; and
+ * a board you are not in is 404, not 403, so a join code cannot be probed for.
+ *
+ * <p>[D13]/[D16] Creating needs an {@code organisationId} and an approved
+ * membership the organisation's switch allows: TENANT_PLAN.md §9 tests 19 and 20.
+ * The join refusals [D17] are in {@code OrganisationJoinIntegrationTest}.
  */
 class EventIntegrationTest extends AbstractIntegrationTest {
 
@@ -64,6 +69,9 @@ class EventIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private EventRepository events;
 
+    @Autowired
+    private TestMemberships memberships;
+
     /**
      * The suite shares one database, and {@code SchemaMigrationTest} checks that
      * nothing is seeded (principle 4) by counting these tables. A test that leaves
@@ -77,15 +85,20 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         jdbc.update("delete from inbox_message");
         jdbc.update("delete from event_member");
         jdbc.update("delete from event");
+        memberships.removeOrganisations();
     }
 
     /* ------------------------------------------------------- POST /events */
 
     @Test
-    @DisplayName("a created event takes the creator's section, and the creator is its moderator")
+    @DisplayName("a created event takes the creator's membership section, not the account's, and the creator moderates it")
     void createTakesTheCreatorsSection() throws Exception {
         Section section = anySection();
         AppUser creator = account(section);
+        // [D15] The account's own (unmapped) section column says something else;
+        // the event must not read it.
+        jdbc.update("update app_user set section_id = ? where id = ?",
+                otherSection(section).getId(), creator.getId());
         Instant starts = Instant.parse("2026-10-01T18:00:00Z");
         // `upcoming` is derived from now [B5]: stand a day before the start, not on
         // whatever today is.
@@ -99,6 +112,9 @@ class EventIntegrationTest extends AbstractIntegrationTest {
                                 "magenta", "approve_first"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Welcome night"))
+                .andExpect(jsonPath("$.organisation.id").value(memberships.esnTurkiye().toString()))
+                .andExpect(jsonPath("$.organisation.name").value(TestMemberships.ESN_TURKIYE))
+                .andExpect(jsonPath("$.organisation.hasSections").value(true))
                 .andExpect(jsonPath("$.section.id").value(section.getId().toString()))
                 .andExpect(jsonPath("$.country").value(section.getCountry().getName()))
                 .andExpect(jsonPath("$.isModerator").value(true))
@@ -158,6 +174,87 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         invalidCreate(creator, request("Party", "region", starts, ends, "magenta", "approve_first"), "scope");
         invalidCreate(creator, request("Party", "section", starts, ends, "beige", "approve_first"), "cover");
         invalidCreate(creator, request("Party", "section", starts, ends, "magenta", "free_for_all"), "boardMode");
+        // [P9] An organisation with sections needs a scope.
+        invalidCreate(creator, request("Party", null, starts, ends, "magenta", "approve_first"), "scope");
+        // [D13] The organisation is required.
+        Map<String, Object> noOrganisation = request("Party", "section", starts, ends, "magenta", "approve_first");
+        noOrganisation.remove("organisationId");
+        invalidCreate(creator, noOrganisation, "organisationId");
+    }
+
+    /* ------------------------------------------- [D16] the creation switch */
+
+    @Test
+    @DisplayName("test 19: with event_creation = admins a member gets 403 event_creation_not_allowed and an admin succeeds")
+    void adminsOnlyOrganisation() throws Exception {
+        UUID orgId = memberships.organisation(true, false, "admins");
+        AppUser member = account(null);
+        AppUser admin = account(null);
+        memberships.add(orgId, member.getId(), "approved", "member", null, null);
+        memberships.add(orgId, admin.getId(), "approved", "admin", null, null);
+
+        refusedCreate(member, openRequest(orgId));
+        createIn(admin, openRequest(orgId));
+    }
+
+    @Test
+    @DisplayName("test 19: with event_creation = members an approved member succeeds; pending, rejected and no membership get 403")
+    void membersOrganisation() throws Exception {
+        UUID orgId = memberships.organisation(true, false, "members");
+        AppUser approved = account(null);
+        AppUser pending = account(null);
+        AppUser rejected = account(null);
+        AppUser outsider = account(null);
+        memberships.add(orgId, approved.getId(), "approved", "member", null, null);
+        memberships.add(orgId, pending.getId(), "pending", "member", null, null);
+        memberships.add(orgId, rejected.getId(), "rejected", "member", null, null);
+
+        createIn(approved, openRequest(orgId));
+        refusedCreate(pending, openRequest(orgId));
+        refusedCreate(rejected, openRequest(orgId));
+        refusedCreate(outsider, openRequest(orgId));
+        // An organisation that does not exist, or an id that is not one, is no
+        // organisation this person can create in either: the same answer.
+        refusedCreate(approved, openRequest(UUID.randomUUID()));
+        Map<String, Object> malformed = openRequest(orgId);
+        malformed.put("organisationId", "not-an-id");
+        refusedCreate(approved, malformed);
+        // A membership elsewhere is not a membership here.
+        refusedCreate(account(anySection()), openRequest(orgId));
+    }
+
+    @Test
+    @DisplayName("test 20: an event in an organisation without sections has no scope, no section and no country")
+    void organisationWithoutSections() throws Exception {
+        UUID orgId = memberships.organisation(false, false, "members");
+        AppUser creator = account(anySection());
+        memberships.add(orgId, creator.getId(), "approved", "member", null, null);
+
+        JsonNode created = createIn(creator, openRequest(orgId));
+        assertThat(created.has("scope")).isFalse();
+        assertThat(created.has("section")).isFalse();
+        assertThat(created.has("country")).isFalse();
+        assertThat(created.get("organisation").get("id").asText()).isEqualTo(orgId.toString());
+        assertThat(created.get("organisation").get("hasSections").asBoolean()).isFalse();
+        UUID eventId = UUID.fromString(created.get("id").asText());
+        Map<String, Object> row = jdbc.queryForMap(
+                "select scope, section_id, organisation_id from event where id = ?", eventId);
+        assertThat(row.get("scope")).isNull();
+        assertThat(row.get("section_id")).isNull();
+        assertThat(row.get("organisation_id")).isEqualTo(orgId);
+
+        // The summary list says the same.
+        JsonNode mine = json(mockMvc.perform(get("/events").header(HttpHeaders.AUTHORIZATION, bearer(creator)))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(mine.get(0).has("scope")).isFalse();
+        assertThat(mine.get(0).has("country")).isFalse();
+        assertThat(mine.get(0).get("organisation").get("id").asText()).isEqualTo(orgId.toString());
+
+        // A scope sent anyway is a validation error.
+        Map<String, Object> withScope = openRequest(orgId);
+        withScope.put("scope", "national");
+        invalidCreate(creator, withScope, "scope");
     }
 
     /* -------------------------------------------------- POST /events/join */
@@ -459,6 +556,37 @@ class EventIntegrationTest extends AbstractIntegrationTest {
                 .get("status").asText();
     }
 
+    private void refusedCreate(AppUser creator, Map<String, Object> request) throws Exception {
+        mockMvc.perform(post("/events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(creator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("event_creation_not_allowed"));
+    }
+
+    private JsonNode createIn(AppUser creator, Map<String, Object> request) throws Exception {
+        return json(mockMvc.perform(post("/events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(creator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isModerator").value(true))
+                .andReturn());
+    }
+
+    /** A valid create request for an organisation without sections: no scope. */
+    private static Map<String, Object> openRequest(UUID organisationId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("organisationId", organisationId.toString());
+        body.put("name", "Quiz night");
+        body.put("startsAt", "2026-12-01T18:00:00Z");
+        body.put("endsAt", "2026-12-01T22:00:00Z");
+        body.put("cover", "lime");
+        body.put("boardMode", "post_immediately");
+        return body;
+    }
+
     private void invalidCreate(AppUser creator, Map<String, Object> request, String field) throws Exception {
         mockMvc.perform(post("/events")
                         .header(HttpHeaders.AUTHORIZATION, bearer(creator))
@@ -484,10 +612,11 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         return jdbc.queryForObject("select id from event where join_code = ?", UUID.class, joinCode);
     }
 
-    /** Null values are meaningful here, so this is not {@code Map.of}. */
-    private static Map<String, Object> request(String name, String scope, String startsAt, String endsAt,
-                                               String cover, String boardMode) {
+    /** Null values are meaningful here, so this is not {@code Map.of}. An ESN Türkiye event. */
+    private Map<String, Object> request(String name, String scope, String startsAt, String endsAt,
+                                        String cover, String boardMode) {
         Map<String, Object> body = new HashMap<>();
+        body.put("organisationId", memberships.esnTurkiye().toString());
         body.put("name", name);
         body.put("scope", scope);
         body.put("startsAt", startsAt);
@@ -544,6 +673,10 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         return code.toString();
     }
 
+    /**
+     * An active, confirmed account. With a section: also an approved member of
+     * ESN Türkiye in that section [D14]/[D15]. With null: no membership at all.
+     */
     private AppUser account(Section section) {
         AppUser user = AppUser.register(
                 "event-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
@@ -551,12 +684,29 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName("Member " + UUID.randomUUID().toString().substring(0, 4));
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            memberships.approvedInEsn(saved.getId(), section.getId());
+        }
+        return saved;
     }
 
+    /** The first ESN Türkiye section by name. */
     private Section anySection() {
-        return sections.findAll().stream().min(Comparator.comparing(Section::getName)).orElseThrow();
+        UUID esn = memberships.esnTurkiye();
+        return sections.findAll().stream()
+                .filter(section -> section.getOrganisationId().equals(esn))
+                .min(Comparator.comparing(Section::getName))
+                .orElseThrow();
+    }
+
+    /** Another ESN Türkiye section than {@code not}. */
+    private Section otherSection(Section not) {
+        UUID esn = memberships.esnTurkiye();
+        return sections.findAll().stream()
+                .filter(section -> section.getOrganisationId().equals(esn) && !section.getId().equals(not.getId()))
+                .min(Comparator.comparing(Section::getName))
+                .orElseThrow();
     }
 
     private String bearer(AppUser user) {

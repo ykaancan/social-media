@@ -10,9 +10,10 @@ public final class SectionDtos {
     }
 
     /**
-     * {@code SectionSummary}. {@code memberCount} is the real number of approved
-     * members and may be 0 — the section page renders it verbatim and nothing in
-     * this product ever invents a count (principle 4).
+     * {@code SectionSummary}. {@code memberCount} is the real number of members
+     * (approved membership with this section, active account) [D15] and may be 0 —
+     * the section page renders it verbatim and nothing in this product ever
+     * invents a count (principle 4).
      */
     public record SectionSummaryDto(String id, String name, String country, long memberCount) {
     }
@@ -21,6 +22,8 @@ public final class SectionDtos {
      * {@code SectionDetail}. {@code roster} is the page the server chose (the viewer
      * first in their own section); {@code rosterTotal} is what that page is drawn
      * from, so "and N more" is {@code rosterTotal - roster.length} and never a guess.
+     * Since [D15] only approved members can open the page, a listed viewer is also
+     * counted, and {@code rosterTotal} equals {@code memberCount}.
      */
     public record SectionDetailDto(
             String id,

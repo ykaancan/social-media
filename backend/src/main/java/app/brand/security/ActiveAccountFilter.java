@@ -40,13 +40,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * (including {@code /auth/resend-confirmation} and {@code /auth/logout}), the
  * confirmation page {@code /confirm}, and what is public to a signed-out caller
  * anyway — {@code /reset}, {@code /media/}, {@code /actuator/}, {@code /error}
- * and the static admin page. Profile setup, the photo, {@code /sections/**} and
- * the {@code /ws} handshake are refused: they come after confirmation (P1).
+ * and the static admin page. Profile setup, the photo and the {@code /ws}
+ * handshake are refused: they come after confirmation (P1).
  *
  * <p><b>A confirmed account that is {@code incomplete} or {@code banned}</b>
  * additionally reaches {@code /me} (any method), {@code /me/profile},
- * {@code /me/photo}, {@code /sections/**} and {@code /ws} — the routes the
- * profile-setup screen runs on.
+ * {@code /me/photo} and {@code /ws} — the routes the profile-setup screen runs
+ * on. [D15] Sections are not among them: the section is no longer part of the
+ * profile, and the section picker belongs to joining an organisation, which
+ * needs an active account.
  *
  * <p>The admin exemption is the static page only — {@code /admin}, {@code /admin/},
  * {@code /admin/index.html} and the one-segment {@code *.css} / {@code *.js} beside
@@ -78,7 +80,6 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
 
     /** Prefixes a confirmed account reaches while {@code incomplete} or {@code banned}. */
     private static final List<String> NOT_ACTIVE_PREFIXES = List.of(
-            "/sections",
             "/ws");
 
     /** The static admin page, and nothing under {@code /admin/api}. */

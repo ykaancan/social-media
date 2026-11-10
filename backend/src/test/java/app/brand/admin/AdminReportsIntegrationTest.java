@@ -34,6 +34,7 @@ import app.brand.thread.ThreadRepository;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
@@ -61,6 +62,10 @@ import org.springframework.test.web.servlet.MvcResult;
  */
 @RecordApplicationEvents
 class AdminReportsIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -631,9 +636,9 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
         if (status != AccountStatus.INCOMPLETE) {
             AppUser user = users.findById(id).orElseThrow();
             user.setStatus(status);
-            user.setSection(section());
             user.setSubmittedAt(Instant.now());
             users.save(user);
+            testMemberships.approvedInEsn(id, section().getId());
         }
         return new Account(id, email, body.get("tokens").get("accessToken").asText());
     }

@@ -7,7 +7,7 @@ import java.util.List;
  * {@code Me} in {@code types.ts} — the signed-in user, and the only DTO that
  * carries an email address.
  *
- * <p>{@code name}, {@code bio}, {@code avatarUrl} and {@code section} are null
+ * <p>{@code name}, {@code bio} and {@code avatarUrl} are null
  * while the account is {@code incomplete} and Jackson's {@code non_null}
  * inclusion drops them, so the client sees the fields as absent, exactly as the
  * optional properties in {@code types.ts} declare.
@@ -17,8 +17,8 @@ import java.util.List;
  * {@code tenant.ts}).
  *
  * <p>[D14] {@code memberships} lists every membership of this account in every
- * status, and is always present (an empty list for none). {@code section} stays
- * until step T-2 moves every section read to the membership.
+ * status, and is always present (an empty list for none). [D15] There is no
+ * account-level {@code section}: each membership carries its own.
  */
 public record MeDto(
         String id,
@@ -29,6 +29,5 @@ public record MeDto(
         String name,
         String bio,
         String avatarUrl,
-        SectionRefDto section,
         List<MembershipDto> memberships) {
 }

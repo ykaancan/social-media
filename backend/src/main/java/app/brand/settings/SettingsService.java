@@ -4,6 +4,11 @@ import app.brand.common.ApiException;
 import app.brand.common.Ids;
 import app.brand.common.TextNormalizer;
 import app.brand.content.SenderPresenter;
+import app.brand.organisation.MembershipStatus;
+import app.brand.organisation.Organisation;
+import app.brand.organisation.OrganisationMember;
+import app.brand.organisation.OrganisationMemberRepository;
+import app.brand.organisation.OrganisationRepository;
 import app.brand.safety.Block;
 import app.brand.safety.BlockService;
 import app.brand.safety.WritingPolicy;
@@ -50,9 +55,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SettingsService {
 
-    /** [D7] One section change per 30 days. */
-    private static final int COOLDOWN_DAYS = 30;
-
     /** The mock's limits, unchanged: at most 100 words, each 1–40 characters trimmed. */
     private static final int MAX_MUTED_WORDS = 100;
     private static final int MAX_MUTED_WORD_LENGTH = 40;
@@ -63,6 +65,8 @@ public class SettingsService {
     private final SenderPresenter presenter;
     private final AppUserRepository users;
     private final SectionRepository sections;
+    private final OrganisationRepository organisations;
+    private final OrganisationMemberRepository memberships;
     private final MeMapper meMapper;
     private final Clock clock;
 
@@ -72,6 +76,8 @@ public class SettingsService {
                            SenderPresenter presenter,
                            AppUserRepository users,
                            SectionRepository sections,
+                           OrganisationRepository organisations,
+                           OrganisationMemberRepository memberships,
                            MeMapper meMapper,
                            Clock clock) {
         this.settings = settings;
@@ -80,6 +86,8 @@ public class SettingsService {
         this.presenter = presenter;
         this.users = users;
         this.sections = sections;
+        this.organisations = organisations;
+        this.memberships = memberships;
         this.meMapper = meMapper;
         this.clock = clock;
     }
@@ -145,61 +153,81 @@ public class SettingsService {
         return dto(userId, settings.save(row));
     }
 
-    /* -------------------------------------------------------- PUT /me/section */
+    /* ------------------------------ PUT /me/memberships/{organisationId}/section */
 
     /**
-     * [D7] Change your own section. Logged, rate-limited to once per 30 days, and
-     * <b>not</b> a return to the approval queue: the status is not touched, no
-     * {@code submitted_at} is stamped, and the caller keeps using the app through
-     * the request. There is no approved-but-read-only state to fall into.
+     * [D7]/[D15] Change your own section in one organisation. The section lives on
+     * the membership, so this writes {@code organisation_member.section_id} and a
+     * {@code section_change} row carrying the organisation. Logged, rate-limited
+     * to once per 30 days <b>per organisation</b> — a move in one organisation
+     * never blocks a move in another — and <b>not</b> a return to the approval
+     * queue: the membership status is not touched and no {@code submitted_at} is
+     * stamped.
      *
      * <p>[D11] It is also a country change, because country is read through the
-     * section and is never a field of its own. The returned {@code Me} carries the
-     * new section <em>and</em> the new country, which is what the app's copy warns
-     * about before the tap.
+     * section. The returned {@code Me} carries the new section and its country on
+     * that membership.
      *
-     * <p>Three answers, in this order:
+     * <p>The answers, in this order:
      *
      * <ul>
-     *   <li>a section that does not exist, or a string that was never an id →
-     *       {@code 422} on {@code sectionId}. The client is filling in a picker;
-     *       naming the field is the useful answer, and the section list is public
-     *       anyway so nothing is disclosed.</li>
+     *   <li>no {@code approved} membership of the caller in that organisation (or an
+     *       id that was never an organisation id) → {@code 404}.</li>
+     *   <li>the organisation has no sections, or the section does not exist, is
+     *       not an id, or belongs to another organisation → {@code 422} on
+     *       {@code sectionId}.</li>
      *   <li>the section they are already in → {@code 200} and nothing happens. No
      *       audit row, no cooldown spent. Re-picking where you already are is not a
      *       change, and it must not cost the person their one move for the month.</li>
-     *   <li>inside the cooldown → {@code 429 section_change_limited}. The boundary
-     *       is inclusive: at exactly {@code last + 30 days} the move is allowed.</li>
+     *   <li>inside the cooldown of this organisation → {@code 429
+     *       section_change_limited}. The boundary is inclusive: at exactly
+     *       {@code last + 30 days} the move is allowed.</li>
      * </ul>
+     *
+     * <p>The membership row is read under its write lock, so two changes sent at
+     * the same instant cannot both pass the cooldown check.
      */
     @Transactional
-    public MeDto changeSection(UUID userId, String rawSectionId) {
+    public MeDto changeSection(UUID userId, String rawOrganisationId, String rawSectionId) {
         AppUser user = users.findById(userId)
                 .orElseThrow(() -> ApiException.notFound("no such account"));
+        UUID organisationId = Ids.orNotFound(rawOrganisationId, "no such membership");
+        OrganisationMember membership = memberships.findForUpdate(organisationId, userId)
+                .filter(member -> member.getStatus() == MembershipStatus.APPROVED)
+                .orElseThrow(() -> ApiException.notFound("no such membership"));
+        Organisation organisation = organisations.findById(organisationId)
+                .orElseThrow(() -> ApiException.notFound("no such membership"));
+
         UUID sectionId = Ids.orNull(rawSectionId);
-        Section target = sectionId == null ? null : sections.findById(sectionId).orElse(null);
+        Section target = !organisation.hasSections() || sectionId == null
+                ? null
+                : sections.findById(sectionId)
+                        .filter(section -> organisationId.equals(section.getOrganisationId()))
+                        .orElse(null);
         if (target == null) {
             throw ApiException.validation("unknown section", "sectionId");
         }
 
-        Section current = user.getSection();
-        if (current != null && current.getId().equals(target.getId())) {
+        UUID current = membership.getSectionId();
+        if (target.getId().equals(current)) {
             // A no-op, and deliberately not a 422: the picker is allowed to send
             // back what it was showing.
             return meMapper.toMe(user);
         }
 
         Instant now = Instant.now(clock);
-        Instant availableAt = availableAt(userId);
+        Instant availableAt = sectionChanges.lastChangedAt(userId, organisationId)
+                .map(changedAt -> changedAt.plus(SectionChangeLog.COOLDOWN_DAYS, ChronoUnit.DAYS))
+                .orElse(null);
         if (availableAt != null && availableAt.isAfter(now)) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "section_change_limited",
                     "section change is rate limited");
         }
 
-        sectionChanges.record(userId, target.getOrganisationId(),
-                current == null ? null : current.getId(), target.getId(), now);
-        user.setSection(target);
-        return meMapper.toMe(users.saveAndFlush(user));
+        sectionChanges.record(userId, organisationId, current, target.getId(), now);
+        membership.setSectionId(target.getId());
+        memberships.saveAndFlush(membership);
+        return meMapper.toMe(user);
     }
 
     /* --------------------------------------------------------- GET /me/blocks */
@@ -235,23 +263,10 @@ public class SettingsService {
     /* ------------------------------------------------------------- internals */
 
     private AccountSettingsDto dto(UUID userId, UserSettings row) {
-        Instant availableAt = availableAt(userId);
         return new AccountSettingsDto(
                 WritingPolicy.orDefault(row.getWritingPolicy()),
                 List.of(row.getMutedWords()),
-                new NotificationsDto(row.isNotifyInbox(), row.isNotifyThreads(), row.isNotifyBoardMentions()),
-                availableAt == null ? null : availableAt.toString());
-    }
-
-    /**
-     * [D7] When the next section change is allowed: the last one plus 30 days, or
-     * null for an account that has never moved. It is the cooldown's end, not a
-     * countdown — once it has passed it keeps its value.
-     */
-    private Instant availableAt(UUID userId) {
-        return sectionChanges.lastChangedAt(userId)
-                .map(changedAt -> changedAt.plus(COOLDOWN_DAYS, ChronoUnit.DAYS))
-                .orElse(null);
+                new NotificationsDto(row.isNotifyInbox(), row.isNotifyThreads(), row.isNotifyBoardMentions()));
     }
 
     private static WritingPolicy writingPolicy(JsonNode node) {

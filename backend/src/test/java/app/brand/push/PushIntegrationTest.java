@@ -20,6 +20,7 @@ import app.brand.support.RecordingPushSender;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -54,6 +55,10 @@ import org.springframework.test.web.servlet.ResultActions;
  * produce this notification" a question with one answer.
  */
 class PushIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String TOKEN = "ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]";
     private static final String OTHER_TOKEN = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]";
@@ -497,8 +502,9 @@ class PushIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 
     private UUID event(String name) {

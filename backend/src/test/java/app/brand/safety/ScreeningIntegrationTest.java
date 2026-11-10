@@ -14,6 +14,7 @@ import app.brand.support.AbstractIntegrationTest;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -35,6 +36,10 @@ import org.springframework.http.MediaType;
  * cannot be stepped around by changing a dot.
  */
 class ScreeningIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private ScreeningTermRepository terms;
@@ -181,7 +186,8 @@ class ScreeningIntegrationTest extends AbstractIntegrationTest {
         // [D18] Confirmed, so the access filter judges the status alone.
         user.confirmEmail(Instant.now());
         user.setName("Screener");
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 }

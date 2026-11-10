@@ -27,12 +27,14 @@ import app.brand.message.InboxMessageRepository;
 import app.brand.message.MessageDtos.SendWallMessageRequest;
 import app.brand.message.MessageService;
 import app.brand.message.MessageState;
+import app.brand.organisation.MembershipSections;
 import app.brand.realtime.BoardChanged;
 import app.brand.safety.ContentScreener;
 import app.brand.safety.ContentScreener.ScreeningResult;
 import app.brand.safety.RateLimiter;
 import app.brand.safety.Report;
 import app.brand.safety.ReportService;
+import app.brand.section.Section;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.MeMapper;
@@ -114,6 +116,7 @@ public class BoardService {
     private final AppUserRepository users;
     private final SenderPresenter presenter;
     private final MeMapper meMapper;
+    private final MembershipSections membershipSections;
     private final ContentScreener screener;
     private final RateLimiter rateLimiter;
     private final ReportService reports;
@@ -133,6 +136,7 @@ public class BoardService {
                         AppUserRepository users,
                         SenderPresenter presenter,
                         MeMapper meMapper,
+                        MembershipSections membershipSections,
                         ContentScreener screener,
                         RateLimiter rateLimiter,
                         ReportService reports,
@@ -150,6 +154,7 @@ public class BoardService {
         this.users = users;
         this.presenter = presenter;
         this.meMapper = meMapper;
+        this.membershipSections = membershipSections;
         this.screener = screener;
         this.rateLimiter = rateLimiter;
         this.reports = reports;
@@ -182,7 +187,7 @@ public class BoardService {
         List<BoardPost> everything = new ArrayList<>(published.size() + room.size());
         everything.addAll(published);
         everything.addAll(room);
-        Context context = contextFor(everything, viewerId);
+        Context context = contextFor(event, everything, viewerId);
 
         List<BoardPostDto> feed = context.map(published);
         List<BoardPostDto> ownUnpublished = context.map(room.stream()
@@ -290,11 +295,11 @@ public class BoardService {
         if (text.isEmpty() || text.length() > BoardPost.TEXT_MAX) {
             throw ApiException.validation("invalid post", "text");
         }
-        AppUser sender = users.findById(viewerId)
-                .orElseThrow(() -> ApiException.notFound("no such account"));
+        // [D15] The hint snapshot is the sender's membership section in this event's
+        // organisation — never another membership's, never the account's.
         Anonymity anonymity = Anonymity.from(request.anonymityLevel(),
                 AllowedHints.orNone(request.allowedHints()),
-                sender.getSection() == null ? null : sender.getSection().getId());
+                membershipSections.sectionIdIn(event.getOrganisationId(), viewerId));
         // CLAUDE.md §5: per-sender rate limit on anonymous posts. Named and hint
         // levels are untouched — the limit is about the surface nobody can be seen on.
         if (anonymity.level() == AnonymityLevel.ANONYMOUS) {
@@ -712,7 +717,7 @@ public class BoardService {
      * {@link SenderPresenter#forRows}), the recipients of the cards addressed to a
      * person, and every reaction on the board.
      */
-    private Context contextFor(Collection<BoardPost> rows, UUID viewerId) {
+    private Context contextFor(Event event, Collection<BoardPost> rows, UUID viewerId) {
         Set<UUID> messageIds = new HashSet<>();
         Set<UUID> postIds = new HashSet<>();
         for (BoardPost post : rows) {
@@ -729,12 +734,15 @@ public class BoardService {
             linked.forEach(message -> recipientIds.add(message.getRecipientId()));
             Map<UUID, AppUser> people = new HashMap<>();
             users.findAllById(recipientIds).forEach(person -> people.put(person.getId(), person));
+            // [D15] A recipient's section is their membership section in this
+            // board's organisation; absent where it has no sections.
+            Map<UUID, Section> sectionsHere = membershipSections.sectionsIn(event.getOrganisationId(), recipientIds);
             for (InboxMessage message : linked) {
                 AppUser person = people.get(message.getRecipientId());
                 if (person != null) {
                     recipients.put(message.getId(), new PersonDto(person.getId().toString(),
                             person.getName(), meMapper.avatarUrl(person.getAvatarKey()),
-                            meMapper.toSectionRef(person.getSection()), null));
+                            meMapper.toSectionRef(sectionsHere.get(person.getId())), null));
                 }
             }
         }

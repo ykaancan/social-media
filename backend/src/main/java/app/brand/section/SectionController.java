@@ -8,15 +8,23 @@ import app.brand.security.CurrentUser;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * {@code /sections} — readable at any signed-in status, because the profile-setup
- * screen has to show the picker before an account is approved.
+ * [D15] Sections per organisation. Both routes need a confirmed, active account
+ * ({@code ActiveAccountFilter}); the section is no longer part of profile setup,
+ * so neither is open to an {@code incomplete} one.
+ *
+ * <ul>
+ *   <li>{@code GET /organisations/{id}/sections} — any active account: the
+ *       section picker runs before a membership exists.</li>
+ *   <li>{@code GET /sections/{id}} — approved members of the section's
+ *       organisation only; anyone else 404.</li>
+ * </ul>
+ *
+ * <p>{@code GET /sections} (every section of every organisation) is gone.
  */
 @RestController
-@RequestMapping("/sections")
 public class SectionController {
 
     private final SectionService sections;
@@ -25,12 +33,13 @@ public class SectionController {
         this.sections = sections;
     }
 
-    @GetMapping
-    public List<SectionSummaryDto> list() {
-        return sections.list();
+    @GetMapping("/organisations/{id}/sections")
+    public List<SectionSummaryDto> listOf(@PathVariable String id) {
+        // A malformed id is simply not an organisation: 404, not a parse error.
+        return sections.listOf(Ids.orNotFound(id, "no such organisation"));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/sections/{id}")
     public SectionDetailDto detail(@CurrentUser AppPrincipal principal, @PathVariable String id) {
         // A malformed id is simply not a section anyone has: 404, not a parse error.
         return sections.detail(principal.id(), Ids.orNotFound(id, "no such section"));
