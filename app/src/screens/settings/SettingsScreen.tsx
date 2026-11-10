@@ -23,14 +23,18 @@ export function SettingsScreen({navigation,route}:RootScreenProps<'Settings'>){
   const [settings,setSettings]=useState<AccountSettings|null>(null),[blocked,setBlocked]=useState<BlockedEntry[]>([]),[sections,setSections]=useState<SectionSummary[]>([]);
   const [loadError,setLoadError]=useState(false),[error,setError]=useState(false),[busy,setBusy]=useState(false),[word,setWord]=useState('');
   const [sheet,setSheet]=useState<'logout'|'delete'|'deleteFinal'|'picker'|null>(null),[confirmWord,setConfirmWord]=useState(''),[section,setSection]=useState<SectionSummary|null>(null);
+  // [D7]/[D15] One section per approved membership in an organisation with sections; the
+  // `section` page changes the one named by `organisationId`, with that membership's own limit.
+  const sectionMemberships=session.me?.memberships.filter(m=>m.status==='approved'&&m.organisation.hasSections)??[];
+  const membership=page==='section'?sectionMemberships.find(m=>m.organisation.id===route.params?.organisationId):undefined,organisationId=membership?.organisation.id;
   const working=useRef(false),active=useRef(false),sequence=useRef(0);
-  const load=useCallback(async()=>{const seq=++sequence.current;try{const [s,b,list]=await Promise.all([api.getSettings(),api.getBlocked(),api.listSections()]);if(active.current&&sequence.current===seq){setSettings(s);setBlocked(b);setSections(list);setLoadError(false);}}catch{if(active.current&&sequence.current===seq)setLoadError(true);}},[api]);
+  const load=useCallback(async()=>{const seq=++sequence.current;try{const [s,b,list]=await Promise.all([api.getSettings(),api.getBlocked(),organisationId?api.listOrganisationSections(organisationId):Promise.resolve([] as SectionSummary[])]);if(active.current&&sequence.current===seq){setSettings(s);setBlocked(b);setSections(list);setLoadError(false);}}catch{if(active.current&&sequence.current===seq)setLoadError(true);}},[api,organisationId]);
   useFocusEffect(useCallback(()=>{active.current=true;void load();return()=>{active.current=false;sequence.current++;};},[load]));
   const run=async(action:()=>Promise<unknown>)=>{if(working.current)return;working.current=true;sequence.current++;setBusy(true);setError(false);try{await action();}catch{setError(true);}finally{working.current=false;setBusy(false);}};
   const save=(input:Parameters<typeof api.updateSettings>[0])=>run(async()=>{setSettings(await api.updateSettings(input));toast.show(t('settingsFlow.saved'));});
-  const open=(target:SettingsPage)=>navigation.push('Settings',{page:target});
-  const title=t(page?'settings.'+titles[page]:'settings.title');
-  const available=!settings?.sectionChangeAvailableAt||Date.now()>=Date.parse(settings.sectionChangeAvailableAt);
+  const open=(target:SettingsPage,organisation?:string)=>navigation.push('Settings',{page:target,...(organisation?{organisationId:organisation}:{})});
+  const title=page==='section'&&membership?t('settingsFlow.sectionIn',{organisation:membership.organisation.name}):t(page?'settings.'+titles[page]:'settings.title');
+  const availableAt=membership?.sectionChangeAvailableAt??null,available=!availableAt||Date.now()>=Date.parse(availableAt);
   const legal=(url:string|undefined)=>{if(url&&/^https:\/\//.test(url))void run(()=>Linking.openURL(url));};
   const privacyUrl=/^https:\/\//.test(process.env.EXPO_PUBLIC_PRIVACY_URL??'')?process.env.EXPO_PUBLIC_PRIVACY_URL:undefined,termsUrl=/^https:\/\//.test(process.env.EXPO_PUBLIC_TERMS_URL??'')?process.env.EXPO_PUBLIC_TERMS_URL:undefined;
   return <Screen testID="settings-screen" keyboard header={<Back title={title} onBack={()=>navigation.goBack()}/> }>
@@ -48,7 +52,10 @@ export function SettingsScreen({navigation,route}:RootScreenProps<'Settings'>){
         <Row icon="Languages" label={t('settings.language')} value={t(locale==='tr'?'settingsFlow.turkish':'settingsFlow.english')} onPress={()=>open('language')}/></Group>
       <Text variant="captionCaps">{t('settingsFlow.account')}</Text>
       <Group><Row icon="UserPen" label={t('onboarding.editProfile')} onPress={()=>navigation.navigate('ProfileSetup',{edit:true})}/>
-        <Row icon="MapPin" label={t('settings.mySection')} description={session.me?.section?.name} onPress={()=>open('section')}/>
+        {sectionMemberships.map(m=><Row key={m.organisation.id} testID={`settings-section-${m.organisation.id}`} icon="MapPin" label={t('settingsFlow.sectionIn',{organisation:m.organisation.name})}
+          description={[m.section?`${m.section.name} · ${m.section.country}`:'',
+            m.sectionChangeAvailableAt&&Date.now()<Date.parse(m.sectionChangeAvailableAt)?t('settingsFlow.sectionWait',{date:new Date(m.sectionChangeAvailableAt).toLocaleDateString(locale)}):''].filter(Boolean).join('\n')||undefined}
+          onPress={()=>open('section',m.organisation.id)}/>)}
         <Row icon="LogOut" label={t('onboarding.logOut')} onPress={()=>{setError(false);setSheet('logout');}}/>
         <Row icon="Trash2" danger label={t('settings.deleteAccount')} onPress={()=>{setError(false);setSheet('delete');}}/></Group>
       <Text variant="captionCaps">{t('settingsFlow.legal')}</Text>
@@ -62,10 +69,10 @@ export function SettingsScreen({navigation,route}:RootScreenProps<'Settings'>){
       {!settings.mutedWords.length?<Empty icon="VolumeX" text={t('settingsFlow.noWords')}/>:<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{settings.mutedWords.map(value=><Chip key={value} tone="outline" icon="X" accessibilityLabel={t('settingsFlow.removeWord',{word:value})} onPress={busy?undefined:()=>{void save({mutedWords:settings.mutedWords.filter(w=>w!==value)});}}>{value}</Chip>)}</View>}</>}
     {settings&&page==='notifications'&&<><Group>{(['inbox','threads','boardMentions'] as const).map(key=><Switch key={key} label={t('settingsFlow.notifications.'+key)} description={t('settingsFlow.notifications.'+key+'Desc')} checked={settings.notifications[key]} onChange={busy?undefined:value=>{void save({notifications:{...settings.notifications,[key]:value}});}}/>)}</Group><Note>{t('settingsFlow.pushNote')}</Note></>}
     {settings&&page==='language'&&<><Group>{(['en','tr'] as Locale[]).map(value=><ChoiceRow selected={value===locale} disabled={busy} key={value} label={t(value==='en'?'settingsFlow.english':'settingsFlow.turkish')} onPress={()=>{void run(async()=>{await setPref(PREF_KEYS.locale,value);await setLocale(value);});}}/>)}</Group><Note>{t('settingsFlow.languageNote')}</Note></>}
-    {settings&&page==='section'&&<><Note icon="Clock">{t('settingsFlow.sectionNote')}</Note><Group><Row label={session.me?.section?.name??''} description={session.me?.section?.country} onPress={()=>navigation.navigate('Section',{id:session.me!.section!.id})}/></Group>
-      {available?<Button testID="change-section" disabled={busy} onPress={()=>setSheet('picker')}>{t('settingsFlow.changeSection')}</Button>:<Note>{t('settingsFlow.sectionWait',{date:new Date(settings.sectionChangeAvailableAt!).toLocaleDateString(locale)})}</Note>}
-      {sheet==='picker'&&<SectionSheet value={session.me?.section?.id} sections={sections.map(s=>({...s,members:s.memberCount}))} onClose={()=>setSheet(null)} onPick={picked=>{setSheet(null);if(picked.id!==session.me?.section?.id)setSection(sections.find(s=>s.id===picked.id)!);}}/>}
-      {section&&<ConfirmSheet title={t('settingsFlow.changeSection')} body={t('settingsFlow.sectionConfirm',{name:section.name,country:section.country})} action={t('common.save')} danger={false} busy={busy} error={error?t('settingsFlow.error'):undefined} onClose={()=>setSection(null)} onConfirm={()=>{void run(async()=>{await api.changeSection(section.id);await session.refreshMe();setSection(null);await load();toast.show(t('settingsFlow.saved'));});}}/>}
+    {settings&&page==='section'&&<><Note icon="Clock">{t('settingsFlow.sectionNote')}</Note>{membership?.section&&<Group><Row testID="settings-section-page" label={membership.section.name} description={membership.section.country} onPress={()=>navigation.navigate('Section',{id:membership.section!.id})}/></Group>}
+      {!membership?null:available?<Button testID="change-section" disabled={busy} onPress={()=>setSheet('picker')}>{t('settingsFlow.changeSection')}</Button>:<Note>{t('settingsFlow.sectionWait',{date:new Date(availableAt!).toLocaleDateString(locale)})}</Note>}
+      {sheet==='picker'&&<SectionSheet value={membership?.section?.id} sections={sections.map(s=>({...s,members:s.memberCount}))} onClose={()=>setSheet(null)} onPick={picked=>{setSheet(null);if(picked.id!==membership?.section?.id)setSection(sections.find(s=>s.id===picked.id)!);}}/>}
+      {section&&<ConfirmSheet title={t('settingsFlow.changeSection')} body={t('settingsFlow.sectionConfirm',{name:section.name,country:section.country})} action={t('common.save')} danger={false} busy={busy} error={error?t('settingsFlow.error'):undefined} onClose={()=>setSection(null)} onConfirm={()=>{void run(async()=>{await api.changeSection(organisationId!,section.id);await session.refreshMe();setSection(null);await load();toast.show(t('settingsFlow.saved'));});}}/>}
     </>}
     {sheet==='logout'&&<ConfirmSheet title={t('onboarding.logOut')} body={t('settingsFlow.logoutBody')} action={t('onboarding.logOut')} danger={false} busy={busy} onClose={()=>setSheet(null)} onConfirm={()=>{void run(()=>session.logout());}}/>}
     {sheet==='delete'&&<ConfirmSheet title={t('settings.deleteAccount')} body={t('settingsFlow.deleteBody')} action={t('common.next')} onClose={()=>setSheet(null)} onConfirm={()=>{setConfirmWord('');setSheet('deleteFinal');}}/>}

@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { StyleSheet, Text as RNText, type ViewStyle } from 'react-native';
 import { initI18n, setLocale, t } from '../../../i18n';
@@ -16,6 +16,7 @@ import {
   ModsSheet,
   PersonPicker,
   MoreSheet,
+  ReplySheet,
   ReportSheet,
   sanitizeJoinCode,
   SectionSheet,
@@ -369,6 +370,44 @@ describe('Composer', () => {
       expect.objectContaining({ text: 'nice hat', target: 'person', person: MEMBERS[0] })
     );
   });
+
+  it('[32] offers section and country hints only when the sender has a section here', async () => {
+    await wrap(<Composer {...base} initialLevel="hint" />);
+    expect(screen.getByTestId('anonymity-hint-section')).toBeTruthy();
+    expect(screen.getByTestId('anonymity-hint-country')).toBeTruthy();
+  });
+
+  it('[32] without a section: first letter only, and a remembered section hint is dropped, not sent', async () => {
+    const onSend = jest.fn();
+    await wrap(<Composer {...base} me={{ name: 'Deniz Aksoy' }} initialLevel="hint" initialHintFields={{ section: true, country: true }} onSend={onSend} />);
+    expect(screen.queryByTestId('anonymity-hint-section')).toBeNull();
+    expect(screen.queryByTestId('anonymity-hint-country')).toBeNull();
+    expect(screen.getByTestId('anonymity-hint-letter')).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('composer-text'), 'hello');
+    // Nothing left of the remembered choice: no hint is picked for them.
+    expect(screen.getByTestId('composer-send').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByTestId('anonymity-hint-letter'));
+    await fireEvent.press(screen.getByTestId('composer-send'));
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+      sender: { level: 'hint', name: undefined, avatar: undefined, hints: { section: undefined, country: undefined, letter: 'D' } },
+    }));
+  });
+
+  it('[32] keeps the letter of a remembered choice that also had section', async () => {
+    await wrap(<Composer {...base} me={{ name: 'Deniz Aksoy' }} initialLevel="hint" initialHintFields={{ section: true, letter: true }} />);
+    expect(screen.getByTestId('anonymity-hint-letter').props.accessibilityState).toMatchObject({ selected: true });
+  });
+});
+
+describe('ReplySheet · [32] hints', () => {
+  it('drops section and country without a section in the organisation', async () => {
+    const onSend = jest.fn();
+    await wrap(<ReplySheet me={{ name: 'Deniz Aksoy' }} post={{ text: 'hi' }} initialLevel="hint" initialHintFields={{ section: true }} onClose={jest.fn()} onSend={onSend} />);
+    expect(screen.queryByTestId('anonymity-hint-section')).toBeNull();
+    expect(screen.queryByTestId('anonymity-hint-country')).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('reply-text'), 'hello');
+    expect(screen.getByTestId('reply-send').props.accessibilityState.disabled).toBe(true);
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -621,19 +660,146 @@ describe('buildEventDraft', () => {
 });
 
 describe('CreateSheet', () => {
+  const ESN = { id: 'esn-tr', name: 'ESN Türkiye', hasSections: true, section: 'ESN İzmir' };
+  const BAR = { id: 'moda', name: 'Moda Bar', hasSections: false };
+  const sheet = (organisations: React.ComponentProps<typeof CreateSheet>['organisations'], onCreate = jest.fn()) => (
+    <CreateSheet
+      organisations={organisations}
+      start={new Date(2026, 10, 22, 20, 0)}
+      end={new Date(2026, 10, 23, 1, 0)}
+      onPickStart={jest.fn()}
+      onPickEnd={jest.fn()}
+      onClose={jest.fn()}
+      onCreate={onCreate}
+    />
+  );
+
   it('takes the name field example from i18n, not from a literal', async () => {
-    await wrap(
-      <CreateSheet
-        me={{ section: 'ESN İzmir' }}
-        start={new Date(2026, 10, 22, 20, 0)}
-        end={new Date(2026, 10, 23, 1, 0)}
-        onPickStart={jest.fn()}
-        onPickEnd={jest.fn()}
-        onClose={jest.fn()}
-        onCreate={jest.fn()}
-      />
-    );
+    await wrap(sheet([ESN]));
     expect(screen.getByTestId('create-name').props.placeholder).toBe(t('events.namePlaceholder'));
+  });
+
+  it('[31] with one organisation it is implied: a read-only line, no picker', async () => {
+    await wrap(sheet([ESN]));
+    expect(screen.getByTestId('create-organisation-field').props.accessibilityRole).toBeUndefined();
+    expect(within(screen.getByTestId('create-organisation')).getByText('ESN Türkiye')).toBeTruthy();
+    expect(screen.getByTestId('create-scope')).toBeTruthy();
+  });
+
+  it('[31] hides section / national for an organisation without sections; the preview names the organisation', async () => {
+    const onCreate = jest.fn();
+    await wrap(sheet([BAR], onCreate));
+    expect(screen.queryByTestId('create-scope')).toBeNull();
+    expect(screen.queryByText(t('events.national'))).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('create-name'), 'Quiz night');
+    expect(screen.getAllByText('Moda Bar').length).toBeGreaterThanOrEqual(2);
+    await fireEvent.press(screen.getByTestId('create-submit'));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Quiz night' }), BAR);
+  });
+
+  it('[31] asks for the organisation when more than one may create, and creates nothing until one is picked', async () => {
+    const onCreate = jest.fn();
+    await wrap(sheet([ESN, BAR], onCreate));
+    await fireEvent.changeText(screen.getByTestId('create-name'), 'Quiz night');
+    expect(screen.getByTestId('create-submit').props.accessibilityState.disabled).toBe(true);
+    expect(screen.queryByTestId('create-scope')).toBeNull();
+    await fireEvent.press(screen.getByTestId('create-organisation-field'));
+    await fireEvent.press(screen.getByRole('radio', { name: 'ESN Türkiye' }));
+    expect(screen.getByTestId('create-scope')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('create-organisation-field'));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Moda Bar' }));
+    expect(screen.queryByTestId('create-scope')).toBeNull();
+    // The name typed before picking is kept.
+    await fireEvent.press(screen.getByTestId('create-submit'));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Quiz night' }), BAR);
+  });
+});
+
+describe('JoinSheet · [D17] membership answers', () => {
+  const ESN = { id: 'esn-tr', name: 'ESN Türkiye', hasSections: true };
+  const BAR = { id: 'moda', name: 'Moda Bar', hasSections: false };
+  const SECTIONS = [
+    { id: 'ank', name: 'ESN Ankara', country: 'Türkiye', members: 212 },
+    { id: 'izm', name: 'ESN İzmir', country: 'Türkiye', members: 148 },
+  ];
+  const refusal =(reason: 'membership_required' | 'membership_pending' | 'membership_rejected', organisation = ESN, approvalRequired = true): JoinResult =>
+    ({ ok: false, reason, organisation, approvalRequired, eventName: 'National Platform 2026' });
+  const base = { onClose: jest.fn(), onOpenEvent: jest.fn(), loadSections: jest.fn(async () => SECTIONS) };
+  const enter = async (code = 'NPL026') => {
+    await fireEvent.changeText(screen.getByTestId('join-code'), code);
+    await fireEvent.press(screen.getByTestId('join-submit'));
+  };
+
+  it('[29] with sections: the picker, the read-only country filled from the section, and the approval line', async () => {
+    const onRequestMembership = jest.fn(async () => ({ status: 'pending' as const }));
+    const onClose = jest.fn();
+    await wrap(<JoinSheet {...base} onClose={onClose} onSubmitCode={() => refusal('membership_required')} onRequestMembership={onRequestMembership} />);
+    await enter();
+    expect(await screen.findByText(t('joinFlow.intro', { organisation: 'ESN Türkiye', event: 'National Platform 2026' }))).toBeTruthy();
+    expect(base.loadSections).toHaveBeenCalledWith('esn-tr');
+    expect(screen.getByTestId('join-country')).toBeTruthy();
+    expect(screen.getByText(t('joinFlow.approvalNote', { organisation: 'ESN Türkiye', event: 'National Platform 2026' }))).toBeTruthy();
+    expect(screen.getByTestId('join-request').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByTestId('join-section-field'));
+    await fireEvent.press(screen.getByTestId('section-izm'));
+    expect(within(screen.getByTestId('join-country')).getByText(SECTIONS[1].country)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('join-request'));
+    expect(onRequestMembership).toHaveBeenCalledWith({ code: 'NPL026', sectionId: 'izm' });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('[29] without sections: no picker and no country row; the request carries no section', async () => {
+    const onRequestMembership = jest.fn(async () => ({ status: 'pending' as const }));
+    await wrap(<JoinSheet {...base} onSubmitCode={() => refusal('membership_required', BAR)} onRequestMembership={onRequestMembership} />);
+    await enter('QUIZ26');
+    await screen.findByTestId('join-request');
+    expect(screen.queryByTestId('join-section')).toBeNull();
+    expect(screen.queryByTestId('join-country')).toBeNull();
+    expect(screen.getByTestId('join-request').props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(screen.getByTestId('join-request'));
+    expect(onRequestMembership).toHaveBeenCalledWith({ code: 'QUIZ26' });
+  });
+
+  it('without approval: no review line, the action joins, and an approved answer lands on "You\'re in"', async () => {
+    const event = { name: 'National Platform 2026', status: 'live' as const, cover: 'magenta' as const };
+    await wrap(<JoinSheet {...base} onSubmitCode={() => refusal('membership_required', ESN, false)}
+      onRequestMembership={async () => ({ status: 'approved', event })} />);
+    await enter();
+    await screen.findByTestId('join-request');
+    expect(screen.queryByTestId('join-approval-note')).toBeNull();
+    expect(screen.getByText(t('joinFlow.join'))).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('join-section-field'));
+    await fireEvent.press(screen.getByTestId('section-ank'));
+    await fireEvent.press(screen.getByTestId('join-request'));
+    expect(await screen.findByText(t('events.boardLive'))).toBeTruthy();
+  });
+
+  it('points a refused section at the section field', async () => {
+    await wrap(<JoinSheet {...base} onSubmitCode={() => refusal('membership_required')}
+      onRequestMembership={async () => ({ status: 'invalid_section' })} />);
+    await enter();
+    await fireEvent.press(await screen.findByTestId('join-section-field'));
+    await fireEvent.press(screen.getByTestId('section-ank'));
+    await fireEvent.press(screen.getByTestId('join-request'));
+    expect(await screen.findByTestId('join-section-error')).toHaveTextContent(t('joinFlow.sectionInvalid'));
+  });
+
+  it('[30] pending: says the request is still waiting, with no second step', async () => {
+    await wrap(<JoinSheet {...base} onSubmitCode={() => refusal('membership_pending')} />);
+    await enter();
+    expect(await screen.findByText(t('joinFlow.stillPending', { organisation: 'ESN Türkiye' }))).toBeTruthy();
+    expect(screen.queryByTestId('join-request')).toBeNull();
+    expect(screen.queryByTestId('join-ask-again')).toBeNull();
+  });
+
+  it('[30] rejected: says so, and "Ask again" opens the second step', async () => {
+    await wrap(<JoinSheet {...base} onSubmitCode={() => refusal('membership_rejected')} onRequestMembership={async () => ({ status: 'pending' })} />);
+    await enter();
+    expect(await screen.findByText(t('joinFlow.rejected', { organisation: 'ESN Türkiye' }))).toBeTruthy();
+    expect(screen.queryByTestId('join-request')).toBeNull();
+    await fireEvent.press(screen.getByTestId('join-ask-again'));
+    expect(await screen.findByTestId('join-request')).toBeTruthy();
+    expect(screen.getByTestId('join-section')).toBeTruthy();
   });
 });
 

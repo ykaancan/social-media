@@ -6,6 +6,7 @@ import { Empty, Screen, RefreshNotice, WallHeader, LoadState, MessageCard } from
 import { useTranslation } from '../../i18n';
 import type { TabScreenProps } from '../../navigation/types';
 import { useSession } from '../../session';
+import { soleMembershipSection } from '../../api';
 import { useTheme } from '../../theme';
 import { useMessages } from '../../messages/MessagesProvider';
 import { MessageActions } from '../../messages/MessageActions';
@@ -16,7 +17,8 @@ export function ProfileTab({ navigation }: TabScreenProps<'Profile'>) {
   const { inbox, error, refresh } = useMessages();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = inbox?.messages.find(message => message.id === selectedId);
-  const section = me?.section;
+  // Q5: the section line only with exactly one membership that has a section.
+  const section = soleMembershipSection(me);
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   return <Screen testID="profile-screen" bottom={selected && <MessageActions key={selected.id} message={selected} onClose={() => setSelectedId(null)} />}>
     <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text variant="captionCaps" color={colors.text2} upper>{t('wall.myWall')}</Text><IconButton icon="Settings" label={t('settings.title')} testID="profile-settings" onPress={()=>navigation.navigate('Settings')}/></View>

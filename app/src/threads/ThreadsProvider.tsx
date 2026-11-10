@@ -7,7 +7,7 @@ interface ThreadsValue { snapshot:ThreadsSnapshot|null; error:boolean; refresh:(
 const Context=createContext<ThreadsValue|null>(null);
 export function ThreadsProvider({children}:{children:React.ReactNode}) {
   const api=useApi(), {me}=useSession();
-  const approved=me?.status==='approved',id=me?.id;
+  const approved=me?.status==='active'&&me.emailConfirmed,id=me?.id;
   const [snapshot,setSnapshot]=useState<ThreadsSnapshot|null>(null),[error,setError]=useState(false);
   const sequence=useRef(0);
   const refresh=useCallback(async()=>{

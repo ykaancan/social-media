@@ -28,7 +28,7 @@ export function BoardPanel({tab,board,refresh,composing,onComposerClose,onProjec
     toast.show(t('boardFlow.rejected'),{durationMs:Math.max(1,Date.parse(receipt.undoUntil)-Date.now()),action:t('boardFlow.undo'),
       onAction:()=>{void api.undoRejection(event.id,receipt.undoToken).then(refresh).catch(()=>toast.show(t('boardFlow.actionError')));}});
   });};
-  const person=(p:NonNullable<BoardSnapshot['creator']>)=>({id:p.id,name:p.name,avatar:p.avatarUrl,section:p.section.name});
+  const person=(p:NonNullable<BoardSnapshot['creator']>)=>({id:p.id,name:p.name,avatar:p.avatarUrl,section:p.section?.name});
   const open=(name:string,p?:BoardPost)=>{setFailed(false);setPost(p);setSheet(name);};
   const pendingIds=selected.filter(id=>board.queue.some(row=>row.id===id));
   const readOnlyRows=board.reviewed.filter(p=>p.state===filter);
@@ -72,7 +72,7 @@ export function BoardPanel({tab,board,refresh,composing,onComposerClose,onProjec
       </PostCard>)}
     </>}
     {(composing||rewrite) && <BoardComposer board={board} rewrite={rewrite} onClose={()=>{setRewrite(undefined);onComposerClose();void refresh();}}/>}
-    {sheet==='reply'&&post&&<FirstReply origin={{kind:'post',id:post.id,eventId:event.id}} post={post} onClose={()=>setSheet(null)}/>}
+    {sheet==='reply'&&post&&<FirstReply origin={{kind:'post',id:post.id,eventId:event.id}} organisationId={event.organisation.id} post={post} onClose={()=>setSheet(null)}/>}
     {sheet==='more' && post && <MoreSheet post={post} onClose={()=>setSheet(null)} items={[
       {id:'report',icon:'Flag',label:t('report.title')},
       ...(event.isModerator&&live&&!post.recipient?[{id:'hide',icon:'EyeOff' as const,label:t('boardFlow.hide'),danger:true}]:[]),

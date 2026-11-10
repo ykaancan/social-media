@@ -1,14 +1,13 @@
+import { memberAccount } from '../testing';
 import { MockApi } from '../mock';
 import { HttpApi } from '../http';
 import type { OpenThreadRequest } from '../threads';
 
 async function setup() {
   const api=new MockApi({latencyMs:0,approveAfterMs:0,screening:text=>text==='blocked'?'block':text==='warning'?'warn':'allow'});
-  const owner=await api.register({email:'owner@example.com',password:'password123'});
-  await api.submitProfile({name:'Owner',sectionId:'ankara'});await api.me();
-  const event=await api.createEvent({name:'Live event',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
-  const member=await api.register({email:'member@example.com',password:'password123'});
-  await api.submitProfile({name:'Şeyma',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+  const owner=await memberAccount(api,'owner@example.com','ankara','Owner');
+  const event=await api.createEvent({organisationId:'esn-tr',name:'Live event',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
+  const member=await memberAccount(api,'member@example.com','izmir','Şeyma');await api.joinEvent(event.joinCode);
   await api.sendBoardPost({eventId:event.id,text:'Original post',anonymityLevel:'hint',allowedHints:{country:true}});
   const post=(await api.getBoard(event.id)).posts[0];api.setTokens(owner.tokens);
   const input:OpenThreadRequest={origin:{kind:'post',id:post.id,eventId:event.id},text:'First reply',anonymityLevel:'anonymous',allowedHints:{},requestId:'open-1'};
@@ -73,8 +72,7 @@ it('blocks by other message reference, hides only for the blocker and retains re
 it('requires accessible origins and thread membership, with no cold or self opening',async()=>{
   const {api,input,member}=await setup();const {id}=await api.openThread(input);
   api.setTokens(member.tokens);await expect(api.openThread(input)).rejects.toMatchObject({status:403});
-  await api.register({email:'outsider@example.com',password:'password123'});
-  await api.submitProfile({name:'Outsider',sectionId:'ankara'});await api.me();
+  await memberAccount(api,'outsider@example.com','ankara','Outsider');
   await expect(api.openThread(input)).rejects.toBeDefined();
   await expect(api.getThread(id)).rejects.toMatchObject({status:404});
   await expect(api.sendThreadMessage(id,{text:'Intrude',requestId:'intrude'})).rejects.toMatchObject({status:404});

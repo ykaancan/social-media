@@ -1,15 +1,14 @@
+import { memberAccount } from '../testing';
 import { MockApi } from '../mock';
 import { HttpApi } from '../http';
 import type { SendBoardPost } from '../board';
 
 async function setup(mode:'approve_first'|'post_immediately'='approve_first') {
   const api=new MockApi({latencyMs:0,approveAfterMs:0});
-  const owner=await api.register({email:'owner@example.com',password:'password123'});
-  await api.submitProfile({name:'Owner',sectionId:'ankara'});await api.me();
-  const event=await api.createEvent({name:'Live event',scope:'section',cover:'coral',boardMode:mode,
+  const owner=await memberAccount(api,'owner@example.com','ankara','Owner');
+  const event=await api.createEvent({organisationId:'esn-tr',name:'Live event',scope:'section',cover:'coral',boardMode:mode,
     startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
-  const member=await api.register({email:'member@example.com',password:'password123'});
-  await api.submitProfile({name:'Şeyma',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+  const member=await memberAccount(api,'member@example.com','izmir','Şeyma');await api.joinEvent(event.joinCode);
   const input:SendBoardPost={eventId:event.id,text:'Welcome everyone',anonymityLevel:'anonymous',allowedHints:{}};
   return {api,owner,member,event,input};
 }

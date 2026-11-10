@@ -46,9 +46,25 @@ export interface AnonymitySelectorProps {
   hintFields?: HintFields;
   onHintFieldsChange?: (fields: HintFields) => void;
   me?: AnonymitySelectorMe;
+  /**
+   * [D15] False when the sender has no section in the organisation of the event
+   * this is written in (an organisation without sections, or no approved
+   * membership there). The `section` and `country` hints are then not offered,
+   * only `first letter` — the server refuses the other two with a 422.
+   */
+  sectionHints?: boolean;
   labels?: Partial<Record<AnonymitySelectorLabelKey, string>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+}
+
+/**
+ * The hint fields that may be sent: with `sectionHints` false, `section` and
+ * `country` are dropped, so a remembered choice that had them never reaches
+ * the server. Nothing is added in their place.
+ */
+export function allowedHintFields(fields: HintFields, sectionHints: boolean): HintFields {
+  return sectionHints ? fields : { letter: fields.letter };
 }
 
 /** .a-sel__hints — animates in with @keyframes post-in when hint is picked. */
@@ -161,6 +177,7 @@ export function AnonymitySelector({
   hintFields = { section: true },
   onHintFieldsChange,
   me = {},
+  sectionHints = true,
   labels = {},
   style,
   testID,
@@ -182,8 +199,8 @@ export function AnonymitySelector({
   const hints =
     value === 'hint'
       ? {
-          section: hintFields.section ? me.section : undefined,
-          country: hintFields.country ? me.country : undefined,
+          section: sectionHints && hintFields.section ? me.section : undefined,
+          country: sectionHints && hintFields.country ? me.country : undefined,
           letter: hintFields.letter ? (me.name ?? '').charAt(0) : undefined,
         }
       : {};
@@ -209,13 +226,17 @@ export function AnonymitySelector({
           <Text variant="captionCaps" color={colors.anonHint} upper style={styles.hintsLabel}>
             {L('showThem')}
           </Text>
-          <Chip size="sm" icon="MapPin" selected={!!hintFields.section} onPress={() => toggle('section')}>
-            {L('section')}
-          </Chip>
-          <Chip size="sm" icon="Flag" selected={!!hintFields.country} onPress={() => toggle('country')}>
-            {L('country')}
-          </Chip>
-          <Chip size="sm" icon="CaseUpper" selected={!!hintFields.letter} onPress={() => toggle('letter')}>
+          {sectionHints ? (
+            <>
+              <Chip size="sm" icon="MapPin" selected={!!hintFields.section} onPress={() => toggle('section')} testID="anonymity-hint-section">
+                {L('section')}
+              </Chip>
+              <Chip size="sm" icon="Flag" selected={!!hintFields.country} onPress={() => toggle('country')} testID="anonymity-hint-country">
+                {L('country')}
+              </Chip>
+            </>
+          ) : null}
+          <Chip size="sm" icon="CaseUpper" selected={!!hintFields.letter} onPress={() => toggle('letter')} testID="anonymity-hint-letter">
             {L('letter')}
           </Chip>
         </HintsBox>

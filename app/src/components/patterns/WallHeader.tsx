@@ -52,15 +52,13 @@ export function WallHeader({
   const hasIdentity = Boolean(user.hasPhoto || user.name);
   const nameVariant = preview || compact ? 'displayMd' : 'displayLg';
 
+  // [D15] No section (none in this organisation, or more than one on your own
+  // wall, Q5): nothing in this slot, not a placeholder — the preview included.
   const chip =
     user.section != null ? (
       <Chip size="sm" icon="MapPin" tone="outline" onPress={onSection}>
         {user.country ? `${user.section} · ${user.country}` : user.section}
       </Chip>
-    ) : preview ? (
-      <Text variant="caption" color={colors.text3}>
-        {t('onboarding.previewSection')}
-      </Text>
     ) : null;
 
   return (

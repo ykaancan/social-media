@@ -10,9 +10,10 @@ import {
   ThreadBubble,
   type QueueCardState,
 } from '../../components/cards';
+import { Note } from '../../components/patterns';
 import { useTranslation } from '../../i18n';
 import { covers } from '../../theme';
-import { events, posts } from '../fixtures';
+import { events, organisations, posts } from '../fixtures';
 import { Frame, GallerySection, Specimen } from '../kit';
 
 export function CardsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) => void }) {
@@ -266,22 +267,41 @@ export function CardsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) =
         <JoinCodeBlock code={events.izm.code} generateQr eventColorSoft={covers.azure.soft} />
       </Specimen>
 
-      <Specimen label="PendingState">
-        <PendingState
-          title={t('onboarding.pendingTitle')}
-          subtitle={t('onboarding.pendingSub')}
-          steps={[
-            { label: t('onboarding.stepSent'), done: true },
-            { label: t('onboarding.stepReview'), current: true, description: t('onboarding.stepReviewDesc') },
-            { label: t('onboarding.stepIn') },
-          ]}
-          note={t('onboarding.pendingNote')}
-        />
+      {/* [D14]/[D17] The Events tab's waiting card: one per pending membership,
+          with and without the event the request came from. */}
+      <Specimen label="PendingState · waiting for an organisation (with the stored event / without) / restricted">
+        {[events.np.name, undefined].map((event) => (
+          <PendingState
+            key={event ?? 'none'}
+            title={t('membershipFlow.pendingTitle', { organisation: organisations[0]!.name })}
+            steps={[
+              { label: t('membershipFlow.stepSent'), done: true },
+              { label: t('membershipFlow.stepReview'), current: true, description: t('membershipFlow.stepReviewDesc', { organisation: organisations[0]!.name }) },
+              { label: t('membershipFlow.stepIn'), description: event ? t('membershipFlow.stepInEvent', { event }) : undefined },
+            ]}
+          />
+        ))}
         <PendingState
           title={t('reviewFlow.bannedTitle')}
           subtitle={t('reviewFlow.bannedBody')}
           steps={[]}
         />
+      </Specimen>
+
+      {/* [D18] The Confirm-email screen's body in its three states: as it opens,
+          after a resend the server accepted, and after "I've confirmed" found the
+          email still unconfirmed. The address is a fixture, never a real one. */}
+      <Specimen label="PendingState · confirm email (open / sent / still unconfirmed)">
+        <PendingState
+          title={t('onboarding.confirmTitle')}
+          subtitle={t('onboarding.confirmSub', { email: 'deniz@example.com' })}
+        />
+        <Note>{t('onboarding.confirmSent')}</Note>
+        <Note icon="TriangleAlert">{t('onboarding.confirmStill')}</Note>
+      </Specimen>
+
+      <Specimen label="Note · a rejected membership on the Events tab ([D14], ask again with a code)">
+        <Note>{t('membershipFlow.rejected', { organisation: organisations[0]!.name })}</Note>
       </Specimen>
     </GallerySection>
   );

@@ -23,7 +23,7 @@ export function MessageActions({ message, onClose }: { message: InboxMessage; on
     finally { running.current = false; setBusy(false); }
   };
   const move = (state: MessageState) => { void run(() => api.updateInboxMessage(message.id, state), t(state === 'new' ? 'messageFlow.markedNew' : 'inbox.keptPrivate')); };
-  if (mode === 'reply') return <FirstReply origin={{kind:'inbox',id:message.id}} post={messagePreview(message)} onClose={onClose}/>;
+  if (mode === 'reply') return <FirstReply origin={{kind:'inbox',id:message.id}} eventId={message.source?.eventId} post={messagePreview(message)} onClose={onClose}/>;
   if (mode === 'report') return <ReportSheet post={messagePreview(message)} busy={busy} error={error ? t('messageFlow.actionError') : undefined}
     onClose={onClose} onReport={reason => { void run(() => api.reportMessage(message.id, reason as ReportReason), t('report.sent')); }} />;
   if (mode === 'delete' || mode === 'block') return <ConfirmSheet busy={busy} error={error ? t('messageFlow.actionError') : undefined}

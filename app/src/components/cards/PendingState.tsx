@@ -25,8 +25,10 @@ const DOT = 28;
 
 /**
  * The "pending approval" body: display title, numbered steps, a note.
- * `pending` means the account cannot use the app yet — the copy must not
- * promise anything the admin has not done.
+ * [D14] `pending` is a state of one membership: the person cannot enter that
+ * organisation yet, and uses the rest of the app as usual. The Events tab shows
+ * one per pending membership. The copy must not promise anything the
+ * organisation's admin has not done.
  */
 export function PendingState({ title, subtitle, steps = [], note, style, testID }: PendingStateProps) {
   const { colors, radius } = useTheme();

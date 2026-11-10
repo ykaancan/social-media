@@ -3,6 +3,7 @@ export { SignUp } from './onboarding/SignUp';
 export { LogIn } from './onboarding/LogIn';
 export { ProfileSetup } from './onboarding/ProfileSetup';
 export { Pending } from './onboarding/Pending';
+export { ConfirmEmail } from './onboarding/ConfirmEmail';
 export { EventsTab } from './shell/EventsTab';
 export { InboxTab } from './shell/InboxTab';
 export { ThreadsTab } from './shell/ThreadsTab';

@@ -6,7 +6,7 @@ export interface AccountSettings {
   writingPolicy: WallSnapshot['writingPolicy'];
   mutedWords: string[];
   notifications: NotificationPreferences;
-  sectionChangeAvailableAt: string | null;
+  /* [D7]/[D15] No `sectionChangeAvailableAt` here: it is on each `Membership`. */
 }
 /** Opaque block reference and the identity already allowed when blocking. Never a user ID. */
 export interface BlockedEntry { id:string; sender:MessageSender }
@@ -19,10 +19,14 @@ export interface SettingsApi {
   getBlocked():Promise<BlockedEntry[]>;
   /** DELETE /me/blocks/:opaqueId */
   unblock(id:string):Promise<void>;
-  /** PATCH /me/profile. Approved users stay approved; section is not editable here. */
-  editProfile(input:Omit<ProfileRequest,'sectionId'>):Promise<Me>;
-  /** PUT /me/section {sectionId}. Audit and one change per 30 days, without reapproval. */
-  changeSection(sectionId:string):Promise<Me>;
+  /** PATCH /me/profile. Active accounts only; name, bio and photo, never the section or status. */
+  editProfile(input:ProfileRequest):Promise<Me>;
+  /**
+   * PUT /me/memberships/:organisationId/section {sectionId}. [D7]/[D15] An approved
+   * membership only; logged; one change per 30 days per organisation (429); no
+   * re-approval. Sending the current section is a no-op.
+   */
+  changeSection(organisationId:string,sectionId:string):Promise<Me>;
   /** GET /me/export. Account-owned data and privacy-filtered received content; no hidden sender IDs. */
   exportAccount():Promise<Record<string,unknown>>;
   /** DELETE /me. Real deletion, including authored content, sessions, avatar and personal audit references. */

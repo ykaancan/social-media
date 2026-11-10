@@ -23,7 +23,7 @@ import {
 } from '../../components/patterns';
 import { useTranslation, useLocale } from '../../i18n';
 import { useTheme } from '../../theme';
-import { events, me, people, posts, roster, sections } from '../fixtures';
+import { events, me, organisations, people, posts, roster, sections } from '../fixtures';
 import { Specimen } from '../kit';
 
 type SheetId =
@@ -45,7 +45,11 @@ type SheetId =
   | 'composer-error'
   | 'section'
   | 'join'
+  | 'join-membership'
   | 'create'
+  | 'create-plain'
+  | 'create-choice'
+  | 'composer-nosection'
   | 'mods'
   | 'controls';
 
@@ -85,8 +89,22 @@ export function PatternSheets() {
 
   const pool = roster.filter((p) => p.id !== people.kaan.id && !mods.some((m) => m.id === p.id));
 
-  /** The fake server behind JoinSheet — codes from HANDOFF §4. */
+  const [esnTr, esnEu, moda] = [organisations[0]!, organisations[1]!, organisations[2]!];
+  const orgRef = (o: typeof esnTr) => ({ id: o.id, name: o.name, hasSections: o.hasSections });
+
+  /**
+   * The fake server behind JoinSheet — codes from HANDOFF §4, plus one code per
+   * [D17] membership answer. APRBAR pretends Moda Bar has approval on, so the
+   * "approval without sections" step can be seen; the fixture itself is open.
+   */
   const resolveCode = (code: string): JoinResult => {
+    const refusal = (reason: 'membership_required' | 'membership_pending' | 'membership_rejected', o: typeof esnTr, approvalRequired: boolean): JoinResult =>
+      ({ ok: false, reason, organisation: orgRef(o), approvalRequired, eventName: events.np.name });
+    if (code === 'APRSEC') return refusal('membership_required', esnTr, true);
+    if (code === 'FRESEC') return refusal('membership_required', esnEu, false);
+    if (code === 'APRBAR') return refusal('membership_required', moda, true);
+    if (code === 'PEND22') return refusal('membership_pending', esnTr, true);
+    if (code === 'REJ222') return refusal('membership_rejected', esnTr, true);
     if (code === events.izm.code) {
       return {
         ok: true,
@@ -322,11 +340,33 @@ export function PatternSheets() {
         ) : null}
       </Specimen>
 
-      <Specimen label="CreateSheet · Starts / Ends add an hour (30 Nov 23:00 → 1 Dec = multi-day, cross-month)">
+      {/* [D17] The second step and the two membership answers. Sections come
+          from the fixtures of the code's organisation; FRESEC is let in at once
+          (approval off), the two approval codes close the sheet as pending. */}
+      <Specimen label="JoinSheet · [D17] APRSEC sections + approval · FRESEC sections, no approval · APRBAR approval, no sections · PEND22 still waiting · REJ222 not accepted, ask again">
+        {opener('join-membership', 'Open · join an organisation')}
+        {open === 'join-membership' ? (
+          <JoinSheet
+            onSubmitCode={resolveCode}
+            loadSections={async (organisationId) =>
+              sections.filter((s) => organisations.find((o) => o.id === organisationId)?.sectionIds.includes(s.id))}
+            onRequestMembership={async ({ code }) =>
+              code === 'FRESEC'
+                ? { status: 'approved', event: { name: events.np.name, status: 'live', cover: events.np.cover, day: events.np.day,
+                    month: events.np.month, timeRange: events.np.timeRange, scope: esnEu.name } }
+                : { status: 'pending' }}
+            onScan={() => undefined}
+            onClose={close}
+            onOpenEvent={close}
+          />
+        ) : null}
+      </Specimen>
+
+      <Specimen label="CreateSheet · one organisation with sections (read-only line, section / national) · Starts / Ends add an hour (30 Nov 23:00 → 1 Dec = multi-day, cross-month)">
         {opener('create', 'Open · create an event')}
         {open === 'create' ? (
           <CreateSheet
-            me={{ section: me.section }}
+            organisations={[{ ...orgRef(esnTr), section: me.section }]}
             start={start}
             end={end}
             onPickStart={() => setStart((d) => new Date(d.getTime() + HOUR))}
@@ -334,6 +374,30 @@ export function PatternSheets() {
             onClose={close}
             onCreate={close}
           />
+        ) : null}
+      </Specimen>
+
+      <Specimen label="CreateSheet · [D16] one organisation without sections (no scope; the card's scope line is its name)">
+        {opener('create-plain', 'Open · create in Moda Bar')}
+        {open === 'create-plain' ? (
+          <CreateSheet organisations={[orgRef(moda)]} start={start} end={end} onPickStart={() => undefined}
+            onPickEnd={() => undefined} onClose={close} onCreate={close} />
+        ) : null}
+      </Specimen>
+
+      <Specimen label="CreateSheet · [D16] two organisations may create (pick one first; scope follows the pick)">
+        {opener('create-choice', 'Open · create, choose organisation')}
+        {open === 'create-choice' ? (
+          <CreateSheet organisations={[{ ...orgRef(esnTr), section: me.section }, orgRef(moda)]} start={start} end={end}
+            onPickStart={() => undefined} onPickEnd={() => undefined} onClose={close} onCreate={close} />
+        ) : null}
+      </Specimen>
+
+      <Specimen label="Composer · board · no section in this event's organisation [D15] (first letter only)">
+        {opener('composer-nosection', 'Open · composer without section hints')}
+        {open === 'composer-nosection' ? (
+          <Composer me={{ name: me.name }} members={roster} boardMode="post_immediately" initialLevel="hint"
+            initialHintFields={{ section: true, letter: true }} onClose={close} onSend={close} />
         ) : null}
       </Specimen>
 

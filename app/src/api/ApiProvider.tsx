@@ -18,7 +18,10 @@ import type { ApiClient } from './types';
 export function createApi(): ApiClient {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL;
   if (baseUrl) return new HttpApi(baseUrl);
-  if (__DEV__) return mockApi();
+  // DEV ONLY demo timings: the mock "opens" the confirmation link 4 s after
+  // sign-up and an organisation admin approves a request 4 s after it is sent,
+  // and one live event per fixture organisation is seeded (`DEMO_EVENTS`).
+  if (__DEV__) return mockApi({ confirmAfterMs: 4000, approveAfterMs: 4000, demoEvents: true });
   throw new Error(
     'EXPO_PUBLIC_API_URL is not set. A production build must point at a real backend; ' +
       'see .env.example.',

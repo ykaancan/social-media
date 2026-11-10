@@ -8,10 +8,13 @@ import {
   type CreateEventRequest, type EventSummary, type EventDetail, type EventJoinResult,
   ApiError,
   type ApiClient,
+  type ApiErrorCode,
   type AuthResult,
   type DeviceRegistration,
   type LoginRequest,
   type Me,
+  type Membership,
+  type MembershipRequest,
   type ProfileRequest,
   type RegisterRequest,
   type SectionDetail,
@@ -157,12 +160,20 @@ export class HttpApi implements ApiClient {
     await this.request<void>('/auth/forgot-password', { method: 'POST', body: { email }, auth: true });
   }
 
+  /**
+   * [D18] Signed in, so NOT an `auth` call: a 401 here means the access token
+   * expired and is worth one refresh, not "wrong password". Always 202.
+   */
+  async resendConfirmation(): Promise<void> {
+    await this.request<void>('/auth/resend-confirmation', { method: 'POST' });
+  }
+
   getSettings():Promise<AccountSettings>{return this.request('/me/settings');}
   updateSettings(input:Partial<Pick<AccountSettings,'writingPolicy'|'mutedWords'|'notifications'>>):Promise<AccountSettings>{return this.request('/me/settings',{method:'PATCH',body:input});}
   getBlocked():Promise<BlockedEntry[]>{return this.request('/me/blocks');}
   unblock(id:string):Promise<void>{return this.request('/me/blocks/'+encodeURIComponent(id),{method:'DELETE'});}
-  async editProfile(input:Omit<ProfileRequest,'sectionId'>):Promise<Me>{const {photoUri,...body}=input;if(photoUri)await this.uploadPhoto(photoUri);return this.request('/me/profile',{method:'PATCH',body});}
-  changeSection(sectionId:string):Promise<Me>{return this.request('/me/section',{method:'PUT',body:{sectionId}});}
+  async editProfile(input:ProfileRequest):Promise<Me>{const {photoUri,...body}=input;if(photoUri)await this.uploadPhoto(photoUri);return this.request('/me/profile',{method:'PATCH',body});}
+  changeSection(organisationId:string,sectionId:string):Promise<Me>{return this.request('/me/memberships/'+encodeURIComponent(organisationId)+'/section',{method:'PUT',body:{sectionId}});}
   exportAccount():Promise<Record<string,unknown>>{return this.request('/me/export');}
   deleteAccount():Promise<void>{return this.request('/me',{method:'DELETE'});}
 
@@ -196,10 +207,14 @@ export class HttpApi implements ApiClient {
     await this.request<{ avatarUrl: string }>('/me/photo', { method: 'POST', body: form });
   }
 
-  /* ---------------- sections ---------------- */
+  /* ---------------- organisations and sections ---------------- */
 
-  listSections(): Promise<SectionSummary[]> {
-    return this.request<SectionSummary[]>('/sections');
+  listOrganisationSections(organisationId: string): Promise<SectionSummary[]> {
+    return this.request<SectionSummary[]>(`/organisations/${encodeURIComponent(organisationId)}/sections`);
+  }
+
+  requestMembership(body: MembershipRequest): Promise<Membership> {
+    return this.request<Membership>('/organisations/join', { method: 'POST', body });
   }
 
   getSection(id: string): Promise<SectionDetail> {
@@ -292,6 +307,12 @@ async function readJson<T>(res: Response): Promise<T | undefined> {
   }
 }
 
+const FORBIDDEN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
+  'event_creation_not_allowed',
+  'email_unconfirmed',
+  'account_not_active',
+]);
+
 /** Maps a non-2xx response onto the closed `ApiErrorCode` set. */
 async function toApiError(res: Response, auth: boolean): Promise<ApiError> {
   let body: ErrorBody = {};
@@ -302,6 +323,10 @@ async function toApiError(res: Response, auth: boolean): Promise<ApiError> {
   }
   const message = body.message;
 
+  // The three 403 codes the UI tells apart; every other 403 stays `unknown`.
+  if (res.status === 403 && body.code && FORBIDDEN_CODES.has(body.code)) {
+    return new ApiError(body.code as ApiErrorCode, message, 403, body.field);
+  }
   if (res.status === 409) return new ApiError('email_in_use', message, 409, body.field);
   if (res.status === 422) return new ApiError('validation', message, 422, body.field);
   if (res.status === 401) {

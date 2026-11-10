@@ -1,8 +1,9 @@
 import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { ApiProvider } from '../../../api';
+import { ApiError, ApiProvider } from '../../../api';
 import { MockApi } from '../../../api/mock';
 import { ToastHost } from '../../../components';
 import { initI18n, t } from '../../../i18n';
@@ -10,22 +11,20 @@ import { RootNavigator } from '../../../navigation/RootNavigator';
 import { clearTokens, SessionProvider, useSession, type SessionValue } from '../../../session';
 import { ThemeProvider } from '../../../theme';
 import { upper } from '../../../utils/text';
-import type { Me, ProfileRequest } from '../../../api/types';
+import { RESEND_WAIT_MS } from '../ConfirmEmail';
 
 /**
- * Profile setup and Pending, driven through the real navigator so the thing
- * under test is the whole route: the form sends the profile, the group swaps,
- * and the Pending screen polls until the admin has decided.
+ * Confirm email [D18], Profile setup [D14]/[D15] and the restricted screen,
+ * driven through the real navigator so the thing under test is the whole
+ * route: the screen acts, the session changes, the group swaps.
  *
  * `MockApi` stands in for the server; nothing here mounts a screen in
- * isolation, because "did the navigator move" is half of what these two
- * screens promise.
+ * isolation, because "did the navigator move" is half of what these screens
+ * promise.
  */
 
 initI18n();
 
-// The section sheet is a Modal whose entrance animation never advances under
-// reanimated's jest mock, so RNTL would treat its body as hidden.
 configure({ defaultIncludeHiddenElements: true });
 
 // expo-image-picker is a native module: the screen owns the permission prompt
@@ -69,24 +68,42 @@ async function mount(api: MockApi) {
   return () => session.current as SessionValue;
 }
 
-/** Registers, which lands an `incomplete` account on the profile form. */
-async function reachProfileSetup(api: MockApi) {
+/** Registers, which lands an unconfirmed account on the Confirm-email screen. */
+async function reachConfirmEmail(api: MockApi) {
   const s = await mount(api);
   await waitFor(() => expect(s().phase).toBe('signedOut'));
   await act(async () => {
     await s().register(CREDENTIALS);
   });
-  await waitFor(() => expect(screen.getByTestId('profile-submit')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('confirm-email')).toBeTruthy());
   return s;
 }
 
-async function pickAnkara() {
+/**
+ * An unconfirmed account that signs in later (not fresh from sign-up), so the
+ * Resend button is not in its first-60-seconds rest.
+ */
+async function reachConfirmEmailByLogin(api: MockApi) {
+  await api.register(CREDENTIALS);
+  api.setTokens(null);
+  const s = await mount(api);
+  await waitFor(() => expect(s().phase).toBe('signedOut'));
   await act(async () => {
-    fireEvent.press(screen.getByTestId('profile-section-field'));
+    await s().login(CREDENTIALS);
   });
+  await waitFor(() => expect(screen.getByTestId('confirm-email')).toBeTruthy());
+  return s;
+}
+
+/** Registers and opens the link, which lands an `incomplete` account on the profile form. */
+async function reachProfileSetup(api: MockApi) {
+  const s = await reachConfirmEmail(api);
+  api.confirmEmail(CREDENTIALS.email);
   await act(async () => {
-    fireEvent.press(screen.getByTestId('section-ankara'));
+    await s().refreshMe();
   });
+  await waitFor(() => expect(screen.getByTestId('profile-submit')).toBeTruthy());
+  return s;
 }
 
 const disabled = (testID: string) =>
@@ -97,15 +114,189 @@ beforeEach(async () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ProfileSetup
+ * Confirm email [D18]
  * ------------------------------------------------------------------ */
 
-test('send stays disabled until there is both a name and a section', async () => {
-  await reachProfileSetup(new MockApi({ latencyMs: 0, approveAfterMs: 60_000 }));
+test('names the person\'s own address and the 24-hour link, and offers only resend, check and log out', async () => {
+  await reachConfirmEmail(new MockApi({ latencyMs: 0 }));
+
+  expect(screen.getByText(upper(t('onboarding.confirmTitle')))).toBeTruthy();
+  const sub = t('onboarding.confirmSub', { email: CREDENTIALS.email });
+  expect(sub).toContain(CREDENTIALS.email);
+  expect(sub).toContain('24');
+  expect(screen.getByText(sub)).toBeTruthy();
+  expect(screen.getByTestId('confirm-resend')).toBeTruthy();
+  expect(screen.getByTestId('confirm-check')).toBeTruthy();
+  expect(screen.getByTestId('confirm-logout')).toBeTruthy();
+  // Nothing is said before anything was done.
+  expect(screen.queryByTestId('confirm-sent')).toBeNull();
+  expect(screen.queryByTestId('confirm-still')).toBeNull();
+});
+
+test('right after sign-up the resend button rests for the first 60 seconds and sends nothing', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  const resend = jest.spyOn(api, 'resendConfirmation');
+  const s = await mount(api);
+  await waitFor(() => expect(s().phase).toBe('signedOut'));
+
+  jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+  try {
+    await act(async () => {
+      await s().register(CREDENTIALS);
+    });
+    expect(screen.getByTestId('confirm-email')).toBeTruthy();
+    expect(disabled('confirm-resend')).toBe(true);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('confirm-resend'));
+    });
+    expect(resend).not.toHaveBeenCalled();
+    // Nothing was resent, so nothing is said.
+    expect(screen.queryByTestId('confirm-sent')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(RESEND_WAIT_MS);
+    });
+    expect(disabled('confirm-resend')).toBe(false);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a resend is shown as sent and the button rests for 60 seconds', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmailByLogin(api);
+  const resend = jest.spyOn(api, 'resendConfirmation');
+
+  jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+  try {
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('confirm-resend'));
+    });
+    expect(resend).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(t('onboarding.confirmSent'))).toBeTruthy();
+    expect(disabled('confirm-resend')).toBe(true);
+
+    // A press while resting sends nothing.
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('confirm-resend'));
+    });
+    expect(resend).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(RESEND_WAIT_MS - 1);
+    });
+    expect(disabled('confirm-resend')).toBe(true);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(disabled('confirm-resend')).toBe(false);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a resend that failed is never shown as sent', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmailByLogin(api);
+  jest.spyOn(api, 'resendConfirmation').mockRejectedValueOnce(new ApiError('network', 'offline'));
+
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('confirm-resend'));
+  });
+
+  expect(screen.getByText(t('onboarding.errorNetwork'))).toBeTruthy();
+  expect(screen.queryByText(t('onboarding.confirmSent'))).toBeNull();
+  // Nothing was sent, so there is nothing to wait for.
+  expect(disabled('confirm-resend')).toBe(false);
+});
+
+test('"I\'ve confirmed" says so plainly while the email is still unconfirmed', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmail(api);
+
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('confirm-check'));
+  });
+
+  expect(screen.getByText(t('onboarding.confirmStill'))).toBeTruthy();
+  expect(screen.getByTestId('confirm-email')).toBeTruthy();
+});
+
+test('"I\'ve confirmed" on a network failure shows the network error, not "still unconfirmed"', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmail(api);
+  jest.spyOn(api, 'me').mockRejectedValueOnce(new ApiError('network', 'offline'));
+
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('confirm-check'));
+  });
+
+  expect(screen.getByText(t('onboarding.errorNetwork'))).toBeTruthy();
+  expect(screen.queryByText(t('onboarding.confirmStill'))).toBeNull();
+});
+
+test('"I\'ve confirmed" after the link was opened moves on to profile setup', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmail(api);
+  api.confirmEmail(CREDENTIALS.email);
+
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('confirm-check'));
+  });
+
+  await waitFor(() => expect(screen.getByTestId('profile-setup')).toBeTruthy());
+  expect(screen.queryByTestId('confirm-email')).toBeNull();
+});
+
+test('coming back to the foreground re-reads the account', async () => {
+  // react-native's jest setup makes `AppState.addEventListener` a mock; its
+  // calls are the listeners the mounted screens registered.
+  const addListener = AppState.addEventListener as unknown as jest.Mock;
+  const before = addListener.mock.calls.length;
+  const api = new MockApi({ latencyMs: 0 });
+  await reachConfirmEmail(api);
+  api.confirmEmail(CREDENTIALS.email);
+  const listeners = addListener.mock.calls.slice(before)
+    .filter(([type]) => type === 'change').map(([, listener]) => listener as (state: string) => void);
+  expect(listeners.length).toBeGreaterThan(0);
+
+  await act(async () => {
+    listeners.forEach((listener) => listener('active'));
+  });
+
+  await waitFor(() => expect(screen.getByTestId('profile-setup')).toBeTruthy());
+});
+
+test('log out from the confirm screen signs out', async () => {
+  const s = await reachConfirmEmail(new MockApi({ latencyMs: 0 }));
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('confirm-logout'));
+  });
+  await waitFor(() => expect(screen.getByTestId('splash')).toBeTruthy());
+  expect(s().phase).toBe('signedOut');
+});
+
+/* ------------------------------------------------------------------ *
+ * Profile setup — no section [D15]
+ * ------------------------------------------------------------------ */
+
+test('[28] the form is photo, name and bio: no section picker and no country row', async () => {
+  await reachProfileSetup(new MockApi({ latencyMs: 0 }));
+
+  expect(screen.getByTestId('profile-name')).toBeTruthy();
+  expect(screen.getByTestId('profile-bio')).toBeTruthy();
+  expect(screen.getByTestId('profile-photo-button')).toBeTruthy();
+  expect(screen.queryByTestId('profile-section-field')).toBeNull();
+  expect(screen.queryByTestId('profile-country-field')).toBeNull();
+  expect(screen.queryByText(t('onboarding.pickSection'))).toBeNull();
+});
+
+test('send stays disabled until there is a name, and nothing else is required', async () => {
+  await reachProfileSetup(new MockApi({ latencyMs: 0 }));
 
   expect(disabled('profile-submit')).toBe(true);
 
-  // A name alone is not enough — and whitespace is not a name.
+  // Whitespace is not a name.
   await act(async () => {
     fireEvent.changeText(screen.getByTestId('profile-name'), '   ');
   });
@@ -114,40 +305,12 @@ test('send stays disabled until there is both a name and a section', async () =>
   await act(async () => {
     fireEvent.changeText(screen.getByTestId('profile-name'), 'Zehra Ak');
   });
-  expect(disabled('profile-submit')).toBe(true);
-
-  await pickAnkara();
   expect(disabled('profile-submit')).toBe(false);
-});
-
-test('[D11] picking a section fills the country row and the preview chip', async () => {
-  await reachProfileSetup(new MockApi({ latencyMs: 0, approveAfterMs: 60_000 }));
-
-  // Nothing is invented before a section is chosen: the row shows its
-  // placeholder, not a guess.
-  expect(screen.getByText(t('onboarding.countryFromSection'))).toBeTruthy();
-
-  await pickAnkara();
-
-  expect(screen.getByText('ESN Ankara')).toBeTruthy();
-  // Türkiye is on the country row AND on the preview chip, from the one choice.
-  expect(screen.getByText('Türkiye')).toBeTruthy();
-  expect(screen.getByText('ESN Ankara · Türkiye')).toBeTruthy();
-});
-
-test('[D11] the country row is not a control — it cannot be pressed', async () => {
-  await reachProfileSetup(new MockApi({ latencyMs: 0, approveAfterMs: 60_000 }));
-  await pickAnkara();
-
-  const country = screen.getByTestId('profile-country-field');
-  expect(country.props.accessibilityRole).toBeUndefined();
-  expect(country.props.onPress).toBeUndefined();
-  // The section row beside it IS a button, so this is a real difference.
-  expect(screen.getByTestId('profile-section-field').props.accessibilityRole).toBe('button');
+  expect(screen.getByText(t('onboarding.continue'))).toBeTruthy();
 });
 
 test('the avatar: a refusal is explained, and a picked photo reaches the server', async () => {
-  const api = new MockApi({ latencyMs: 0, approveAfterMs: 60_000 });
+  const api = new MockApi({ latencyMs: 0 });
   const s = await reachProfileSetup(api);
 
   const permission = ImagePicker.requestMediaLibraryPermissionsAsync as jest.Mock;
@@ -169,19 +332,18 @@ test('the avatar: a refusal is explained, and a picked photo reaches the server'
   await act(async () => {
     fireEvent.changeText(screen.getByTestId('profile-name'), 'Zehra Ak');
   });
-  await pickAnkara();
   await act(async () => {
     fireEvent.press(screen.getByTestId('profile-submit'));
   });
 
-  await waitFor(() => expect(screen.getByTestId('pending')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('events-avatar')).toBeTruthy());
   // The local URI is what the client sends; the mock hands it straight back
   // where the real server would return a resized URL.
   expect(s().me?.avatarUrl).toBe('file:///tmp/zehra.jpg');
 });
 
-test('sending the profile stores it and the navigator lands on Pending', async () => {
-  const api = new MockApi({ latencyMs: 0, approveAfterMs: 60_000 });
+test('[D14] sending the profile makes the account active and opens the shell, with no membership', async () => {
+  const api = new MockApi({ latencyMs: 0 });
   const s = await reachProfileSetup(api);
 
   await act(async () => {
@@ -190,39 +352,39 @@ test('sending the profile stores it and the navigator lands on Pending', async (
   await act(async () => {
     fireEvent.changeText(screen.getByTestId('profile-bio'), 'Ankara, coffee, night trains');
   });
-  await pickAnkara();
-
   await act(async () => {
     fireEvent.press(screen.getByTestId('profile-submit'));
   });
 
-  await waitFor(() => expect(screen.getByTestId('pending')).toBeTruthy());
-  expect(s().me?.status).toBe('pending');
-  expect(s().me?.name).toBe('Zehra Ak');
-  expect(s().me?.section?.id).toBe('ankara');
-  // [D11] The country came along with the section; it was never sent.
-  expect(s().me?.section?.country).toBe('Türkiye');
+  await waitFor(() => expect(screen.getByTestId('events-avatar')).toBeTruthy());
+  expect(s().me).toMatchObject({ status: 'active', name: 'Zehra Ak', bio: 'Ankara, coffee, night trains', memberships: [] });
+  expect(screen.queryByTestId('profile-setup')).toBeNull();
+  expect(screen.queryByTestId('pending')).toBeNull();
+});
 
-  // The three steps, with the profile line describing what was actually sent.
-  // `PendingState` sets its title through `Text upper`.
-  expect(screen.getByText(upper(t('onboarding.pendingTitle')))).toBeTruthy();
-  expect(screen.getByText(t('onboarding.stepSent'))).toBeTruthy();
-  expect(screen.getByText(t('onboarding.stepReview'))).toBeTruthy();
-  expect(screen.getByText(t('onboarding.stepIn'))).toBeTruthy();
-  expect(screen.getByText('Zehra Ak · ESN Ankara')).toBeTruthy();
-  expect(screen.getByTestId('pending-logout')).toBeTruthy();
+test('a failed send stays on the form and says why', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  await reachProfileSetup(api);
+  jest.spyOn(api, 'submitProfile').mockRejectedValueOnce(new ApiError('network', 'offline'));
+
+  await act(async () => {
+    fireEvent.changeText(screen.getByTestId('profile-name'), 'Zehra Ak');
+  });
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('profile-submit'));
+  });
+
+  expect(screen.getByText(t('onboarding.errorNetwork'))).toBeTruthy();
+  expect(screen.getByTestId('profile-setup')).toBeTruthy();
 });
 
 /* ------------------------------------------------------------------ *
- * Pending
+ * The restricted screen — a banned account
  * ------------------------------------------------------------------ */
 
-test('Pending polls until the admin decides, then the navigator moves on', async () => {
+test('the restricted screen re-reads the account and moves on when the ban is lifted', async () => {
   // Fake timers, and deliberately no `waitFor`: RNTL's waitFor advances the
-  // clock itself, which would run the 30 s poll before the test could see the
-  // screen sitting in the queue. `flush` moves the clock by a millisecond at a
-  // time instead — enough for the keychain read and the mock's promises, far
-  // short of a poll.
+  // clock itself. `flush` moves the clock by a millisecond at a time instead.
   const flush = async (rounds = 10) => {
     for (let i = 0; i < rounds; i++) {
       await act(async () => {
@@ -231,34 +393,38 @@ test('Pending polls until the admin decides, then the navigator moves on', async
     }
   };
 
-  // `setImmediate` and `nextTick` stay real: the keychain read and RN's own
-  // async plumbing ride on them, and faking those deadlocks the boot.
   jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
   try {
-    const api = new MockApi({ latencyMs: 0, approveAfterMs: 50 });
+    const api = new MockApi({ latencyMs: 0 });
     const s = await mount(api);
-
     await flush();
     expect(s().phase).toBe('signedOut');
 
     await act(async () => {
       await s().register(CREDENTIALS);
-      await s().submitProfile({ name: 'Zehra Ak', sectionId: 'ankara' });
+      api.confirmEmail(CREDENTIALS.email);
+      await s().submitProfile({ name: 'Zehra Ak' });
+    });
+    api.banAccount(CREDENTIALS.email);
+    await act(async () => {
+      await s().refreshMe();
     });
     await flush();
 
     expect(screen.getByTestId('pending')).toBeTruthy();
-    expect(s().me?.status).toBe('pending');
+    expect(screen.getByText(upper(t('reviewFlow.bannedTitle')))).toBeTruthy();
+    expect(screen.getByText(t('reviewFlow.bannedBody'))).toBeTruthy();
+    // No queue copy and no edit path: there is no account review any more.
+    expect(screen.queryByTestId('pending-step-0-dot')).toBeNull();
+    expect(screen.queryByTestId('pending-edit')).toBeNull();
 
-    // Nothing changes on its own: the screen only learns what a poll told it,
-    // and the admin took 50 ms of this clock.
+    api['accounts'].get(CREDENTIALS.email)!.status = 'active';
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
     await flush();
 
-    expect(s().me?.status).toBe('approved');
-    // [D2] Approved means the four-tab shell, not this screen.
+    expect(s().me?.status).toBe('active');
     expect(screen.queryByTestId('pending')).toBeNull();
   } finally {
     jest.useRealTimers();
@@ -266,52 +432,38 @@ test('Pending polls until the admin decides, then the navigator moves on', async
 });
 
 /* ------------------------------------------------------------------ *
- * Rejected — the one state the prototype never drew
+ * Editing an active profile (from Settings)
  * ------------------------------------------------------------------ */
 
-/** A server that turns the profile down instead of queueing it. */
-class RejectingApi extends MockApi {
-  override async me(): Promise<Me> {
-    return { ...(await super.me()), status: 'rejected' };
-  }
-
-  override async submitProfile(req: ProfileRequest): Promise<Me> {
-    return { ...(await super.submitProfile(req)), status: 'rejected' };
-  }
-}
-
-test('a rejected account is told plainly, and can edit a prefilled form', async () => {
-  const api = new RejectingApi({ latencyMs: 0, approveAfterMs: 60_000 });
-  const s = await mount(api);
-
-  await waitFor(() => expect(s().phase).toBe('signedOut'));
+test('an active account edits a prefilled form and saves without any review', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  const s = await reachProfileSetup(api);
   await act(async () => {
-    await s().register(CREDENTIALS);
-    await s().submitProfile({
-      name: 'Zehra Ak',
-      sectionId: 'ankara',
-      bio: 'Ankara, coffee, night trains',
-    });
+    await s().submitProfile({ name: 'Zehra Ak', bio: 'Ankara, coffee, night trains' });
   });
+  await waitFor(() => expect(screen.getByTestId('events-avatar')).toBeTruthy());
 
-  await waitFor(() => expect(screen.getByTestId('pending')).toBeTruthy());
-  expect(screen.getByText(upper(t('onboarding.rejectedTitle')))).toBeTruthy();
-  expect(screen.getByText(t('onboarding.rejectedNote'))).toBeTruthy();
-  // Nothing is pending any more, so the queue copy is gone.
-  expect(screen.queryByText(upper(t('onboarding.pendingTitle')))).toBeNull();
-  expect(screen.queryByText(t('onboarding.stepIn'))).toBeNull();
-
-  // [D8] The recovery path is the form again, not an appeal.
   await act(async () => {
-    fireEvent.press(screen.getByTestId('pending-edit'));
+    fireEvent.press(screen.getByTestId('tab-profile'));
+  });
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('profile-settings'));
+  });
+  await waitFor(() => expect(screen.getByText(t('onboarding.editProfile'))).toBeTruthy());
+  await act(async () => {
+    fireEvent.press(screen.getByText(t('onboarding.editProfile')));
   });
 
   await waitFor(() => expect(screen.getByTestId('profile-submit')).toBeTruthy());
   expect(screen.getByTestId('profile-name').props.value).toBe('Zehra Ak');
   expect(screen.getByTestId('profile-bio').props.value).toBe('Ankara, coffee, night trains');
-  expect(screen.getByText('ESN Ankara')).toBeTruthy();
-  expect(screen.getByText('Türkiye')).toBeTruthy();
-  // The label does not change in edit mode: resending IS what re-queues it.
-  expect(disabled('profile-submit')).toBe(false);
-  expect(screen.getByText(t('onboarding.sendForApproval'))).toBeTruthy();
+  expect(screen.getByText(t('common.save'))).toBeTruthy();
+  await act(async () => {
+    fireEvent.changeText(screen.getByTestId('profile-name'), 'Zehra Akın');
+  });
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('profile-submit'));
+  });
+  await waitFor(() => expect(s().me?.name).toBe('Zehra Akın'));
+  expect(s().me?.status).toBe('active');
 });

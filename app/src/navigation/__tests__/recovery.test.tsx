@@ -1,3 +1,4 @@
+import { memberAccount } from '../../api/testing';
 import React from 'react';
 import { render,screen,fireEvent,waitFor,act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,7 +10,7 @@ import { initI18n,setLocale,t } from '../../i18n';
 import { RootNavigator } from '../RootNavigator';
 initI18n();
 const metrics={frame:{x:0,y:0,width:390,height:844},insets:{top:0,bottom:0,left:0,right:0}};
-async function account(){await clearTokens();const api=new MockApi({latencyMs:0,approveAfterMs:0});const auth=await api.register({email:'review@example.com',password:'password123'});await api.submitProfile({name:'Review',sectionId:'ankara'});await api.me();await saveTokens(auth.tokens);return api;}
+async function account(){await clearTokens();const api=new MockApi({latencyMs:0,approveAfterMs:0});const auth=await memberAccount(api,'review@example.com','ankara','Review');await saveTokens(auth.tokens);return api;}
 async function mount(api:MockApi){await render(<SafeAreaProvider initialMetrics={metrics}><ThemeProvider><ApiProvider api={api}><SessionProvider><ToastHost><RootNavigator/></ToastHost></SessionProvider></ApiProvider></ThemeProvider></SafeAreaProvider>);}
 afterEach(async()=>{await clearTokens();await act(async()=>{await setLocale('en');});});
 
@@ -23,6 +24,13 @@ it.each(['en','tr'] as const)('offers offline boot recovery without losing the s
 it.each(['en','tr'] as const)('shows restricted account copy without approval promises or editing (%s)',async locale=>{
   await setLocale(locale);const api=await account();api['accounts'].get('review@example.com')!.status='banned';
   await mount(api);await waitFor(()=>expect(screen.getByText(t('reviewFlow.bannedTitle').toLocaleUpperCase(locale))).toBeTruthy());
-  expect(screen.queryByText(t('onboarding.pendingNote'))).toBeNull();expect(screen.queryByTestId('pending-edit')).toBeNull();expect(screen.queryByTestId('tab-events')).toBeNull();
-  await expect(api.submitProfile({name:'Bypass',sectionId:'ankara'})).rejects.toMatchObject({status:403});
+  expect(screen.queryByTestId('pending-step-0-dot')).toBeNull();expect(screen.queryByTestId('pending-edit')).toBeNull();expect(screen.queryByTestId('tab-events')).toBeNull();
+  await expect(api.submitProfile({name:'Bypass'})).rejects.toMatchObject({status:403});
+});
+
+it('a banned account gets the restricted copy even with an unconfirmed email, never the confirm screen',async()=>{
+  await clearTokens();const api=new MockApi({latencyMs:0});const auth=await api.register({email:'banned@example.com',password:'password123'});
+  api.banAccount('banned@example.com');await saveTokens(auth.tokens);
+  await mount(api);await waitFor(()=>expect(screen.getByTestId('pending')).toBeTruthy());
+  expect(screen.getByText(t('reviewFlow.bannedTitle').toLocaleUpperCase('en'))).toBeTruthy();expect(screen.queryByTestId('confirm-email')).toBeNull();
 });

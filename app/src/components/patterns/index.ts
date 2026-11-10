@@ -14,6 +14,7 @@ export * from './Row';
 export * from './Group';
 export * from './Back';
 export * from './Wordmark';
+export * from './OnboardingHeader';
 export * from './CoverStrip';
 export * from './PhotoPicker';
 export * from './PickerRow';

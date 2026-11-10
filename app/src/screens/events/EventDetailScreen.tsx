@@ -23,7 +23,7 @@ export function EventDetailScreen({ route, navigation }: RootScreenProps<'EventD
   const [tab, setTab] = useState('board');
   const [search, setSearch] = useState('');
   const card = event && eventCard(event, locale, t('events.national'));
-  const people = event?.people.filter(p => normalizeForSearch(`${p.name} ${p.section.name} ${p.section.country}`).includes(normalizeForSearch(search))) ?? [];
+  const people = event?.people.filter(p => normalizeForSearch(`${p.name} ${p.section?.name ?? ''} ${p.section?.country ?? ''}`).includes(normalizeForSearch(search))) ?? [];
   return <EventColorProvider cover={event?.cover}><Screen testID="event-detail" bottom={tab==='board'&&event?.status==='live'&&<BottomBar><Button full size="lg" variant="event" icon="PenLine" testID="board-compose" onPress={()=>setComposing(true)}>{t('boardFlow.write')}</Button></BottomBar>} header={<Back onBack={() => navigation.goBack()}
     right={event && <IconButton icon="Share" label={t('common.share')} onPress={() => navigation.navigate('EventCode', { id: event.id })} />} />}>
     {!event || !card ? <LoadState error={error} onRetry={retry} /> : <>
@@ -33,8 +33,8 @@ export function EventDetailScreen({ route, navigation }: RootScreenProps<'EventD
       <Tabs value={tab} onChange={setTab} items={[{ id: 'board', label: t('events.board'), count: event.postCount }, ...(event.isModerator ? [{id:'queue',label:t('events.queue'),count:board?.queue.length,hot:!!board?.queue.length}] : []), { id: 'people', label: t('events.people'), count: event.memberCount }]} />
       {tab === 'people' ? <>
         <Input label={t('events.people')} placeholder={t('eventFlow.searchPeople')} value={search} onChange={setSearch} testID="event-people-search" />
-        <Group>{people.map(person => <PersonRow key={person.id} person={{ id: person.id, name: person.name, avatar: person.avatarUrl, section: person.section.name }}
-          sub={`${person.section.name} · ${person.section.country}`} me={person.id === me?.id}
+        <Group>{people.map(person => <PersonRow key={person.id} person={{ id: person.id, name: person.name, avatar: person.avatarUrl, section: person.section?.name }}
+          sub={person.section ? `${person.section.name} · ${person.section.country}` : undefined} me={person.id === me?.id}
           onPress={() => navigation.navigate('EventPerson', { id: event.id, personId: person.id })} testID={`event-person-${person.id}`} />)}</Group>
         {!people.length && <Empty icon="Users" text={t('eventFlow.noPeople')} />}
         <Text variant="caption">{t('eventFlow.joinedCount', { n: event.memberCount })}</Text>

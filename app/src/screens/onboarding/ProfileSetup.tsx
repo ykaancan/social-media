@@ -1,21 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { isApiError, LIMITS, useApi } from '../../api';
+import { isApiError, LIMITS, soleMembershipSection, useApi } from '../../api';
 import {
   Back,
   BottomBar,
   Button,
   Input,
+  OnboardingHeader,
   PhotoPicker,
-  PickerRow,
   Screen,
-  SectionSheet,
   Text,
   useToast,
   WallHeader,
-  Wordmark,
-  type SectionOption,
 } from '../../components';
 import { useTranslation } from '../../i18n';
 import type { RootScreenProps } from '../../navigation/types';
@@ -24,34 +21,32 @@ import { useTheme } from '../../theme';
 
 /**
  * Profile setup — the `profile` branch of
- * `/design/bundle/prototypes/onboarding-app.jsx`: photo, name, section, a
- * read-only country row and a one-line bio, over a live wall-header preview.
+ * `/design/bundle/prototypes/onboarding-app.jsx`: photo, name and a one-line
+ * bio, over a live wall-header preview.
  *
- * `route.params.edit` is true when an account that already has a profile is
- * changing it (a `rejected` account resubmitting, or Settings later); false or
- * absent on first setup, when the account is `incomplete`.
+ * [D15] The section is no longer part of the account profile, so the section
+ * picker and the read-only country row [D11] are gone from this screen: a
+ * section is picked when the person first enters an organisation that has
+ * sections. Sending the profile makes the account `active` [D14] and the
+ * navigator opens the four-tab shell; nobody reviews the account.
  *
- * [D11] Country is not an independent field. It is read through the section,
- * shown read-only, and never picked — the row exists so the form still reads as
- * one column, not because it is a control waiting to be enabled.
+ * `route.params.edit` is true when an active account is changing its profile
+ * (reached from Settings); false or absent on first setup, when the account is
+ * `incomplete`.
  */
 export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetup'>) {
   const edit = route.params?.edit === true;
   const { me, submitProfile, logout, refreshMe } = useSession();
-  const approved=me?.status==='approved';
+  const active = me?.status === 'active';
   const api = useApi();
   const { t } = useTranslation();
   const { colors } = useTheme();
   const toast = useToast();
 
   // Prefilled from `me`, which is empty while the account is `incomplete` and
-  // full in edit mode. The section keeps only what the server sent — id, name
-  // and country — so no member count is invented for it (principle 4).
+  // full in edit mode.
   const [name, setName] = useState(me?.name ?? '');
   const [bio, setBio] = useState(me?.bio ?? '');
-  const [section, setSection] = useState<{ id: string; name: string; country: string } | null>(
-    me?.section ?? null,
-  );
   /**
    * A photo picked in THIS session, as a local `file://` URI. Kept apart from
    * `me.avatarUrl` because `ProfileRequest.photoUri` is a local URI the client
@@ -63,39 +58,12 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
    * threads — and stays absolute. Do not add a second one.
    */
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
-  const [sections, setSections] = useState<SectionOption[] | null>(null);
-  const [picking, setPicking] = useState(false);
   const [sending, setSending] = useState(false);
 
-  useEffect(()=>{if(approved&&me?.section)setSection(me.section);},[approved,me?.section]);
   const shownPhoto = photoUri ?? me?.avatarUrl;
-
-  /* ---------------- sections ---------------- */
-
-  const loadSections = useCallback(async () => {
-    try {
-      const list = await api.listSections();
-      setSections(
-        list.map((s) => ({ id: s.id, name: s.name, country: s.country, members: s.memberCount })),
-      );
-    } catch (err) {
-      if (isApiError(err, 'network')) {
-        toast.show(t('onboarding.errorNetwork'), {
-          tone: 'warn',
-          action: t('common.retry'),
-          onAction: () => {
-            void loadSections();
-          },
-        });
-        return;
-      }
-      toast.show(t('onboarding.errorGeneric'), { tone: 'danger' });
-    }
-  }, [api, t, toast]);
-
-  useEffect(() => {
-    void loadSections();
-  }, [loadSections]);
+  // Q5: your own wall header shows "section · country" only with exactly one
+  // membership that has a section. On first setup there is no membership.
+  const section = soleMembershipSection(me);
 
   /* ---------------- photo ---------------- */
 
@@ -119,24 +87,26 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
 
   /* ---------------- submit ---------------- */
 
-  const ready = name.trim().length > 0 && section !== null;
+  const ready = name.trim().length > 0;
 
   const send = useCallback(async () => {
-    if (!ready || !section || sending) return;
+    if (!ready || sending) return;
     setSending(true);
     try {
-      if(approved){
-        await api.editProfile({name:name.trim(),bio:bio.trim(),photoUri});await refreshMe();toast.show(t('settingsFlow.saved'));navigation.goBack();return;
+      if (active) {
+        await api.editProfile({ name: name.trim(), bio: bio.trim(), photoUri });
+        await refreshMe();
+        toast.show(t('settingsFlow.saved'));
+        navigation.goBack();
+        return;
       }
       await submitProfile({
         name: name.trim(),
-        sectionId: section.id,
         bio: bio.trim() || undefined,
         photoUri,
       });
-      // Nothing to navigate: the account moves to `pending` and `RootNavigator`
-      // swaps the whole route group out from under this screen. That includes
-      // a `rejected` account resubmitting — the group's key carries the status.
+      // Nothing to navigate: the account becomes `active` and `RootNavigator`
+      // swaps the whole route group out from under this screen.
     } catch (err) {
       setSending(false);
       if (isApiError(err, 'network')) {
@@ -145,13 +115,12 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
       }
       toast.show(t('onboarding.errorGeneric'), { tone: 'danger' });
     }
-  }, [ready, section, sending, submitProfile, name, bio, photoUri, toast, t, approved, api, refreshMe, navigation]);
+  }, [ready, sending, submitProfile, name, bio, photoUri, toast, t, active, api, refreshMe, navigation]);
 
   /* ---------------- section chip ---------------- */
 
-  // The Section route only exists in the approved group (RootNavigator), so on
-  // first setup and while pending the preview's chip has nowhere to go and is
-  // left inert rather than pressable-and-dead.
+  // The Section route only exists in the active group (RootNavigator), so on
+  // first setup the preview's chip has nowhere to go and is left inert.
   const canOpenSection = navigation.getState()?.routeNames.includes('Section') ?? false;
   const openSection = useCallback(() => {
     if (section) navigation.navigate('Section', { id: section.id });
@@ -161,31 +130,19 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
 
   /**
    * In edit mode there is a screen behind this one. On first setup there is
-   * not: the account is registered but has no profile, so the way out is the
-   * Pending screen's header — the mark and a log out — not a back arrow to a
-   * sign-up form that has already done its job.
-   *
-   * [D1] This row is duplicated on Pending; it belongs in the library the
-   * moment a third screen wants it.
+   * not: the account has no profile yet, so the way out is a log out, not a
+   * back arrow to a sign-up form that has already done its job.
    */
   const header = edit ? (
     <Back onBack={() => navigation.goBack()} />
   ) : (
-    <View style={styles.header}>
-      <View style={styles.headerRow}>
-        <Wordmark treatment="plain" size="sm" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onPress={() => {
-            void logout();
-          }}
-          testID="profile-logout"
-        >
-          {t('onboarding.logOut')}
-        </Button>
-      </View>
-    </View>
+    <OnboardingHeader
+      actionLabel={t('onboarding.logOut')}
+      onAction={() => {
+        void logout();
+      }}
+      testID="profile-logout"
+    />
   );
 
   return (
@@ -206,8 +163,7 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
             }}
             testID="profile-submit"
           >
-            {/* Approved edits save directly; rejected profiles still resubmit. */}
-            {t(approved?'common.save':'onboarding.sendForApproval')}
+            {t(active ? 'common.save' : 'onboarding.continue')}
           </Button>
         </BottomBar>
       }
@@ -234,28 +190,6 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
         placeholder={t('onboarding.namePlaceholder')}
         maxLength={LIMITS.nameMax}
         testID="profile-name"
-      />
-
-      <PickerRow
-        label={t('onboarding.section')}
-        icon="MapPin"
-        value={approved?me?.section?.name:section?.name}
-        placeholder={t('onboarding.pickSection')}
-        hint={t('onboarding.sectionHint')}
-        // Until the list is here there is nothing to open; an empty sheet would
-        // read as "no sections exist".
-        onPress={approved?()=>navigation.navigate('Settings',{page:'section'}):sections ? () => setPicking(true) : undefined}
-        testID="profile-section"
-      />
-
-      {/* [D11] Read-only, filled from the section, never picked. */}
-      <PickerRow
-        locked
-        label={t('onboarding.country')}
-        icon="Flag"
-        value={approved?me?.section?.country:section?.country}
-        placeholder={t('onboarding.countryFromSection')}
-        testID="profile-country"
       />
 
       <Input
@@ -285,33 +219,10 @@ export function ProfileSetup({ navigation, route }: RootScreenProps<'ProfileSetu
           onSection={section && canOpenSection ? openSection : undefined}
         />
       </View>
-
-      {picking && sections ? (
-        <SectionSheet
-          sections={sections}
-          value={section?.id}
-          onPick={(picked) => {
-            // [D11] Picking a section is picking a country: the locked row and
-            // the preview chip both fill from this one choice.
-            setSection({ id: picked.id, name: picked.name, country: picked.country });
-            setPicking(false);
-          }}
-          onClose={() => setPicking(false)}
-        />
-      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  // S.header from the prototype, without a title.
-  header: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 12 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-  },
   preview: { gap: 8 },
 });

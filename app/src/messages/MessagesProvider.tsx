@@ -10,7 +10,7 @@ const Context = createContext<MessagesValue | null>(null);
 export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
   const { me } = useSession();
-  const id = me?.id, approved = me?.status === 'approved';
+  const id = me?.id, approved = me?.status === 'active' && me.emailConfirmed;
   const [inbox, setInbox] = useState<InboxSnapshot | null>(null);
   const [error, setError] = useState(false);
   const sequence = useRef(0);
