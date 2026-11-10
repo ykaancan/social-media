@@ -258,9 +258,9 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(f.owner)))
                 .andExpect(status().isNotFound());
 
-        AppUser pending = account(f.sectionA, "Waiting", AccountStatus.PENDING);
-        join(f.eventId, pending.getId());
-        mockMvc.perform(get(wallPath(f.eventId, pending.getId()))
+        AppUser incomplete = account(f.sectionA, "Waiting", AccountStatus.INCOMPLETE);
+        join(f.eventId, incomplete.getId());
+        mockMvc.perform(get(wallPath(f.eventId, incomplete.getId()))
                         .header(HttpHeaders.AUTHORIZATION, bearer(f.owner)))
                 .andExpect(status().isNotFound());
 
@@ -306,13 +306,13 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
     void everyRefusalLooksIdentical() throws Exception {
         Fixture f = fixture();
 
-        // Recipient missing, or not approved.
+        // Recipient missing, or not active.
         Map<String, Object> unknown = note(f.eventId, f.owner, "Hello", "anonymous");
         unknown.put("recipientId", UUID.randomUUID().toString());
         refused(f.sender, unknown);
-        AppUser pending = account(f.sectionA, "Waiting", AccountStatus.PENDING);
-        join(f.eventId, pending.getId());
-        refused(f.sender, note(f.eventId, pending, "Hello", "anonymous"));
+        AppUser incomplete = account(f.sectionA, "Waiting", AccountStatus.INCOMPLETE);
+        join(f.eventId, incomplete.getId());
+        refused(f.sender, note(f.eventId, incomplete, "Hello", "anonymous"));
 
         // Yourself.
         refused(f.sender, note(f.eventId, f.sender, "Hello", "anonymous"));
@@ -790,8 +790,8 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
 
     private UUID event(Section section, Instant startsAt, Instant endsAt) {
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', 'approve_first', ?)
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', 'approve_first', ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(startsAt), Timestamp.from(endsAt), joinCode());
@@ -811,13 +811,15 @@ class MessageIntegrationTest extends AbstractIntegrationTest {
     }
 
     private AppUser approved(Section section, String name) {
-        return account(section, name, AccountStatus.APPROVED);
+        return account(section, name, AccountStatus.ACTIVE);
     }
 
     private AppUser account(Section section, String name, AccountStatus status) {
         AppUser user = AppUser.register(
                 "wall-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         return users.saveAndFlush(user);

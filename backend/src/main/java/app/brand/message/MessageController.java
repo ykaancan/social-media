@@ -20,9 +20,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The inbox and wall routes, exactly as {@code http.ts} calls them. Approved
- * members only — {@code ApprovedMemberFilter} answers 403 {@code approval_required}
- * before any of this runs, so nothing here checks a status.
+ * The inbox and wall routes, exactly as {@code http.ts} calls them. Confirmed,
+ * active accounts only — {@code ActiveAccountFilter} answers 403 before any of
+ * this runs, so nothing here checks a status.
  *
  * <p>The routes are split across three prefixes on purpose and the paths are the
  * client's: {@code /me/inbox*} is the owner's private surface, {@code /messages/*}

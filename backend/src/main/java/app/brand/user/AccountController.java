@@ -15,16 +15,17 @@ import org.springframework.web.bind.annotation.RestController;
  * deletion, and the entitlement flags the app reads before it decides what a
  * locked card looks like.
  *
- * <p>Two different status rules, both enforced by {@code ApprovedMemberFilter}
+ * <p>Two different status rules, both enforced by {@code ActiveAccountFilter}
  * from its path list and neither re-checked here:
  *
  * <ul>
  *   <li>{@code DELETE /me} is on the any-status path {@code /me}, so a
- *       {@code pending}, {@code rejected} or {@code banned} person can delete
+ *       {@code incomplete}, unconfirmed or {@code banned} person can delete
  *       their account. Someone who never got in still owns their data.</li>
  *   <li>{@code GET /me/export} and {@code GET /me/entitlements} are ordinary
- *       member routes: {@code 403 approval_required} until the account is
- *       approved.</li>
+ *       member routes: {@code 403 email_unconfirmed} until the email is
+ *       confirmed, then {@code 403 account_not_active} until the account is
+ *       active.</li>
  * </ul>
  */
 @RestController

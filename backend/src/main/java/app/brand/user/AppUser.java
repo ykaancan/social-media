@@ -83,10 +83,20 @@ public class AppUser {
     @Column(name = "banned_at")
     private Instant bannedAt;
 
+    /**
+     * [D18] Null until the confirmation link is opened. An account without it can
+     * reach only its status-independent routes ({@code ActiveAccountFilter}).
+     */
+    @Column(name = "email_confirmed_at")
+    private Instant emailConfirmedAt;
+
     protected AppUser() {
     }
 
-    /** A fresh registration: {@code incomplete} and {@code member}, always. */
+    /**
+     * A fresh registration: {@code incomplete}, {@code member} and, [D18], with the
+     * email not confirmed — always.
+     */
     public static AppUser register(String email, String passwordHash, String phone, Instant now) {
         AppUser user = new AppUser();
         user.email = email;
@@ -204,5 +214,20 @@ public class AppUser {
 
     public void setBannedAt(Instant bannedAt) {
         this.bannedAt = bannedAt;
+    }
+
+    public Instant getEmailConfirmedAt() {
+        return emailConfirmedAt;
+    }
+
+    public boolean isEmailConfirmed() {
+        return emailConfirmedAt != null;
+    }
+
+    /** [D18] The first confirmation wins: a second one never moves the time. */
+    public void confirmEmail(Instant now) {
+        if (emailConfirmedAt == null) {
+            emailConfirmedAt = now;
+        }
     }
 }

@@ -47,7 +47,8 @@ class PushCopyTest {
     @Test
     @DisplayName("no push body names a person, and none of them carries message text")
     void copyStaysAnonymous() throws IOException {
-        // {0} is the event name and the only argument any body takes. A second
+        // {0} is the event name (the organisation name for account_approved [D14])
+        // and the only argument any body takes. A second
         // placeholder would mean something else was passed in — a name, a hint, a
         // sender — which is exactly what a notification must never carry.
         for (Properties bundle : List.of(bundle("messages_en.properties"),

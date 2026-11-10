@@ -153,7 +153,7 @@ public class MessageService {
      * 1 has no surface for (brief §6).
      *
      * <p>Everything that fails is 404: a board the viewer is not in, a person who
-     * is not on it, an account that is not approved. "Exists but not yours" must
+     * is not on it, an account that is not active. "Exists but not yours" must
      * not be distinguishable from "does not exist".
      */
     @Transactional(readOnly = true)
@@ -162,7 +162,7 @@ public class MessageService {
         UUID personId = Ids.orNotFound(rawPersonId, "no such wall");
 
         AppUser target = users.findById(personId).orElseThrow(() -> ApiException.notFound("no such wall"));
-        if (target.getStatus() != AccountStatus.APPROVED
+        if (target.getStatus() != AccountStatus.ACTIVE
                 || !members.existsByEventIdAndUserId(event.getId(), personId)) {
             throw ApiException.notFound("no such wall");
         }
@@ -218,7 +218,7 @@ public class MessageService {
         }
         AppUser recipient = users.findById(recipientId).orElseThrow(MessageService::refused);
         Event event = events.findById(eventId).orElseThrow(MessageService::refused);
-        if (recipient.getStatus() != AccountStatus.APPROVED
+        if (recipient.getStatus() != AccountStatus.ACTIVE
                 || !members.existsByEventIdAndUserId(event.getId(), senderId)
                 || !members.existsByEventIdAndUserId(event.getId(), recipientId)
                 || blocks.isBlocked(recipientId, senderId)) {

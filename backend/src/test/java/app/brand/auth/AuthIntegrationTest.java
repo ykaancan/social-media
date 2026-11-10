@@ -63,7 +63,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     /* ---------------------------------------------------------- register */
 
     @Test
-    @DisplayName("register returns 201 with an incomplete Me and a usable token pair")
+    @DisplayName("register returns 201 with an incomplete, unconfirmed Me and a usable token pair")
     void registerCreatesIncompleteAccount() throws Exception {
         String email = uniqueEmail();
 
@@ -72,6 +72,8 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                         .content(json(Map.of("email", email, "password", "correct horse"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.me.status").value("incomplete"))
+                // [D18] always present, false until the link is opened.
+                .andExpect(jsonPath("$.me.emailConfirmed").value(false))
                 .andExpect(jsonPath("$.me.role").value("member"))
                 .andExpect(jsonPath("$.me.email").value(email))
                 .andExpect(jsonPath("$.tokens.accessToken").isNotEmpty())
@@ -466,26 +468,47 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a member route on a non-approved account is 403 approval_required")
-    void memberRouteNeedsApproval() throws Exception {
-        JsonNode auth = read(register(uniqueEmail(), "correct horse"));
-        String access = auth.get("tokens").get("accessToken").asText();
-
-        mockMvc.perform(get("/ping-approved").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
-    }
-
-    @Test
-    @DisplayName("an approved account reaches the same route")
-    void approvedAccountReachesMemberRoutes() throws Exception {
+    @DisplayName("a member route on a confirmed but incomplete account is 403 account_not_active")
+    void memberRouteNeedsAnActiveAccount() throws Exception {
         String email = uniqueEmail();
         JsonNode auth = read(register(email, "correct horse"));
         String access = auth.get("tokens").get("accessToken").asText();
-        approve(email);
+        confirm(email);
+
+        mockMvc.perform(get("/ping-approved").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+    }
+
+    @Test
+    @DisplayName("a confirmed, active account reaches the same route")
+    void activeAccountReachesMemberRoutes() throws Exception {
+        String email = uniqueEmail();
+        JsonNode auth = read(register(email, "correct horse"));
+        String access = auth.get("tokens").get("accessToken").asText();
+        activate(email);
 
         mockMvc.perform(get("/ping-approved").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("a banned account is refused on member routes, as before, and still reads GET /me")
+    void bannedAccountIsRefusedOnMemberRoutes() throws Exception {
+        String email = uniqueEmail();
+        JsonNode auth = read(register(email, "correct horse"));
+        String access = auth.get("tokens").get("accessToken").asText();
+        activate(email);
+        AppUser user = users.findByEmailIgnoreCase(email).orElseThrow();
+        user.setStatus(AccountStatus.BANNED);
+        users.save(user);
+
+        mockMvc.perform(get("/ping-approved").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+        mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("banned"));
     }
 
     @Test
@@ -494,7 +517,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         String email = uniqueEmail();
         JsonNode auth = read(register(email, "correct horse"));
         String access = auth.get("tokens").get("accessToken").asText();
-        approve(email);
+        activate(email);
 
         mockMvc.perform(get("/no-such-route").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
                 .andExpect(status().isNotFound())
@@ -537,10 +560,18 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
     }
 
-    /** Wave 2 owns the admin queue; here approval is just the row it will write. */
-    private void approve(String email) {
+    /** [D18] What opening the confirmation link writes, without the link. */
+    private void confirm(String email) {
         AppUser user = users.findByEmailIgnoreCase(email).orElseThrow();
-        user.setStatus(AccountStatus.APPROVED);
+        user.confirmEmail(java.time.Instant.now());
+        users.save(user);
+    }
+
+    /** Confirmed and active [D14]: what the link plus PUT /me/profile leave behind. */
+    private void activate(String email) {
+        confirm(email);
+        AppUser user = users.findByEmailIgnoreCase(email).orElseThrow();
+        user.setStatus(AccountStatus.ACTIVE);
         users.save(user);
     }
 

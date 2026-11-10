@@ -191,7 +191,7 @@ public class ThreadService {
                 ? null : users.findById(origin.senderId()).orElse(null);
         if (author == null
                 || author.getId().equals(viewerId)
-                || author.getStatus() != AccountStatus.APPROVED
+                || author.getStatus() != AccountStatus.ACTIVE
                 || blocks.isBlocked(viewerId, author.getId())
                 || blocks.isBlocked(author.getId(), viewerId)) {
             throw refused();
@@ -466,7 +466,7 @@ public class ThreadService {
     /** One 403 for "they are gone" and for "they blocked you"; never which. */
     private void requireDeliverableTo(UUID otherId, UUID viewerId) {
         AppUser other = users.findById(otherId).orElse(null);
-        if (other == null || other.getStatus() != AccountStatus.APPROVED
+        if (other == null || other.getStatus() != AccountStatus.ACTIVE
                 || blocks.isBlocked(otherId, viewerId)) {
             throw refused();
         }

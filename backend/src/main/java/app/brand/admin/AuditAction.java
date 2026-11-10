@@ -15,9 +15,21 @@ public enum AuditAction {
     BAN_USER,
     WARN_USER,
     HIDE_CONTENT,
-    PROMOTE_ADMIN;
+    PROMOTE_ADMIN,
+    /** [D13] A super admin created an organisation. */
+    CREATE_ORGANISATION,
+    /** [D13] A super admin changed an organisation's name or switches. */
+    UPDATE_ORGANISATION,
+    /** [D14] A super admin made an account an admin of an organisation. */
+    ASSIGN_ORGANISATION_ADMIN,
+    /** [D14] A super admin set an organisation admin back to member. */
+    REMOVE_ORGANISATION_ADMIN,
+    /** [D14] An organisation admin (or a super admin) approved a pending membership. */
+    APPROVE_MEMBER,
+    /** [D14] An organisation admin (or a super admin) rejected a pending membership. */
+    REJECT_MEMBER;
 
-    /** The stored value, matching the CHECK constraint in V1__schema.sql. */
+    /** The stored value, matching the CHECK constraint in V4__organisations.sql. */
     public String value() {
         return name().toLowerCase(Locale.ROOT);
     }

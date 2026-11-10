@@ -19,7 +19,7 @@ public record BrandProperties(
         /** [B11] The account with this email is promoted to super_admin on startup. Optional. */
         String bootstrapAdminEmail,
         @NotNull @Valid Media media,
-        /** Absolute base of this server, used for avatar URLs and the reset link. */
+        /** Absolute base of this server, used for avatar URLs and the reset and confirmation links. */
         @NotBlank String publicBaseUrl,
         @NotNull @Valid Mail mail,
         @NotNull @Valid Cors cors,
@@ -46,8 +46,27 @@ public record BrandProperties(
     public record Media(@NotBlank String dir) {
     }
 
-    /** {@code enabled = false} logs the reset link instead of sending it. */
-    public record Mail(@NotBlank String from, boolean enabled) {
+    /**
+     * {@code enabled = false} logs the reset and confirmation links instead of
+     * sending them.
+     *
+     * @param confirmationTtl            [D18] how long an email-confirmation link
+     *                                   works (TENANT_PLAN.md P2: 24 hours)
+     * @param confirmationResendInterval [D18] the newest confirmation link of an
+     *                                   account must be at least this old before
+     *                                   {@code POST /auth/resend-confirmation} sends
+     *                                   another (TENANT_PLAN.md P3: 60 seconds)
+     */
+    public record Mail(@NotBlank String from,
+                       boolean enabled,
+                       Duration confirmationTtl,
+                       Duration confirmationResendInterval) {
+
+        public Mail {
+            confirmationTtl = confirmationTtl == null ? Duration.ofHours(24) : confirmationTtl;
+            confirmationResendInterval = confirmationResendInterval == null
+                    ? Duration.ofSeconds(60) : confirmationResendInterval;
+        }
     }
 
     public record Cors(List<String> allowedOrigins) {

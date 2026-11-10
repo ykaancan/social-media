@@ -61,7 +61,7 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("a member cannot read or edit the list: 403, not 404")
     void memberIsForbidden() throws Exception {
-        String member = token(AccountStatus.APPROVED, false);
+        String member = token(AccountStatus.ACTIVE, false);
 
         mockMvc.perform(get("/admin/api/screening-terms").header(HttpHeaders.AUTHORIZATION, member))
                 .andExpect(status().isForbidden())
@@ -77,7 +77,7 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("add, list, delete — and the normalised term never appears on the wire")
     void crud() throws Exception {
-        String admin = token(AccountStatus.APPROVED, true);
+        String admin = token(AccountStatus.ACTIVE, true);
 
         MvcResult added = mockMvc.perform(post("/admin/api/screening-terms")
                         .header(HttpHeaders.AUTHORIZATION, admin)
@@ -121,7 +121,7 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("the duplicate rule is on the folded term: 'izmir' after 'İZMİR' is 409")
     void duplicatesAreRefused() throws Exception {
-        String admin = token(AccountStatus.APPROVED, true);
+        String admin = token(AccountStatus.ACTIVE, true);
 
         mockMvc.perform(post("/admin/api/screening-terms")
                         .header(HttpHeaders.AUTHORIZATION, admin)
@@ -148,7 +148,7 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("an empty term, a too-long one and an unknown severity are 422 on their field")
     void validation() throws Exception {
-        String admin = token(AccountStatus.APPROVED, true);
+        String admin = token(AccountStatus.ACTIVE, true);
 
         mockMvc.perform(post("/admin/api/screening-terms")
                         .header(HttpHeaders.AUTHORIZATION, admin)
@@ -186,7 +186,7 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("a term added through the API screens the very next message, with no 30-second wait")
     void aTermIsLiveImmediately() throws Exception {
-        String admin = token(AccountStatus.APPROVED, true);
+        String admin = token(AccountStatus.ACTIVE, true);
 
         // Load the cache first, so the test would fail without the invalidation.
         assertThat(contentScreener.screen("sen kaybol")).isEqualTo(ScreeningResult.ALLOW);
@@ -235,6 +235,8 @@ class AdminScreeningTermsIntegrationTest extends AbstractIntegrationTest {
         UUID id = UUID.fromString(body.get("me").get("id").asText());
         AppUser user = users.findById(id).orElseThrow();
         user.setStatus(status);
+        // [D18] confirmed, so the access filter judges the status alone.
+        user.confirmEmail(java.time.Instant.now());
         users.save(user);
         if (admin) {
             bootstrap.promote(email);

@@ -55,7 +55,7 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.UNAUTHORIZED, code, message);
     }
 
-    /** 403: not allowed — including {@code approval_required} on member routes. */
+    /** 403: not allowed — including {@code email_unconfirmed} and {@code account_not_active} on member routes. */
     public static ApiException forbidden(String code, String message) {
         return new ApiException(HttpStatus.FORBIDDEN, code, message);
     }

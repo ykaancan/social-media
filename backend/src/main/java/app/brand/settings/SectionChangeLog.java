@@ -35,14 +35,30 @@ public class SectionChangeLog {
     }
 
     /**
-     * [D7] Records a move. {@code fromSectionId} is null only for an account that
-     * somehow had no section — the column allows it, so the export has to as well.
+     * [D7]/[D15] The most recent {@code changed_at} of this account in one
+     * organisation, or empty if it never moved there. Read by
+     * {@code Me.memberships[].sectionChangeAvailableAt}.
      */
-    public void record(UUID userId, UUID fromSectionId, UUID toSectionId, Instant changedAt) {
+    public Optional<Instant> lastChangedAt(UUID userId, UUID organisationId) {
+        Timestamp last = jdbc.queryForObject(
+                "select max(changed_at) from section_change where user_id = ? and organisation_id = ?",
+                Timestamp.class, userId, organisationId);
+        return Optional.ofNullable(last).map(Timestamp::toInstant);
+    }
+
+    /**
+     * [D7] Records a move. {@code fromSectionId} is null for an account that had no
+     * section — the column allows it, so the export has to as well.
+     *
+     * <p>[D15] {@code organisationId} is the organisation of the <em>target</em>
+     * section. Step T-1 only stores it; {@link #lastChangedAt} still counts the
+     * 30 days per account until step T-2 counts them per organisation.
+     */
+    public void record(UUID userId, UUID organisationId, UUID fromSectionId, UUID toSectionId, Instant changedAt) {
         jdbc.update("""
-                insert into section_change (user_id, from_section_id, to_section_id, changed_at)
-                values (?, ?, ?, ?)
-                """, userId, fromSectionId, toSectionId, Timestamp.from(changedAt));
+                insert into section_change (user_id, organisation_id, from_section_id, to_section_id, changed_at)
+                values (?, ?, ?, ?, ?)
+                """, userId, organisationId, fromSectionId, toSectionId, Timestamp.from(changedAt));
     }
 
     /**

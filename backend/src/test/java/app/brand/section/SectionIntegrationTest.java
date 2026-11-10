@@ -75,16 +75,16 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     /* ------------------------------------------------------------ GET /sections */
 
     @Test
-    @DisplayName("the list counts approved members only, and an empty section reads 0")
-    void listCountsApprovedMembers() throws Exception {
+    @DisplayName("the list counts active accounts only, and an empty section reads 0")
+    void listCountsActiveAccounts() throws Exception {
         UUID populated = section("QA Populated");
         UUID empty = section("QA Empty");
-        member("Ada", populated, AccountStatus.APPROVED);
-        member("Bora", populated, AccountStatus.APPROVED);
-        member("Ceyda", populated, AccountStatus.PENDING);
-        member("Derya", populated, AccountStatus.REJECTED);
+        member("Ada", populated, AccountStatus.ACTIVE);
+        member("Bora", populated, AccountStatus.ACTIVE);
+        member("Ceyda", populated, AccountStatus.INCOMPLETE);
+        member("Derya", populated, AccountStatus.BANNED);
 
-        AppUser viewer = member("Viewer", section("QA Viewers"), AccountStatus.PENDING);
+        AppUser viewer = member("Viewer", section("QA Viewers"), AccountStatus.INCOMPLETE);
         JsonNode list = read(mockMvc.perform(get("/sections").header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
                 .andExpect(status().isOk())
                 .andReturn());
@@ -101,7 +101,7 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("sections come back ordered by the normalised name")
     void listIsOrderedByNormalisedName() throws Exception {
-        AppUser viewer = member("Viewer", section("QA Order"), AccountStatus.PENDING);
+        AppUser viewer = member("Viewer", section("QA Order"), AccountStatus.INCOMPLETE);
 
         JsonNode list = read(mockMvc.perform(get("/sections").header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
                 .andExpect(status().isOk())
@@ -127,7 +127,7 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("an unknown section is 404")
     void unknownSectionIsNotFound() throws Exception {
-        AppUser viewer = member("Viewer", section("QA Missing"), AccountStatus.PENDING);
+        AppUser viewer = member("Viewer", section("QA Missing"), AccountStatus.INCOMPLETE);
 
         mockMvc.perform(get("/sections/" + UUID.randomUUID())
                         .header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
@@ -138,13 +138,13 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a pending viewer heads their own roster and is counted once in rosterTotal")
-    void pendingViewerIsFirstInOwnSection() throws Exception {
+    @DisplayName("a viewer who is not active heads their own roster and is counted once in rosterTotal")
+    void inactiveViewerIsFirstInOwnSection() throws Exception {
         UUID sectionId = section("QA Roster");
-        member("Işıl", sectionId, AccountStatus.APPROVED);
-        member("Irmak", sectionId, AccountStatus.APPROVED);
-        member("Nobody", sectionId, AccountStatus.PENDING);
-        AppUser viewer = member("Viewer", sectionId, AccountStatus.PENDING);
+        member("Işıl", sectionId, AccountStatus.ACTIVE);
+        member("Irmak", sectionId, AccountStatus.ACTIVE);
+        member("Nobody", sectionId, AccountStatus.INCOMPLETE);
+        AppUser viewer = member("Viewer", sectionId, AccountStatus.INCOMPLETE);
 
         JsonNode body = read(mockMvc.perform(get("/sections/" + sectionId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
@@ -153,7 +153,7 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
                 .andReturn());
 
         assertThat(body.get("memberCount").asLong()).isEqualTo(2);
-        // The viewer is in the roster but not in the approved count, so they are
+        // The viewer is in the roster but not in the active count, so they are
         // added once: "and N more" is rosterTotal - roster.length and never negative.
         assertThat(body.get("rosterTotal").asLong()).isEqualTo(3);
 
@@ -168,11 +168,11 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("an approved viewer appears once, at the top, and rosterTotal is the count")
-    void approvedViewerIsNotCountedTwice() throws Exception {
+    @DisplayName("an active viewer appears once, at the top, and rosterTotal is the count")
+    void activeViewerIsNotCountedTwice() throws Exception {
         UUID sectionId = section("QA Approved viewer");
-        member("Zeynep", sectionId, AccountStatus.APPROVED);
-        AppUser viewer = member("Ali", sectionId, AccountStatus.APPROVED);
+        member("Zeynep", sectionId, AccountStatus.ACTIVE);
+        AppUser viewer = member("Ali", sectionId, AccountStatus.ACTIVE);
 
         JsonNode body = read(mockMvc.perform(get("/sections/" + sectionId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
@@ -185,11 +185,11 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("someone else's section shows its approved members and not the viewer")
+    @DisplayName("someone else's section shows its active accounts and not the viewer")
     void otherSectionRoster() throws Exception {
         UUID theirs = section("QA Theirs");
-        member("Baran", theirs, AccountStatus.APPROVED);
-        AppUser viewer = member("Viewer", section("QA Mine"), AccountStatus.APPROVED);
+        member("Baran", theirs, AccountStatus.ACTIVE);
+        AppUser viewer = member("Viewer", section("QA Mine"), AccountStatus.ACTIVE);
 
         JsonNode body = read(mockMvc.perform(get("/sections/" + theirs)
                         .header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
@@ -205,9 +205,9 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     void rosterIsOnePageOfFifty() throws Exception {
         UUID sectionId = section("QA Big");
         for (int i = 0; i < 60; i++) {
-            member(String.format("Member %02d", i), sectionId, AccountStatus.APPROVED);
+            member(String.format("Member %02d", i), sectionId, AccountStatus.ACTIVE);
         }
-        AppUser viewer = member("Aaa Viewer", sectionId, AccountStatus.PENDING);
+        AppUser viewer = member("Aaa Viewer", sectionId, AccountStatus.INCOMPLETE);
 
         JsonNode body = read(mockMvc.perform(get("/sections/" + sectionId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(viewer)))
@@ -227,9 +227,9 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("wallEventId appears only for a member the viewer shares an event with, live preferred")
     void wallEventIdIsOnlyForSharedEvents() throws Exception {
         UUID sectionId = section("QA Events");
-        AppUser shared = member("Shared", sectionId, AccountStatus.APPROVED);
-        AppUser unrelated = member("Unrelated", sectionId, AccountStatus.APPROVED);
-        AppUser viewer = member("Viewer", sectionId, AccountStatus.APPROVED);
+        AppUser shared = member("Shared", sectionId, AccountStatus.ACTIVE);
+        AppUser unrelated = member("Unrelated", sectionId, AccountStatus.ACTIVE);
+        AppUser viewer = member("Viewer", sectionId, AccountStatus.ACTIVE);
 
         Instant now = Instant.now();
         UUID archived = event(sectionId, now.minus(3, ChronoUnit.DAYS), now.minus(2, ChronoUnit.DAYS));
@@ -284,7 +284,8 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     /** A section of this test's own, so counts do not depend on what else ran. */
     private UUID section(String label) {
         return jdbc.queryForObject(
-                "insert into section (name, country_code) values (?, 'TR') returning id",
+                "insert into section (name, country_code, organisation_id) values (?, 'TR', "
+                        + "(select id from organisation where name = 'ESN Türkiye')) returning id",
                 UUID.class,
                 label + " " + UUID.randomUUID());
     }
@@ -293,6 +294,8 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "section-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         if (sectionId != null) {
             user.setSection(sections.findById(sectionId).orElseThrow());
@@ -303,8 +306,8 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
     /** Plain SQL: the events feature is step B-2's, and this only needs two rows. */
     private UUID event(UUID sectionId, Instant startsAt, Instant endsAt) {
         UUID id = jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
-                        values (?, 'national', ?, ?, ?, 'magenta', 'approve_first', ?)
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
+                        values ((select id from organisation where name = 'ESN Türkiye'), ?, 'national', ?, ?, ?, 'magenta', 'approve_first', ?)
                         returning id
                         """,
                 UUID.class,

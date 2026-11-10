@@ -33,6 +33,13 @@ public class Section {
     @JoinColumn(name = "country_code", nullable = false)
     private Country country;
 
+    /**
+     * [D15] The organisation this section belongs to. A plain id, not an
+     * association: the organisation entity is step T-1 part B's.
+     */
+    @Column(name = "organisation_id", nullable = false)
+    private UUID organisationId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -49,6 +56,10 @@ public class Section {
 
     public Country getCountry() {
         return country;
+    }
+
+    public UUID getOrganisationId() {
+        return organisationId;
     }
 
     public Instant getCreatedAt() {

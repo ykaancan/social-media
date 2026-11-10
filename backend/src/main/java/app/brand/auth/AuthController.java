@@ -33,11 +33,25 @@ public class AuthController {
         this.authService = authService;
     }
 
-    /** 201 with an {@code incomplete} Me and a usable token pair. */
+    /**
+     * 201 with an {@code incomplete}, unconfirmed Me and a usable token pair; the
+     * confirmation link is sent in the language of this request [D18].
+     */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthResultDto register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request);
+    public AuthResultDto register(@Valid @RequestBody RegisterRequest request, Locale locale) {
+        return authService.register(request, locale);
+    }
+
+    /**
+     * [D18] Signed in only — {@code /auth/**} is public in {@code SecurityConfig},
+     * so the required {@code @CurrentUser} is what makes a call without a bearer a
+     * 401. Always 202: whether a mail went out is not observable.
+     */
+    @PostMapping("/resend-confirmation")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void resendConfirmation(@CurrentUser AppPrincipal principal, Locale locale) {
+        authService.resendConfirmation(principal.id(), locale);
     }
 
     @PostMapping("/login")

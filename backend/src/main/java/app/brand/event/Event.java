@@ -41,6 +41,13 @@ public class Event {
     @JoinColumn(name = "section_id", nullable = false)
     private Section section;
 
+    /**
+     * [D13] The organisation that owns this event. In step T-1 it is always the
+     * organisation of the creator's section; step T-2 lets the request name it.
+     */
+    @Column(name = "organisation_id", nullable = false, updatable = false)
+    private UUID organisationId;
+
     @Column(name = "starts_at", nullable = false)
     private Instant startsAt;
 
@@ -76,6 +83,7 @@ public class Event {
     public static Event create(String name,
                                String scope,
                                Section section,
+                               UUID organisationId,
                                Instant startsAt,
                                Instant endsAt,
                                String cover,
@@ -87,6 +95,7 @@ public class Event {
         event.name = name;
         event.scope = scope;
         event.section = section;
+        event.organisationId = organisationId;
         event.startsAt = startsAt;
         event.endsAt = endsAt;
         event.cover = cover;
@@ -111,6 +120,10 @@ public class Event {
 
     public Section getSection() {
         return section;
+    }
+
+    public UUID getOrganisationId() {
+        return organisationId;
     }
 
     public Instant getStartsAt() {

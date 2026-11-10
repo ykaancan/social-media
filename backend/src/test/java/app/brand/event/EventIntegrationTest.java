@@ -87,6 +87,9 @@ class EventIntegrationTest extends AbstractIntegrationTest {
         Section section = anySection();
         AppUser creator = account(section);
         Instant starts = Instant.parse("2026-10-01T18:00:00Z");
+        // `upcoming` is derived from now [B5]: stand a day before the start, not on
+        // whatever today is.
+        clock.freezeAt(starts.minus(1, ChronoUnit.DAYS));
 
         JsonNode created = json(mockMvc.perform(post("/events")
                         .header(HttpHeaders.AUTHORIZATION, bearer(creator))
@@ -497,8 +500,8 @@ class EventIntegrationTest extends AbstractIntegrationTest {
     /** Plain SQL where the endpoint would only get in the way of arranging time. */
     private UUID event(Section section, Instant startsAt, Instant endsAt) {
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
-                        values ('Fixture', 'section', ?, ?, ?, 'mint', 'approve_first', ?)
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover, board_mode, join_code)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Fixture', 'section', ?, ?, ?, 'mint', 'approve_first', ?)
                         returning id
                         """,
                 UUID.class, section.getId(),
@@ -544,7 +547,9 @@ class EventIntegrationTest extends AbstractIntegrationTest {
     private AppUser account(Section section) {
         AppUser user = AppUser.register(
                 "event-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName("Member " + UUID.randomUUID().toString().substring(0, 4));
         user.setSection(section);
         return users.saveAndFlush(user);

@@ -207,12 +207,12 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
         String mine = roomPost(f.viewer, f.eventId, "My own post");
         refusedOpen(f.viewer, fromPost(mine, f.eventId, "Hello"));
 
-        // The author is no longer an approved member.
+        // The author is no longer an active account.
         String messageId = inboxOrigin(f, "Before the queue", "anonymous");
-        f.author.setStatus(AccountStatus.PENDING);
+        f.author.setStatus(AccountStatus.INCOMPLETE);
         users.saveAndFlush(f.author);
         refusedOpen(f.viewer, fromInbox(messageId, "Hello"));
-        f.author.setStatus(AccountStatus.APPROVED);
+        f.author.setStatus(AccountStatus.ACTIVE);
         users.saveAndFlush(f.author);
 
         // Blocked, in either direction [D6]. The viewer's own block hides the
@@ -489,7 +489,7 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
         send(f.viewer, threadId, "Two", key())
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("delivery_unavailable"));
-        f.author.setStatus(AccountStatus.APPROVED);
+        f.author.setStatus(AccountStatus.ACTIVE);
         users.saveAndFlush(f.author);
 
         block(f.author.getId(), f.viewer.getId());
@@ -933,9 +933,9 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
 
     private UUID event(Section section, UUID creatorId, String boardMode) {
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(base.minusSeconds(3600)),
@@ -963,7 +963,9 @@ class ThreadIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "thread-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null,
                 Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         return users.saveAndFlush(user);

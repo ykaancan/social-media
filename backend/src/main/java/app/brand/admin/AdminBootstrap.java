@@ -17,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * [B11] The first {@code super_admin} is created by configuration, not by a
  * migration and not by a hardcoded id: the account whose email equals
- * {@code brand.bootstrap-admin-email} is promoted and approved on startup.
+ * {@code brand.bootstrap-admin-email} is promoted on startup and, TENANT_PLAN.md
+ * P5, set {@code active} with its email marked confirmed [D14]/[D18].
  *
  * <p>The founder registers through the app like everybody else and then restarts
  * the server (or already has this set), so there is never a password in a config
@@ -55,8 +56,8 @@ public class AdminBootstrap implements ApplicationRunner {
     }
 
     /**
-     * Idempotent: an account that is already an approved super admin is left
-     * untouched and nothing is written to the audit log.
+     * Idempotent: an account that is already an active, confirmed super admin is
+     * left untouched and nothing is written to the audit log.
      *
      * @return true when this call changed the account
      */
@@ -76,24 +77,24 @@ public class AdminBootstrap implements ApplicationRunner {
 
         AppUser user = found.get();
         boolean roleChanged = user.getRole() != Role.SUPER_ADMIN;
-        boolean statusChanged = user.getStatus() != AccountStatus.APPROVED;
-        if (!roleChanged && !statusChanged) {
-            log.info("[B11] bootstrap admin {} is already an approved super admin", user.getId());
+        boolean statusChanged = user.getStatus() != AccountStatus.ACTIVE;
+        boolean confirmationChanged = !user.isEmailConfirmed();
+        if (!roleChanged && !statusChanged && !confirmationChanged) {
+            log.info("[B11] bootstrap admin {} is already an active, confirmed super admin", user.getId());
             return false;
         }
 
         Instant now = clock.instant();
         user.setRole(Role.SUPER_ADMIN);
-        user.setStatus(AccountStatus.APPROVED);
-        if (user.getApprovedAt() == null) {
-            // approved_by stays null: no person made this decision, the configuration did.
-            user.setApprovedAt(now);
-        }
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] P5: the configuration vouches for this address, so it does not wait for a link.
+        user.confirmEmail(now);
         users.save(user);
         auditLog.save(AuditLog.aboutUser(null, AuditAction.PROMOTE_ADMIN, user.getId(), SOURCE_BOOTSTRAP, now));
 
-        log.info("[B11] promoted {} to super_admin and approved the account (role changed: {}, status changed: {})",
-                user.getId(), roleChanged, statusChanged);
+        log.info("[B11] promoted {} to super_admin, active and confirmed "
+                        + "(role changed: {}, status changed: {}, email confirmed now: {})",
+                user.getId(), roleChanged, statusChanged, confirmationChanged);
         return true;
     }
 }

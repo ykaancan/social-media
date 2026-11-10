@@ -18,13 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Brief §4.9 — the admin JSON API behind {@code /admin/index.html} [B11].
  *
- * <p>{@code super_admin} only, and only an {@code approved} one. The check is
+ * <p>{@code super_admin} only, and only an {@code active} one. The check is
  * method security on the class rather than a rule in {@code SecurityConfig}: the
  * role and the status live on the account row, so a promotion, a demotion or a ban
  * takes effect on the next request either way, and the requirement stays next to
  * the code it protects. No token is a 401 from the filter chain; a member's token
  * is a 403 {@code forbidden} [B14]. The status is stated here as well as enforced
- * by {@code ApprovedMemberFilter}, because an admin route losing its status check
+ * by {@code ActiveAccountFilter}, because an admin route losing its status check
  * would be the one mistake nobody sees.
  *
  * <p>The reports queue (content, reporter, audited identity view, dismiss / hide /
@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/admin/api")
-@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.approved")
+@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.active")
 public class AdminUserController {
 
     private final AdminUserService service;
@@ -41,9 +41,12 @@ public class AdminUserController {
         this.service = service;
     }
 
-    /** Defaults to the queue the admin opens the page for. {@code all} lists everything. */
+    /**
+     * {@code all} lists everything and is the default: [D14] there is no
+     * {@code pending} account queue to open the page on any more.
+     */
     @GetMapping("/users")
-    public List<AdminUserDto> list(@RequestParam(name = "status", defaultValue = "pending") String status) {
+    public List<AdminUserDto> list(@RequestParam(name = "status", defaultValue = "all") String status) {
         return service.list(parseStatus(status));
     }
 
@@ -52,15 +55,8 @@ public class AdminUserController {
         return service.get(id);
     }
 
-    @PostMapping("/users/{id}/approve")
-    public AdminUserDto approve(@CurrentUser AppPrincipal admin, @PathVariable UUID id) {
-        return service.approve(admin.id(), id);
-    }
-
-    @PostMapping("/users/{id}/reject")
-    public AdminUserDto reject(@CurrentUser AppPrincipal admin, @PathVariable UUID id) {
-        return service.reject(admin.id(), id);
-    }
+    // [D14] POST /users/{id}/approve and /reject are removed: the account is no
+    // longer approved. Membership approval is per organisation.
 
     @PostMapping("/users/{id}/ban")
     public AdminUserDto ban(@CurrentUser AppPrincipal admin, @PathVariable UUID id) {

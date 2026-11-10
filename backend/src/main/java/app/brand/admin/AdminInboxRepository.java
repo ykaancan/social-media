@@ -16,7 +16,7 @@ import org.springframework.data.repository.query.Param;
  * [B9] is about what was delivered, not about what anybody can still see.
  *
  * <p>Nothing here is reachable from a member route: the only callers are
- * {@code /admin/api/*}, which is {@code super_admin} and approved.
+ * {@code /admin/api/*}, which is {@code super_admin} and active.
  */
 public interface AdminInboxRepository extends JpaRepository<InboxMessage, UUID> {
 

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Brief §4.9 — the reports queue and the flagged list [B9], behind the admin page.
  *
  * <p>The access rule is {@link AdminUserController}'s, stated the same way and for
- * the same reason: {@code super_admin} and {@code approved}, as method security on
+ * the same reason: {@code super_admin} and {@code active}, as method security on
  * the class, so a promotion, a demotion or a ban takes effect on the next request
  * without a change in {@code SecurityConfig}.
  *
@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/admin/api")
-@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.approved")
+@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.active")
 public class AdminReportController {
 
     private final AdminReportService service;

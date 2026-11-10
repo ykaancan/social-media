@@ -196,7 +196,8 @@ public class SettingsService {
                     "section change is rate limited");
         }
 
-        sectionChanges.record(userId, current == null ? null : current.getId(), target.getId(), now);
+        sectionChanges.record(userId, target.getOrganisationId(),
+                current == null ? null : current.getId(), target.getId(), now);
         user.setSection(target);
         return meMapper.toMe(users.saveAndFlush(user));
     }

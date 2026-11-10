@@ -16,9 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * {@code /events} — approved members only; {@code ApprovedMemberFilter} answers
- * 403 {@code approval_required} before any of this runs, so nothing here checks a
- * status.
+ * {@code /events} — confirmed, active accounts only; {@code ActiveAccountFilter}
+ * answers 403 before any of this runs, so nothing here checks a status.
  *
  * <p>Every route answers 200. {@code POST /events} is not a 201 because the client
  * only reads {@code res.ok} and the mock returns the DTO — a different status here

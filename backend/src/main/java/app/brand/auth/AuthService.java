@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Registration, sign-in and the password-reset round trip.
+ * Registration, sign-in, email confirmation [D18] and the password-reset round
+ * trip.
  *
  * <p>Two rules run through all of it: an account's existence is never observable
  * from the outside (login says the same thing for a wrong address and a wrong
@@ -49,6 +50,8 @@ public class AuthService {
     private final TokenService tokenService;
     private final PasswordEncoder passwordEncoder;
     private final ResetLinkSender resetLinkSender;
+    private final EmailConfirmationTokenRepository confirmationTokens;
+    private final ConfirmationLinkSender confirmationLinkSender;
     private final MeMapper meMapper;
     private final BrandProperties properties;
     private final Clock clock;
@@ -60,6 +63,8 @@ public class AuthService {
                        TokenService tokenService,
                        PasswordEncoder passwordEncoder,
                        ResetLinkSender resetLinkSender,
+                       EmailConfirmationTokenRepository confirmationTokens,
+                       ConfirmationLinkSender confirmationLinkSender,
                        MeMapper meMapper,
                        BrandProperties properties,
                        Clock clock) {
@@ -70,17 +75,20 @@ public class AuthService {
         this.tokenService = tokenService;
         this.passwordEncoder = passwordEncoder;
         this.resetLinkSender = resetLinkSender;
+        this.confirmationTokens = confirmationTokens;
+        this.confirmationLinkSender = confirmationLinkSender;
         this.meMapper = meMapper;
         this.properties = properties;
         this.clock = clock;
     }
 
     /**
-     * A new account is always {@code incomplete} and {@code member}: the profile has
-     * not been sent yet, so it is not in the admin queue and cannot use the app.
+     * A new account is always {@code incomplete}, {@code member} and unconfirmed:
+     * [D18] a confirmation link is sent in the language of this request, and until
+     * it is opened the account reaches only its status-independent routes.
      */
     @Transactional
-    public AuthResultDto register(RegisterRequest request) {
+    public AuthResultDto register(RegisterRequest request, Locale locale) {
         String email = request.email().trim();
         if (users.existsByEmailIgnoreCase(email)) {
             throw ApiException.conflict("email_in_use", "that email already has an account", "email");
@@ -97,7 +105,73 @@ public class AuthService {
         }
 
         settings.save(UserSettings.defaultsFor(user.getId()));
+        sendConfirmationLink(user, clock.instant(), locale);
         return new AuthResultDto(tokenService.issue(user), meMapper.toMe(user));
+    }
+
+    /* ------------------------------------------------------- confirmation [D18] */
+
+    /**
+     * {@code POST /auth/resend-confirmation}. The caller always gets 202; a new link
+     * goes out only when the account is not confirmed yet <b>and</b> its newest link
+     * is at least {@code brand.mail.confirmation-resend-interval} old
+     * (TENANT_PLAN.md P3), so the route cannot be used to send mail in bulk. An
+     * account that has no link at all gets one.
+     */
+    @Transactional
+    public void resendConfirmation(UUID userId, Locale locale) {
+        AppUser user = users.findById(userId).orElse(null);
+        if (user == null || user.isEmailConfirmed()) {
+            return;
+        }
+        Instant now = clock.instant();
+        Instant earliest = now.minus(properties.mail().confirmationResendInterval());
+        boolean tooSoon = confirmationTokens.findFirstByUserIdOrderByCreatedAtDesc(userId)
+                .map(newest -> newest.getCreatedAt().isAfter(earliest))
+                .orElse(false);
+        if (tooSoon) {
+            return;
+        }
+        sendConfirmationLink(user, now, locale);
+    }
+
+    /**
+     * {@code GET /confirm}. A usable token (unused, unexpired) is consumed and the
+     * email marked confirmed; anything else changes nothing and answers false. An
+     * older link that is still usable works too: every link sent is a real one.
+     */
+    @Transactional
+    public boolean confirmEmail(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        Instant now = clock.instant();
+        Optional<EmailConfirmationToken> found = confirmationTokens.findByTokenHash(TokenService.hash(token))
+                .filter(candidate -> candidate.isUsable(now));
+        if (found.isEmpty()) {
+            return false;
+        }
+        Optional<AppUser> user = users.findById(found.get().getUserId());
+        if (user.isEmpty()) {
+            return false;
+        }
+        found.get().consume(now);
+        confirmationTokens.save(found.get());
+        user.get().confirmEmail(now);
+        users.save(user.get());
+        return true;
+    }
+
+    private void sendConfirmationLink(AppUser user, Instant now, Locale locale) {
+        String token = tokenService.randomToken();
+        confirmationTokens.save(EmailConfirmationToken.issue(
+                user.getId(), TokenService.hash(token), now, now.plus(properties.mail().confirmationTtl())));
+        confirmationLinkSender.send(user.getEmail(), confirmationLink(token), locale);
+    }
+
+    private String confirmationLink(String token) {
+        return properties.publicBaseUrl() + "/confirm?token="
+                + URLEncoder.encode(token, StandardCharsets.UTF_8);
     }
 
     /**

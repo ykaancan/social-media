@@ -92,11 +92,13 @@ class SectionChangeIntegrationTest extends AbstractIntegrationTest {
                 // [D11] Country comes with it; it is not a field anyone picked.
                 .andExpect(jsonPath("$.section.country").value(target.getCountry().getName()))
                 // [D7] No re-approval, ever.
-                .andExpect(jsonPath("$.status").value("approved"));
+                .andExpect(jsonPath("$.status").value("active"));
 
         assertThat(changes(me)).singleElement().satisfies(row -> {
             assertThat(row.get("from_section_id")).isEqualTo(first().getId());
             assertThat(row.get("to_section_id")).isEqualTo(target.getId());
+            // [D15] V4: the row names the organisation of the section moved to.
+            assertThat(row.get("organisation_id")).isEqualTo(target.getOrganisationId());
         });
         assertThat(users.findById(me.getId()).orElseThrow().getSection().getId())
                 .isEqualTo(target.getId());
@@ -190,15 +192,15 @@ class SectionChangeIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a pending account is refused before the rule is even reached")
-    void pendingIsRefused() throws Exception {
-        AppUser pending = account(first());
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
+    @DisplayName("an incomplete account is refused before the rule is even reached")
+    void incompleteIsRefused() throws Exception {
+        AppUser incomplete = account(first());
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
 
-        change(pending, second().getId().toString())
+        change(incomplete, second().getId().toString())
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* -------------------------------------------------------------- helpers */
@@ -237,7 +239,9 @@ class SectionChangeIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "section-change-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash",
                 null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName("Deniz");
         user.setSection(section);
         AppUser saved = users.saveAndFlush(user);

@@ -280,9 +280,9 @@ class PushDomainEventsIntegrationTest extends AbstractIntegrationTest {
         AppUser creator = approved(section, "Deniz");
         AppUser member = approved(section, "Mert");
         UUID eventId = jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(base.minusSeconds(3600)),
@@ -301,7 +301,9 @@ class PushDomainEventsIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "pushevent-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null,
                 Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         return users.saveAndFlush(user);

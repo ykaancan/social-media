@@ -135,13 +135,13 @@ class ScreeningIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("screening is a member route: an unapproved account gets approval_required")
+    @DisplayName("screening is a member route: an account that is not active gets account_not_active")
     void screeningIsAMemberRoute() throws Exception {
-        AppUser pending = account(AccountStatus.PENDING);
+        AppUser incomplete = account(AccountStatus.INCOMPLETE);
 
-        screen(pending, body("hello", null))
+        screen(incomplete, body("hello", null))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* ------------------------------------------------------------ helpers */
@@ -169,7 +169,7 @@ class ScreeningIntegrationTest extends AbstractIntegrationTest {
     }
 
     private AppUser approvedAccount() {
-        return account(AccountStatus.APPROVED);
+        return account(AccountStatus.ACTIVE);
     }
 
     private AppUser account(AccountStatus status) {
@@ -178,6 +178,8 @@ class ScreeningIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "screen-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName("Screener");
         user.setSection(section);
         return users.saveAndFlush(user);

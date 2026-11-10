@@ -286,7 +286,9 @@ class SafetyServicesIntegrationTest extends AbstractIntegrationTest {
     private AppUser account() {
         AppUser user = AppUser.register(
                 "safety-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName("Member");
         user.setSection(anySection());
         return users.saveAndFlush(user);

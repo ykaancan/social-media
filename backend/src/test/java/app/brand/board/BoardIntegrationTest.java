@@ -958,9 +958,9 @@ class BoardIntegrationTest extends AbstractIntegrationTest {
     private UUID event(Section section, UUID creatorId, Instant startsAt, Instant endsAt,
                        String boardMode) {
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(startsAt), Timestamp.from(endsAt),
@@ -984,7 +984,9 @@ class BoardIntegrationTest extends AbstractIntegrationTest {
     private AppUser approved(Section section, String name) {
         AppUser user = AppUser.register(
                 "board-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         return users.saveAndFlush(user);

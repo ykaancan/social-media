@@ -466,25 +466,25 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     /* --------------------------------------------------------------- access */
 
     @Test
-    @DisplayName("a pending account gets 403 approval_required on all four routes")
-    void pendingIsRefused() throws Exception {
-        AppUser pending = account();
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
-        String token = bearer(pending);
+    @DisplayName("an incomplete account gets 403 account_not_active on all four routes")
+    void incompleteIsRefused() throws Exception {
+        AppUser incomplete = account();
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
+        String token = bearer(incomplete);
 
         mockMvc.perform(get("/me/settings").header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
-        mockMvc.perform(patchRequest(pending, Map.of("writingPolicy", "nobody")))
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+        mockMvc.perform(patchRequest(incomplete, Map.of("writingPolicy", "nobody")))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
         mockMvc.perform(get("/me/blocks").header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
         mockMvc.perform(delete("/me/blocks/" + UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* -------------------------------------------------------------- helpers */
@@ -532,9 +532,9 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     private void sectionChange(AppUser me, Instant changedAt) {
         Section to = me.getSection();
         jdbc.update("""
-                insert into section_change (user_id, from_section_id, to_section_id, changed_at)
-                values (?, ?, ?, ?)
-                """, me.getId(), to.getId(), to.getId(), java.sql.Timestamp.from(changedAt));
+                insert into section_change (user_id, organisation_id, from_section_id, to_section_id, changed_at)
+                values (?, (select organisation_id from section where id = ?), ?, ?, ?)
+                """, me.getId(), to.getId(), to.getId(), to.getId(), java.sql.Timestamp.from(changedAt));
     }
 
     /** A message that is already in the inbox — nothing a later muted word may touch. */
@@ -553,7 +553,9 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     private AppUser account(Section section, String name) {
         AppUser user = AppUser.register(
                 "settings-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         AppUser saved = users.saveAndFlush(user);

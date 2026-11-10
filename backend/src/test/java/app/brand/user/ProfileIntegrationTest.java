@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
@@ -42,6 +43,9 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JwtService jwtService;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
     /* -------------------------------------------------------------- GET /me */
 
     @Test
@@ -60,14 +64,15 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /me answers for a pending account and carries section and country")
-    void meForPendingAccount() throws Exception {
+    @DisplayName("GET /me answers for an active account and carries section and country")
+    void meForActiveAccount() throws Exception {
         Section section = anySection();
-        AppUser user = account(AccountStatus.PENDING, "Elif", section);
+        AppUser user = account(AccountStatus.ACTIVE, "Elif", section);
 
         mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, bearer(user)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("pending"))
+                .andExpect(jsonPath("$.status").value("active"))
+                .andExpect(jsonPath("$.emailConfirmed").value(true))
                 .andExpect(jsonPath("$.name").value("Elif"))
                 .andExpect(jsonPath("$.section.id").value(section.getId().toString()))
                 .andExpect(jsonPath("$.section.country").value("Türkiye"));
@@ -76,8 +81,8 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     /* ------------------------------------------------------- PUT /me/profile */
 
     @Test
-    @DisplayName("submitting a profile moves the account to pending with section and country")
-    void submitProfileMovesToPending() throws Exception {
+    @DisplayName("submitting a profile with a section makes the account active; T-1 still stores the section")
+    void submitProfileWithSectionMakesActive() throws Exception {
         AppUser user = account(AccountStatus.INCOMPLETE, null, null);
         Section section = anySection();
 
@@ -87,7 +92,7 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                         .content(json(profile("  Kaan Can  ", section.getId().toString(),
                                 "  exchange in Ankara  "))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("pending"))
+                .andExpect(jsonPath("$.status").value("active"))
                 // Trimmed on the way in; the client never has to.
                 .andExpect(jsonPath("$.name").value("Kaan Can"))
                 .andExpect(jsonPath("$.bio").value("exchange in Ankara"))
@@ -96,9 +101,37 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.section.country").value("Türkiye"));
 
         AppUser stored = users.findById(user.getId()).orElseThrow();
-        assertThat(stored.getStatus()).isEqualTo(AccountStatus.PENDING);
+        assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(stored.getSubmittedAt()).isNotNull();
+        // INTERIM, step T-1: the section still lands on the account; T-2 removes it.
         assertThat(stored.getSection().getId()).isEqualTo(section.getId());
+    }
+
+    @Test
+    @DisplayName("[D14] PUT /me/profile without a section is active, and passes the access filter with no membership")
+    void submitWithoutSectionIsActiveWithoutMembership() throws Exception {
+        AppUser user = account(AccountStatus.INCOMPLETE, null, null);
+
+        mockMvc.perform(put("/me/profile")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(profile("Selin", null, null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("active"))
+                .andExpect(jsonPath("$.section").doesNotExist());
+
+        AppUser stored = users.findById(user.getId()).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(stored.getSection()).isNull();
+        // Profile submit never creates a membership.
+        assertThat(jdbc.queryForObject(
+                "select count(*) from organisation_member where user_id = ?", Integer.class, user.getId()))
+                .isZero();
+
+        // A member route: the filter lets a confirmed, active account through with
+        // no membership at all; organisations are checked at event join [D14].
+        mockMvc.perform(get("/ping-approved").header(HttpHeaders.AUTHORIZATION, bearer(user)))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -132,9 +165,9 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("an approved account is told to use editing and section change, not resubmit")
-    void approvedAccountCannotResubmit() throws Exception {
-        AppUser user = account(AccountStatus.APPROVED, "Ada", anySection());
+    @DisplayName("an active account is told to use editing and section change, not resubmit")
+    void activeAccountCannotResubmit() throws Exception {
+        AppUser user = account(AccountStatus.ACTIVE, "Ada", anySection());
 
         mockMvc.perform(put("/me/profile")
                         .header(HttpHeaders.AUTHORIZATION, bearer(user))
@@ -145,7 +178,7 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("use profile editing and section change"));
 
         assertThat(users.findById(user.getId()).orElseThrow().getStatus())
-                .isEqualTo(AccountStatus.APPROVED);
+                .isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
@@ -166,18 +199,26 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("[D7] a rejected account that resubmits goes back to pending")
-    void rejectedAccountResubmits() throws Exception {
+    @DisplayName("[D14] there is no rejected account to resubmit: once sent, a second send is refused")
+    void secondSubmitAfterActiveIsRefused() throws Exception {
         Section section = anySection();
-        AppUser user = account(AccountStatus.REJECTED, "Eski", section);
+        AppUser user = account(AccountStatus.INCOMPLETE, null, null);
+
+        mockMvc.perform(put("/me/profile")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(profile("Eski", section.getId().toString(), null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("active"));
 
         mockMvc.perform(put("/me/profile")
                         .header(HttpHeaders.AUTHORIZATION, bearer(user))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(profile("Yeni", section.getId().toString(), "second try"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("pending"))
-                .andExpect(jsonPath("$.name").value("Yeni"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value("use profile editing and section change"));
+
+        assertThat(users.findById(user.getId()).orElseThrow().getName()).isEqualTo("Eski");
     }
 
     /* ----------------------------------------------------- PATCH /me/profile */
@@ -186,27 +227,27 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("PATCH changes name and bio only - never the section, never the status")
     void patchChangesNameAndBioOnly() throws Exception {
         Section section = anySection();
-        AppUser user = account(AccountStatus.APPROVED, "Ada", section);
+        AppUser user = account(AccountStatus.ACTIVE, "Ada", section);
 
         mockMvc.perform(patch("/me/profile")
                         .header(HttpHeaders.AUTHORIZATION, bearer(user))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("name", " Ada L ", "bio", " one line "))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("approved"))
+                .andExpect(jsonPath("$.status").value("active"))
                 .andExpect(jsonPath("$.name").value("Ada L"))
                 .andExpect(jsonPath("$.bio").value("one line"))
                 .andExpect(jsonPath("$.section.id").value(section.getId().toString()));
 
         AppUser stored = users.findById(user.getId()).orElseThrow();
         assertThat(stored.getSection().getId()).isEqualTo(section.getId());
-        assertThat(stored.getStatus()).isEqualTo(AccountStatus.APPROVED);
+        assertThat(stored.getStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
     @DisplayName("PATCH validates name and bio the same way as the first submit")
     void patchValidation() throws Exception {
-        AppUser user = account(AccountStatus.APPROVED, "Ada", anySection());
+        AppUser user = account(AccountStatus.ACTIVE, "Ada", anySection());
 
         mockMvc.perform(patch("/me/profile")
                         .header(HttpHeaders.AUTHORIZATION, bearer(user))
@@ -217,16 +258,16 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("PATCH by a pending account is 403 approval_required")
-    void patchRequiresApproval() throws Exception {
-        AppUser user = account(AccountStatus.PENDING, "Elif", anySection());
+    @DisplayName("PATCH by an incomplete account is 403 account_not_active")
+    void patchRequiresAnActiveAccount() throws Exception {
+        AppUser user = account(AccountStatus.INCOMPLETE, "Elif", anySection());
 
         mockMvc.perform(patch("/me/profile")
                         .header(HttpHeaders.AUTHORIZATION, bearer(user))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("name", "Elif K"))))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     @Test
@@ -267,6 +308,8 @@ class ProfileIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "profile-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
         user.setSection(section);
         return users.saveAndFlush(user);

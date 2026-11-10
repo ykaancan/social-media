@@ -116,7 +116,9 @@ public class EventService {
         AppUser creator = users.findById(creatorId)
                 .orElseThrow(() -> ApiException.notFound("no such account"));
         if (creator.getSection() == null) {
-            // Unreachable for an approved account: PUT /me/profile requires a section.
+            // INTERIM, step T-1: PUT /me/profile no longer requires a section, so an
+            // active account without one is refused here until step T-2 moves event
+            // creation onto the organisation membership [D13]/[D16].
             throw ApiException.validation("account has no section", "scope");
         }
 
@@ -171,8 +173,9 @@ public class EventService {
                         String boardMode,
                         String joinCode,
                         Instant now) {
+        // [D13] Step T-1: the event belongs to the organisation of the creator's section.
         Event event = events.saveAndFlush(Event.create(name, scope, creator.getSection(),
-                startsAt, endsAt, cover, boardMode, joinCode, creator.getId(), now));
+                creator.getSection().getOrganisationId(), startsAt, endsAt, cover, boardMode, joinCode, creator.getId(), now));
         members.saveAndFlush(EventMember.join(event.getId(), creator.getId(), true, now));
         return event.getId();
     }

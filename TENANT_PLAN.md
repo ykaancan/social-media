@@ -187,6 +187,24 @@ Each line is one test the step must add and pass. Existing tests that assert the
 - Added beyond Q1–Q6: decision 20 (keyword screening only), which Kaan stated in the brainstorm on the same day.
 - Not done: proposals P1–P10 in section 8 are not approved yet.
 
+### T-1 — 2026-11-10, backend accounts, organisations, memberships
+- Lead wrote `V4__organisations.sql`. Two Opus agents ran one after the other (not in parallel: B depended on A's account-status change). Lead read the access filter and the organisation admin service, fixed one defect, and ran the suite.
+- **Result: 322 backend tests, 0 failed, 0 skipped** (lead's own run, twice). Before T-1: 294 in September; one existing event test had started failing on its own because it hard-coded 2026-10-01, and now freezes the clock.
+- Built: account status `incomplete / active / banned`; email confirmation (token, `/confirm` page, `POST /auth/resend-confirmation`, 24 h link, 60 s resend spacing); `ActiveAccountFilter` replacing `ApprovedMemberFilter`; STOMP connect requires active and confirmed; `organisation` package; the admin routes in `tenant.ts`; `Me.memberships`; memberships in account deletion and export; acceptance tests 1–12.
+- Removed: `POST /admin/api/users/{id}/approve` and `/reject`.
+- Defect found in review and fixed by the lead: assigning as admin a member whose request was pending or rejected set them `approved` without `approved_at` / `approved_by` and left the stored event unjoined. It now records both and joins the event, like an approval.
+- Details set during the step, not in the plan before it:
+  - Organisation name is 2–40 characters.
+  - Error code `account_not_active` replaces `approval_required`.
+  - Assign-admin takes a `sectionId`, required when the organisation has sections and the person has no membership there.
+  - Approval push copy — EN: "{organisation} accepted you as a member. Open the app to get started." TR: "{organisation} seni üye olarak kabul etti. Uygulamayı aç ve başla." Rejection sends no push, as before.
+  - Response codes: create organisation 200; assign / remove admin 204; approve / reject return the member row; approve or reject a non-pending member 409; member list is oldest submission first.
+  - `admin/index.html`: only the status filter changed (Pending / Approved / Rejected replaced by Active) so the page still loads. The page has no organisation screens yet (T-4).
+- **Interim behaviour, removed in T-2:** `PUT /me/profile` still accepts an optional `sectionId` and stores it on the account; creating an event still needs the account's section and takes the organisation from it; `/sections`, hints, walls and the 30-day section-change limit still read the account's section; the `Event` entity still maps its section as required.
+- **Open, needs Kaan:** an account with an unconfirmed email cannot call `DELETE /me` (D18 applied literally). Lead recommends allowing it.
+- Not decided, left as built: a banned and unconfirmed account sees `email_unconfirmed`, not the banned answer; two resend calls at the same instant can both send a mail; rejecting a member keeps the stored event on the row.
+- Not verified: sending the confirmation mail through a real SMTP server (only the logged-link path is tested); the app against this backend (the app still expects the old account shape until T-3).
+
 ## 11. Not in this plan
 
 Verified badge and SMS, "verified only" writing setting, message requests, removing a member from an organisation, organiser statistics, payments. Each is its own later step.

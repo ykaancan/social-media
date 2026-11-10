@@ -54,10 +54,10 @@ public class SectionService {
         this.meMapper = meMapper;
     }
 
-    /** Every section, with its real approved-member count, ordered by normalised name. */
+    /** Every section, with its real active-account count, ordered by normalised name. */
     @Transactional(readOnly = true)
     public List<SectionSummaryDto> list() {
-        Map<UUID, Long> counts = sections.countMembersByStatus(AccountStatus.APPROVED).stream()
+        Map<UUID, Long> counts = sections.countMembersByStatus(AccountStatus.ACTIVE).stream()
                 .collect(Collectors.toMap(SectionMemberCount::sectionId, SectionMemberCount::members));
 
         return sections.findAll().stream()
@@ -73,7 +73,8 @@ public class SectionService {
     /**
      * The section page. The viewer comes first in their own section whatever their
      * status — someone waiting for approval still sees themselves in the section
-     * they picked — and everyone after them is an approved member.
+     * they picked — and everyone after them is an active account in it. Interim
+     * until step T-2 [D15]: the roster is still read from {@code app_user.section_id}.
      */
     @Transactional(readOnly = true)
     public SectionDetailDto detail(UUID viewerId, UUID sectionId) {
@@ -82,7 +83,7 @@ public class SectionService {
         SectionRefDto ref = meMapper.toSectionRef(section);
 
         AppUser viewer = users.findById(viewerId).orElse(null);
-        List<AppUser> members = users.findBySection_IdAndStatus(sectionId, AccountStatus.APPROVED).stream()
+        List<AppUser> members = users.findBySection_IdAndStatus(sectionId, AccountStatus.ACTIVE).stream()
                 .filter(member -> member.getName() != null && !member.getName().isBlank())
                 .sorted(BY_NAME)
                 .toList();
@@ -123,11 +124,11 @@ public class SectionService {
                     wallEvent == null ? null : wallEvent.toString()));
         }
 
-        // The viewer is in the roster but not in the approved count while they are
-        // still pending, so they are added once here — "and N more" is never
+        // The viewer is in the roster but not in the active count while they are
+        // not active, so they are added once here — "and N more" is never
         // negative and nobody is counted twice.
         long rosterTotal = memberCount
-                + (viewerListed && viewer.getStatus() != AccountStatus.APPROVED ? 1 : 0);
+                + (viewerListed && viewer.getStatus() != AccountStatus.ACTIVE ? 1 : 0);
 
         return new SectionDetailDto(
                 section.getId().toString(),

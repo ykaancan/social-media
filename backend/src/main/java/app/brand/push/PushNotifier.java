@@ -43,7 +43,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *       who turned board notifications off is saying they do not want the board on
  *       their lock screen — so it gates these too.</li>
  *   <li><b>Approval and a warning</b> are not notifications about content and have
- *       no switch. One is the moment the account starts existing; the other is an
+ *       no switch. One is the moment a person is accepted into an organisation
+ *       [D14]; the other is an
  *       admin acting on a report, which a person does not get to mute.</li>
  * </ul>
  *
@@ -113,10 +114,14 @@ public class PushNotifier {
                 data("postId", event.postId(), "eventId", event.eventId()));
     }
 
-    /** The first push an account can receive, and the reason it can receive any. */
+    /**
+     * [D14] A pending membership was accepted. The body names the organisation
+     * ({@code organisation.name} is not null, so there is always one to name).
+     */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onAccountApproved(AccountApproved event) {
-        push.enqueue(event.userId(), PushKind.ACCOUNT_APPROVED);
+        push.enqueue(event.userId(), PushKind.ACCOUNT_APPROVED,
+                List.of(event.organisationName()), Map.of());
     }
 
     /** CLAUDE.md §4.9: warn is one of the admin's four actions on a report. */

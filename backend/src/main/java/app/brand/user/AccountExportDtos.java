@@ -2,6 +2,8 @@ package app.brand.user;
 
 import app.brand.content.MessageSenderDto;
 import app.brand.message.MessageDtos.InboxMessageDto;
+import app.brand.organisation.MembershipRole;
+import app.brand.organisation.MembershipStatus;
 import app.brand.settings.SettingsDtos.AccountSettingsDto;
 import app.brand.settings.SettingsDtos.BlockedEntryDto;
 import app.brand.thread.ThreadDtos.ThreadMessageDto;
@@ -37,7 +39,8 @@ public final class AccountExportDtos {
             List<SentContentDto> sentMessages,
             List<SentContentDto> posts,
             List<ExportedThreadDto> threads,
-            List<SectionChangeDto> sectionChanges) {
+            List<SectionChangeDto> sectionChanges,
+            List<MembershipExportDto> memberships) {
     }
 
     /**
@@ -62,5 +65,19 @@ public final class AccountExportDtos {
      * an account that had no section before the move.
      */
     public record SectionChangeDto(String from, String to, Instant at) {
+    }
+
+    /**
+     * [D14] One of the owner's memberships, by <b>name</b> like the section
+     * changes. {@code section} is absent where the organisation has no sections;
+     * {@code approvedAt} is absent until approved.
+     */
+    public record MembershipExportDto(
+            String organisation,
+            MembershipStatus status,
+            MembershipRole role,
+            String section,
+            Instant submittedAt,
+            Instant approvedAt) {
     }
 }
