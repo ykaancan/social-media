@@ -1,6 +1,7 @@
 package app.brand.security;
 
 import app.brand.common.ApiErrorBody;
+import app.brand.user.AccountStatus;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,8 +31,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * with no membership at all passes, and every board, wall and people route checks
  * event membership on its own ({@code EventAccess.requireMember}).
  *
+ * <p><b>A banned account</b> is treated as banned first, confirmed or not: it
+ * never sees {@code email_unconfirmed}.
+ *
  * <p><b>[D18] An unconfirmed account</b> reaches only: its own {@code GET /me}
- * (so the app knows to show the confirm screen), everything under {@code /auth/}
+ * (so the app knows to show the confirm screen) and {@code DELETE /me} (its data
+ * is its own to remove), everything under {@code /auth/}
  * (including {@code /auth/resend-confirmation} and {@code /auth/logout}), the
  * confirmation page {@code /confirm}, and what is public to a signed-out caller
  * anyway — {@code /reset}, {@code /media/}, {@code /actuator/}, {@code /error}
@@ -99,14 +104,18 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
 
         if (principal instanceof AppPrincipal current) {
             String path = pathOf(request);
-            if (!current.emailConfirmed() && !reachableUnconfirmed(request.getMethod(), path)) {
+            // A ban is decided first: a banned account gets the banned answer
+            // whether or not it ever confirmed its email.
+            boolean banned = current.status() == AccountStatus.BANNED;
+            if (banned || current.emailConfirmed()) {
+                if (!current.isActive() && !reachableNotActive(request.getMethod(), path)) {
+                    responder.write(response, HttpStatus.FORBIDDEN,
+                            ApiErrorBody.of("account_not_active", "account is not active"));
+                    return;
+                }
+            } else if (!reachableUnconfirmed(request.getMethod(), path)) {
                 responder.write(response, HttpStatus.FORBIDDEN,
                         ApiErrorBody.of("email_unconfirmed", "email is not confirmed"));
-                return;
-            }
-            if (current.emailConfirmed() && !current.isActive() && !reachableNotActive(request.getMethod(), path)) {
-                responder.write(response, HttpStatus.FORBIDDEN,
-                        ApiErrorBody.of("account_not_active", "account is not active"));
                 return;
             }
         }
@@ -122,9 +131,13 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
         return path;
     }
 
-    /** [D18] Own {@code GET /me}, auth, confirmation, and the public routes. */
+    /**
+     * [D18] Own {@code GET /me}, auth, confirmation, and the public routes — and
+     * {@code DELETE /me}: a person who never confirmed still owns their data and
+     * can remove it.
+     */
     private static boolean reachableUnconfirmed(String method, String path) {
-        if ("/me".equals(path) && "GET".equalsIgnoreCase(method)) {
+        if ("/me".equals(path) && ("GET".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method))) {
             return true;
         }
         return startsWithAny(path, UNCONFIRMED_PREFIXES) || isAdminPageAsset(path);

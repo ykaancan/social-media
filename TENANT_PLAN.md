@@ -201,8 +201,11 @@ Each line is one test the step must add and pass. Existing tests that assert the
   - Response codes: create organisation 200; assign / remove admin 204; approve / reject return the member row; approve or reject a non-pending member 409; member list is oldest submission first.
   - `admin/index.html`: only the status filter changed (Pending / Approved / Rejected replaced by Active) so the page still loads. The page has no organisation screens yet (T-4).
 - **Interim behaviour, removed in T-2:** `PUT /me/profile` still accepts an optional `sectionId` and stores it on the account; creating an event still needs the account's section and takes the organisation from it; `/sections`, hints, walls and the 30-day section-change limit still read the account's section; the `Event` entity still maps its section as required.
-- **Open, needs Kaan:** an account with an unconfirmed email cannot call `DELETE /me` (D18 applied literally). Lead recommends allowing it.
-- Not decided, left as built: a banned and unconfirmed account sees `email_unconfirmed`, not the banned answer; two resend calls at the same instant can both send a mail; rejecting a member keeps the stored event on the row.
+- **Four corrections decided by Kaan on 2026-11-10 and applied by the lead (325 tests, 0 failed):**
+  - An account with an unconfirmed email can delete itself (`DELETE /me`).
+  - A banned account gets the banned answer whether or not its email is confirmed; it never sees `email_unconfirmed`.
+  - The confirmation resend locks the account row, so two calls at the same instant send one mail. The lock is not covered by a test of its own; the spacing rule it protects is.
+  - Rejecting a member clears the stored event. If the person asks again, the new request stores the event of the code they use then.
 - Not verified: sending the confirmation mail through a real SMTP server (only the logged-link path is tested); the app against this backend (the app still expects the old account shape until T-3).
 
 ## 11. Not in this plan

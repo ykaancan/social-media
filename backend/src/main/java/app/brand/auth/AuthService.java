@@ -117,10 +117,14 @@ public class AuthService {
      * is at least {@code brand.mail.confirmation-resend-interval} old
      * (TENANT_PLAN.md P3), so the route cannot be used to send mail in bulk. An
      * account that has no link at all gets one.
+     *
+     * <p>The account row is locked for the transaction, so two calls at the same
+     * instant run one after the other: the second one sees the first one's link
+     * and sends nothing.
      */
     @Transactional
     public void resendConfirmation(UUID userId, Locale locale) {
-        AppUser user = users.findById(userId).orElse(null);
+        AppUser user = users.findForUpdate(userId).orElse(null);
         if (user == null || user.isEmailConfirmed()) {
             return;
         }

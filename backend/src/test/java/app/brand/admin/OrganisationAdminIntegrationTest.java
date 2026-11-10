@@ -517,6 +517,25 @@ class OrganisationAdminIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("rejection clears the stored event and joins nothing")
+    void rejectionClearsThePendingEvent() throws Exception {
+        Account admin = superAdmin();
+        UUID orgId = organisation(admin, true, false, "members");
+        Account person = account();
+        UUID eventId = event(orgId, admin.id);
+        insertMembership(orgId, person.id, "pending", null, eventId, Instant.now());
+
+        mockMvc.perform(post("/admin/api/organisations/" + orgId + "/members/" + person.id + "/reject")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isOk());
+
+        assertThat(membership(orgId, person.id)).containsEntry("status", "rejected")
+                .containsEntry("pending_event_id", null);
+        assertThat(jdbc.queryForObject("select count(*) from event_member where user_id = ?",
+                Integer.class, person.id)).isZero();
+    }
+
+    @Test
     @DisplayName("[D17] approval whose event row is gone still succeeds")
     void approvalSurvivesAMissingEvent() throws Exception {
         Account admin = superAdmin();

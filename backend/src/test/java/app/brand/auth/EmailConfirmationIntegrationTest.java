@@ -15,6 +15,7 @@ import app.brand.config.WebMvcConfig;
 import app.brand.support.AbstractIntegrationTest;
 import app.brand.support.MutableClock;
 import app.brand.support.RecordingConfirmationLinkSender;
+import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import ch.qos.logback.classic.Logger;
@@ -152,11 +153,6 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("email_unconfirmed"));
         }
-        // GET /me only: every other method on /me is a member route for it.
-        mockMvc.perform(delete("/me").header(HttpHeaders.AUTHORIZATION, bearer))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("email_unconfirmed"));
-
         mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, bearer))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/confirm").param("token", "invented").header(HttpHeaders.AUTHORIZATION, bearer))
@@ -164,6 +160,35 @@ class EmailConfirmationIntegrationTest extends AbstractIntegrationTest {
         resend(bearer);
         mockMvc.perform(post("/auth/logout").header(HttpHeaders.AUTHORIZATION, bearer))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(403));
+    }
+
+    @Test
+    @DisplayName("an unconfirmed account can delete itself")
+    void unconfirmedAccountCanDeleteItself() throws Exception {
+        String email = uniqueEmail();
+        String bearer = bearer(register(email));
+
+        mockMvc.perform(delete("/me").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().is2xxSuccessful());
+
+        assertThat(users.findByEmailIgnoreCase(email)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a banned account that never confirmed gets the banned answer, not email_unconfirmed")
+    void bannedUnconfirmedAccountIsBannedFirst() throws Exception {
+        String email = uniqueEmail();
+        String bearer = bearer(register(email));
+        AppUser user = users.findByEmailIgnoreCase(email).orElseThrow();
+        user.setStatus(AccountStatus.BANNED);
+        users.save(user);
+
+        mockMvc.perform(get("/events").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+        mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("banned"));
     }
 
     @Test

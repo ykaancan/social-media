@@ -76,10 +76,9 @@ public class AccountDeletionService {
     }
 
     /**
-     * Deletes the account. Reachable at <em>any</em> account status once the email
-     * is confirmed: an incomplete or banned person still owns their data and still
-     * gets to take it out of the product. [D18] An unconfirmed account reaches only
-     * {@code GET /me} and the auth routes, so it cannot call this.
+     * Deletes the account. Reachable at <em>any</em> account status, and whether or
+     * not the email is confirmed: an incomplete, unconfirmed or banned person still
+     * owns their data and still gets to take it out of the product.
      */
     @Transactional
     public void delete(UUID userId) {

@@ -238,7 +238,8 @@ public class AdminOrganisationService {
     }
 
     /**
-     * [D14] Only from {@code pending}. Writes a {@code reject_member} audit row.
+     * [D14] Only from {@code pending}. Writes a {@code reject_member} audit row and
+     * clears the stored event.
      * No push: the removed account rejection sent none either.
      */
     @Transactional
@@ -248,6 +249,9 @@ public class AdminOrganisationService {
 
         Instant now = clock.instant();
         member.setStatus(MembershipStatus.REJECTED);
+        // The request is over, and so is the event it came from: if the person
+        // asks again, the new request stores the event of the code they use then.
+        member.setPendingEventId(null);
         members.saveAndFlush(member);
         auditMember(caller.id(), AuditAction.REJECT_MEMBER, userId, organisationId, now);
         return toMemberDto(member);
