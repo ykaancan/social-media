@@ -10,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import app.brand.board.BoardPost;
 import app.brand.board.BoardPostRepository;
 import app.brand.board.BoardPostState;
-import app.brand.common.events.AccountApproved;
 import app.brand.common.events.UserWarned;
 import app.brand.content.AllowedHints;
 import app.brand.content.Anonymity;
@@ -35,6 +34,7 @@ import app.brand.thread.ThreadRepository;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
@@ -62,6 +62,10 @@ import org.springframework.test.web.servlet.MvcResult;
  */
 @RecordApplicationEvents
 class AdminReportsIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -473,7 +477,7 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isOk()).andReturn()))
                 .contains(onAdmin.getId().toString());
-        assertThat(users.findById(second.id).orElseThrow().getStatus()).isEqualTo(AccountStatus.APPROVED);
+        assertThat(users.findById(second.id).orElseThrow().getStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 
     /* ------------------------------------------------------------- flagged */
@@ -524,20 +528,6 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
 
     /* -------------------------------------------------------------- events */
 
-    @Test
-    @DisplayName("approving an account publishes AccountApproved, so the push layer can tell them")
-    void approvePublishesTheEvent() throws Exception {
-        Account admin = admin();
-        Account waiting = account(AccountStatus.PENDING);
-
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/approve")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isOk());
-
-        assertThat(applicationEvents.stream(AccountApproved.class))
-                .anyMatch(approved -> approved.userId().equals(waiting.id));
-    }
-
     /* ------------------------------------------------------------ the page */
 
     @Test
@@ -587,7 +577,7 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
     private Event event() {
         Instant now = Instant.now();
         return events.save(Event.create("Report Test Night", "section", section(),
-                now.minusSeconds(3600), now.plusSeconds(3600), "azure", "post_immediately",
+                section().getOrganisationId(), now.minusSeconds(3600), now.plusSeconds(3600), "azure", "post_immediately",
                 joinCode(), null, now));
     }
 
@@ -623,7 +613,10 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
         return reportService.file(reporter.id, Report.INBOX_MESSAGE, message.getId(), reason);
     }
 
-    /** Registers a real account through the API, then puts it in the state under test. */
+    /**
+     * Registers a real account through the API, marks its email confirmed [D18],
+     * then puts it in the state under test.
+     */
     private Account account(AccountStatus status) throws Exception {
         String email = "reports-test-" + UUID.randomUUID() + "@example.com";
         MvcResult result = mockMvc.perform(post("/auth/register")
@@ -637,19 +630,22 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         UUID id = UUID.fromString(body.get("me").get("id").asText());
+        AppUser confirmed = users.findById(id).orElseThrow();
+        confirmed.confirmEmail(Instant.now());
+        users.save(confirmed);
         if (status != AccountStatus.INCOMPLETE) {
             AppUser user = users.findById(id).orElseThrow();
             user.setStatus(status);
-            user.setSection(section());
             user.setSubmittedAt(Instant.now());
             users.save(user);
+            testMemberships.approvedInEsn(id, section().getId());
         }
         return new Account(id, email, body.get("tokens").get("accessToken").asText());
     }
 
-    /** An approved account with a name: the sender behind anonymous content. */
+    /** An active account with a name: the sender behind anonymous content. */
     private Account member(String name) throws Exception {
-        Account account = account(AccountStatus.APPROVED);
+        Account account = account(AccountStatus.ACTIVE);
         AppUser user = users.findById(account.id).orElseThrow();
         user.setName(name);
         users.save(user);
@@ -657,7 +653,7 @@ class AdminReportsIntegrationTest extends AbstractIntegrationTest {
     }
 
     private Account admin() throws Exception {
-        Account account = account(AccountStatus.APPROVED);
+        Account account = account(AccountStatus.ACTIVE);
         bootstrap.promote(account.email);
         return account;
     }

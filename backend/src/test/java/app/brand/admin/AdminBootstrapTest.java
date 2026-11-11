@@ -37,7 +37,7 @@ class AdminBootstrapTest extends AbstractIntegrationTest {
     private AuditLogRepository auditLog;
 
     @Test
-    @DisplayName("the configured address is promoted to super_admin and approved, once")
+    @DisplayName("the configured address is promoted to super_admin, active and confirmed, once (P5)")
     void promotesExistingUserIdempotently() throws Exception {
         String email = uniqueEmail();
         UUID id = registerAndGetId(email);
@@ -46,9 +46,11 @@ class AdminBootstrapTest extends AbstractIntegrationTest {
 
         AppUser promoted = users.findById(id).orElseThrow();
         assertThat(promoted.getRole()).isEqualTo(Role.SUPER_ADMIN);
-        assertThat(promoted.getStatus()).isEqualTo(AccountStatus.APPROVED);
-        assertThat(promoted.getApprovedAt()).isNotNull();
-        // No person made this decision, so no person is recorded as having made it.
+        assertThat(promoted.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        // [D18] registered through the API, so unconfirmed until the bootstrap ran.
+        assertThat(promoted.getEmailConfirmedAt()).isNotNull();
+        // [D14] the account is not approved by anyone any more, so nothing is stamped.
+        assertThat(promoted.getApprovedAt()).isNull();
         assertThat(promoted.getApprovedBy()).isNull();
 
         var rows = auditLog.findBySubjectUserIdOrderByCreatedAtDesc(id);
@@ -57,11 +59,11 @@ class AdminBootstrapTest extends AbstractIntegrationTest {
         assertThat(rows.get(0).getActorId()).isNull();
         assertThat(rows.get(0).getDetails()).contains("bootstrap");
 
-        // A second start must not write a second row, nor restamp approved_at.
+        // A second start must not write a second row, nor restamp email_confirmed_at.
         assertThat(bootstrap.promote(email)).isFalse();
         assertThat(auditLog.findBySubjectUserIdOrderByCreatedAtDesc(id)).hasSize(1);
-        assertThat(users.findById(id).orElseThrow().getApprovedAt())
-                .isEqualTo(promoted.getApprovedAt());
+        assertThat(users.findById(id).orElseThrow().getEmailConfirmedAt())
+                .isEqualTo(promoted.getEmailConfirmedAt());
     }
 
     @Test

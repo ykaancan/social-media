@@ -14,6 +14,8 @@ export interface PickerRowProps {
   placeholder: string;
   /** `--caption` under the row. */
   hint?: string;
+  /** Replaces the hint in `--danger`, like an `Input` error (a server validation on this field). */
+  error?: string;
   onPress?: () => void;
   /** [D11] The Country row: filled from the section, never picked. */
   locked?: boolean;
@@ -37,6 +39,7 @@ export function PickerRow({
   value,
   placeholder,
   hint,
+  error,
   onPress,
   locked = false,
   style,
@@ -107,7 +110,11 @@ export function PickerRow({
         </Pressable>
       )}
 
-      {hint ? (
+      {error ? (
+        <Text variant="caption" color={colors.danger} accessibilityRole="alert" testID={testID ? `${testID}-error` : undefined}>
+          {error}
+        </Text>
+      ) : hint ? (
         <Text variant="caption" color={colors.text2}>
           {hint}
         </Text>

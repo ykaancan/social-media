@@ -1,13 +1,12 @@
+import { memberAccount } from '../testing';
 import { MockApi } from '../mock';
 import { HttpApi } from '../http';
 
 async function setup(){
   const api=new MockApi({latencyMs:0,approveAfterMs:0});
-  const owner=await api.register({email:'owner@example.com',password:'password123'});
-  await api.submitProfile({name:'Owner',sectionId:'ankara'});await api.me();
-  const event=await api.createEvent({name:'Live event',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
-  const member=await api.register({email:'member@example.com',password:'password123'});
-  await api.submitProfile({name:'Member',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+  const owner=await memberAccount(api,'owner@example.com','ankara','Owner');
+  const event=await api.createEvent({organisationId:'esn-tr',name:'Live event',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
+  const member=await memberAccount(api,'member@example.com','izmir','Member');await api.joinEvent(event.joinCode);
   const message={eventId:event.id,recipientId:owner.me.id,text:'Hello',anonymityLevel:'anonymous' as const,allowedHints:{}};
   return {api,owner,member,event,message};
 }
@@ -15,7 +14,7 @@ async function setup(){
 it('links section peers only through a shared joined event',async()=>{
   const {api,owner,member,event}=await setup();api.setTokens(owner.tokens);
   expect((await api.getSection('izmir')).roster.find(p=>p.id===member.me.id)?.wallEventId).toBe(event.id);
-  await api.register({email:'outside@example.com',password:'password123'});await api.submitProfile({name:'Outside',sectionId:'ankara'});await api.me();
+  await memberAccount(api,'outside@example.com','ankara','Outside');
   const peer=(await api.getSection('izmir')).roster.find(p=>p.id===member.me.id);
   expect(peer).toBeDefined();expect(peer?.wallEventId).toBeUndefined();
 });
@@ -60,20 +59,38 @@ it('lists anonymous blocks without exposing identity and restores hidden content
   expect(await api.getBlocked()).toHaveLength(0);
 });
 
-it('changes section and country without reapproval, audits it and enforces exactly 30 days',async()=>{
-  const {api}=await setup();const changed=await api.changeSection('bologna');
-  expect(changed).toMatchObject({status:'approved',section:{id:'bologna',country:'Italy'}});
+const inOrg=(me:{memberships:{organisation:{id:string}}[]},id:string)=>me.memberships.find(m=>m.organisation.id===id) as import('../types').Membership;
+
+it('[D7]/[D15] changes section and country per organisation without reapproval, audits it and enforces exactly 30 days',async()=>{
+  const {api}=await setup();const changed=await api.changeSection('esn-tr','bogazici');
+  expect(inOrg(changed,'esn-tr')).toMatchObject({status:'approved',section:{id:'bogazici',country:'Türkiye'}});
   expect(api['sectionChanges']).toHaveLength(1);
-  await expect(api.changeSection('ankara')).rejects.toMatchObject({status:429});
-  await expect(api.submitProfile({name:'Bypass',sectionId:'ankara'})).rejects.toMatchObject({status:422});
-  const settings=await api.getSettings(),clock=jest.spyOn(Date,'now').mockReturnValue(Date.parse(settings.sectionChangeAvailableAt!));
-  try{expect((await api.changeSection('ankara')).status).toBe('approved');expect(api['sectionChanges']).toHaveLength(2);}finally{clock.mockRestore();}
+  // A section of another organisation is not a section of this one.
+  await expect(api.changeSection('esn-tr','bologna')).rejects.toMatchObject({status:422,field:'sectionId'});
+  await expect(api.changeSection('esn-tr','ankara')).rejects.toMatchObject({status:429});
+  // Re-picking the current section is a no-op, not a spent change.
+  expect(inOrg(await api.changeSection('esn-tr','bogazici'),'esn-tr').section?.id).toBe('bogazici');
+  await expect(api.submitProfile({name:'Bypass'})).rejects.toMatchObject({status:422});
+  const availableAt=inOrg(await api.me(),'esn-tr').sectionChangeAvailableAt!,clock=jest.spyOn(Date,'now').mockReturnValue(Date.parse(availableAt));
+  try{expect(inOrg(await api.changeSection('esn-tr','ankara'),'esn-tr').status).toBe('approved');expect(api['sectionChanges']).toHaveLength(2);}finally{clock.mockRestore();}
+});
+
+it('[D15] the 30-day limit is per organisation, and only an approved membership can change',async()=>{
+  const {api}=await setup();
+  await expect(api.changeSection('esn-eu','bologna')).rejects.toMatchObject({status:404});
+  api.addMember('esn-eu','member@example.com','bologna');
+  await api.changeSection('esn-tr','bogazici');
+  // Changing in ESN Türkiye does not block a change in ESN Europe.
+  const me=await api.changeSection('esn-eu','milano');
+  expect(inOrg(me,'esn-eu').section?.id).toBe('milano');
+  expect(inOrg(me,'esn-tr').sectionChangeAvailableAt).not.toBeNull();
+  await expect(api.changeSection('moda','bologna')).rejects.toMatchObject({status:404});
 });
 
 it('edits a profile without reapproval and never changes a sent hint snapshot',async()=>{
   const {api,owner,message}=await setup();await api.sendWallMessage({...message,anonymityLevel:'hint',allowedHints:{section:true}});
-  await api.editProfile({name:'Changed',bio:'New bio'});await api.changeSection('bologna');
-  expect(await api.me()).toMatchObject({status:'approved',name:'Changed',bio:'New bio'});
+  await api.editProfile({name:'Changed',bio:'New bio'});await api.changeSection('esn-tr','bogazici');
+  expect(await api.me()).toMatchObject({status:'active',name:'Changed',bio:'New bio'});
   api.setTokens(owner.tokens);expect((await api.getInbox()).messages[0].sender).toEqual({level:'hint',hints:{section:'ESN İzmir'}});
 });
 
@@ -89,19 +106,20 @@ it('really deletes authored content and credentials, preserving other members’
   api.setTokens(owner.tokens);await api.sendBoardPost({eventId:event.id,text:'Owner post goes',anonymityLevel:'anonymous',allowedHints:{}});
   const row=(await api.getInbox()).messages[0];await api.reportMessage(row.id,'spam');
   await api.openThread({origin:{kind:'inbox',id:row.id},text:'Reply goes',anonymityLevel:'anonymous',allowedHints:{},requestId:'delete-thread'});
-  await api.changeSection('bologna');await api.deleteAccount();
+  await api.changeSection('esn-tr','bogazici');await api.deleteAccount();
   await expect(api.login({email:'owner@example.com',password:'password123'})).rejects.toMatchObject({status:401});
   api.setTokens(owner.tokens);await expect(api.me()).rejects.toMatchObject({status:401});
   api.setTokens(member.tokens);expect((await api.getThreads()).threads).toHaveLength(0);
   const board=await api.getBoard(event.id);expect(board.event.status).toBe('archived');expect(board.creator).toBeUndefined();
   expect(board.posts.map(p=>p.text)).toEqual(['Member post stays']);expect(api['messages'].size).toBe(0);expect(api['reports'].size).toBe(0);expect(api['sectionChanges']).toHaveLength(0);
+  expect([...api['memberships'].values()].some(row=>row.userId===owner.me.id)).toBe(false);
 });
 
 it('maps settings HTTP routes with section changes separate from profile edits',async()=>{
   const fetchMock=jest.spyOn(global,'fetch').mockResolvedValue({ok:true,text:async()=>'{}'} as Response);
-  try{const api=new HttpApi('https://api.example');await api.getSettings();await api.updateSettings({writingPolicy:'nobody'});await api.getBlocked();await api.unblock('block/id');await api.editProfile({name:'Name'});await api.changeSection('ankara');await api.exportAccount();await api.deleteAccount();
+  try{const api=new HttpApi('https://api.example');await api.getSettings();await api.updateSettings({writingPolicy:'nobody'});await api.getBlocked();await api.unblock('block/id');await api.editProfile({name:'Name'});await api.changeSection('org/1','ankara');await api.exportAccount();await api.deleteAccount();
     expect(fetchMock.mock.calls.map(([url,options])=>[url,options?.method])).toEqual([
-      ['/me/settings','GET'],['/me/settings','PATCH'],['/me/blocks','GET'],['/me/blocks/block%2Fid','DELETE'],['/me/profile','PATCH'],['/me/section','PUT'],['/me/export','GET'],['/me','DELETE'],
+      ['/me/settings','GET'],['/me/settings','PATCH'],['/me/blocks','GET'],['/me/blocks/block%2Fid','DELETE'],['/me/profile','PATCH'],['/me/memberships/org%2F1/section','PUT'],['/me/export','GET'],['/me','DELETE'],
     ].map(([path,method])=>['https://api.example'+path,method]));
   }finally{fetchMock.mockRestore();}
 });

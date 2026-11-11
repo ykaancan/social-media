@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/admin/api/screening-terms")
-@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.approved")
+@PreAuthorize("hasRole('SUPER_ADMIN') and authentication.principal.active")
 public class AdminScreeningTermController {
 
     private final ScreeningTermService service;

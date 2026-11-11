@@ -1,5 +1,6 @@
 package app.brand.support;
 
+import app.brand.auth.MailConfirmationLinkSender;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -23,6 +24,16 @@ public class TestEndpointsConfig {
     @Primary
     public RecordingResetLinkSender recordingResetLinkSender() {
         return new RecordingResetLinkSender();
+    }
+
+    /**
+     * [D18] Records the confirmation link and still lets the real sender log it,
+     * so a test can both open the link and check the log line.
+     */
+    @Bean
+    @Primary
+    public RecordingConfirmationLinkSender recordingConfirmationLinkSender(MailConfirmationLinkSender mail) {
+        return new RecordingConfirmationLinkSender(mail);
     }
 
     /**

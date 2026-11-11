@@ -99,11 +99,13 @@ public class StompAuthInterceptor implements ChannelInterceptor {
         AppUser user = bearer(accessor)
                 .flatMap(jwtService::subject)
                 .flatMap(users::findById)
-                // [D7] pending means the account cannot use the app yet, and a
-                // banned or rejected one never can.
-                .filter(candidate -> candidate.getStatus() == AccountStatus.APPROVED)
+                // [D14] an incomplete account cannot use the app yet, and a
+                // banned one never can. [D18] Nor can one whose email is not
+                // confirmed — the same two conditions ActiveAccountFilter applies.
+                .filter(candidate -> candidate.getStatus() == AccountStatus.ACTIVE)
+                .filter(AppUser::isEmailConfirmed)
                 .orElseThrow(() -> {
-                    log.debug("refused STOMP CONNECT: no approved account behind the bearer");
+                    log.debug("refused STOMP CONNECT: no active, confirmed account behind the bearer");
                     return new RealtimeRefusedException("unauthorized");
                 });
         log.debug("STOMP CONNECT accepted for {}", user.getId());

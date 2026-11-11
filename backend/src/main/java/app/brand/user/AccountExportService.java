@@ -5,6 +5,11 @@ import app.brand.content.SenderPresenter;
 import app.brand.content.SenderRow;
 import app.brand.message.InboxMessage;
 import app.brand.message.MessageService;
+import app.brand.organisation.OrganisationMember;
+import app.brand.organisation.OrganisationMemberRepository;
+import app.brand.organisation.OrganisationRepository;
+import app.brand.section.Section;
+import app.brand.section.SectionRepository;
 import app.brand.board.BoardPost;
 import app.brand.settings.SectionChangeLog;
 import app.brand.settings.SettingsService;
@@ -12,6 +17,7 @@ import app.brand.thread.ThreadDtos.ThreadDetailDto;
 import app.brand.thread.ThreadService;
 import app.brand.user.AccountExportDtos.AccountExportDto;
 import app.brand.user.AccountExportDtos.ExportedThreadDto;
+import app.brand.user.AccountExportDtos.MembershipExportDto;
 import app.brand.user.AccountExportDtos.SectionChangeDto;
 import app.brand.user.AccountExportDtos.SentContentDto;
 import app.brand.user.AccountExportDtos.ThreadOriginDto;
@@ -60,6 +66,9 @@ public class AccountExportService {
     private final ThreadService threads;
     private final SectionChangeLog sectionChanges;
     private final SenderPresenter presenter;
+    private final OrganisationMemberRepository memberships;
+    private final OrganisationRepository organisations;
+    private final SectionRepository sections;
     private final Clock clock;
 
     /**
@@ -76,6 +85,9 @@ public class AccountExportService {
                                 ThreadService threads,
                                 SectionChangeLog sectionChanges,
                                 SenderPresenter presenter,
+                                OrganisationMemberRepository memberships,
+                                OrganisationRepository organisations,
+                                SectionRepository sections,
                                 Clock clock) {
         this.entityManager = entityManager;
         this.profiles = profiles;
@@ -84,6 +96,9 @@ public class AccountExportService {
         this.threads = threads;
         this.sectionChanges = sectionChanges;
         this.presenter = presenter;
+        this.memberships = memberships;
+        this.organisations = organisations;
+        this.sections = sections;
         this.clock = clock;
     }
 
@@ -98,7 +113,8 @@ public class AccountExportService {
                 sent(userId),
                 posted(userId),
                 conversations(userId),
-                sectionChangeHistory(userId));
+                sectionChangeHistory(userId),
+                membershipsOf(userId));
     }
 
     /* ------------------------------------------------------------- the owner's */
@@ -182,6 +198,24 @@ public class AccountExportService {
         return sectionChanges.historyOf(userId).stream()
                 .map(entry -> new SectionChangeDto(entry.from(), entry.to(), entry.at()))
                 .toList();
+    }
+
+    /* ------------------------------------------------------------- memberships */
+
+    /** [D14] Every membership of the owner, any status, oldest first, by name. */
+    private List<MembershipExportDto> membershipsOf(UUID userId) {
+        List<MembershipExportDto> out = new ArrayList<>();
+        for (OrganisationMember member : memberships.findByUserIdOrderByCreatedAtAsc(userId)) {
+            String organisation = organisations.findById(member.getOrganisationId())
+                    .map(app.brand.organisation.Organisation::getName)
+                    .orElse(null);
+            String section = member.getSectionId() == null
+                    ? null
+                    : sections.findById(member.getSectionId()).map(Section::getName).orElse(null);
+            out.add(new MembershipExportDto(organisation, member.getStatus(), member.getRole(), section,
+                    member.getSubmittedAt(), member.getApprovedAt()));
+        }
+        return out;
     }
 
     /* ---------------------------------------------------------------- throttle */

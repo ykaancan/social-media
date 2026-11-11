@@ -13,6 +13,7 @@ import app.brand.support.MutableClock;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -45,6 +46,10 @@ import org.springframework.test.web.servlet.ResultActions;
  * seen on.
  */
 class RateLimiterIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     /** {@code brand.limits.anonymous-*-per-hour}, as application.yml defaults them. */
     private static final int LIMIT = 30;
@@ -151,9 +156,9 @@ class RateLimiterIntegrationTest extends AbstractIntegrationTest {
         AppUser sender = account(section, "Deniz");
         AppUser recipient = account(section, "Ece");
         UUID eventId = jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code)
-                        values ('Rate limit night', 'section', ?, ?, ?, 'coral', 'approve_first', ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Rate limit night', 'section', ?, ?, ?, 'coral', 'approve_first', ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(base.minusSeconds(3600)),
@@ -208,10 +213,12 @@ class RateLimiterIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "rate-limit-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash",
                 null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
         AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
         created.add(saved.getId());
         return saved;
     }

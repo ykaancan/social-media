@@ -76,9 +76,9 @@ public class AccountDeletionService {
     }
 
     /**
-     * Deletes the account. Reachable at <em>any</em> signed-in status: a person who
-     * was never approved, or who was rejected or banned, still owns their data and
-     * still gets to take it out of the product.
+     * Deletes the account. Reachable at <em>any</em> account status, and whether or
+     * not the email is confirmed: an incomplete, unconfirmed or banned person still
+     * owns their data and still gets to take it out of the product.
      */
     @Transactional
     public void delete(UUID userId) {
@@ -171,7 +171,13 @@ public class AccountDeletionService {
         jdbc.update("delete from section_change where user_id = ?", userId);
         jdbc.update("delete from refresh_token where user_id = ?", userId);
         jdbc.update("delete from password_reset_token where user_id = ?", userId);
+        // [D18] Same shape and same reason as the reset tokens above.
+        jdbc.update("delete from email_confirmation_token where user_id = ?", userId);
         jdbc.update("delete from event_member where user_id = ?", userId);
+        // [D14] Memberships, in every status and role — an organisation admin's
+        // too: the organisation survives, it only loses this person. RESTRICT in
+        // V4, so a forgotten line here is a failed deletion, not a leftover row.
+        jdbc.update("delete from organisation_member where user_id = ?", userId);
 
         // -------------------------------------------------------------- events
         // [D4] A board whose creator leaves is closed, not deleted: the posts on it

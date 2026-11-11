@@ -2,7 +2,6 @@ package app.brand.admin;
 
 import app.brand.auth.RefreshTokenRepository;
 import app.brand.common.ApiException;
-import app.brand.common.events.AccountApproved;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.MeMapper;
@@ -11,12 +10,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The account decisions behind {@code /admin/api/users*}. Every one of them writes
+ * The account decisions behind {@code /admin/api/users*}: ban and promote. [D14]
+ * Approve and reject are gone — the account is no longer approved; approval is
+ * a membership decision of an organisation. Every decision writes
  * an {@code audit_log} row in the same transaction as the change, so there is no
  * state in which an account was banned and nobody recorded who did it.
  */
@@ -30,70 +30,35 @@ public class AdminUserService {
     private final AuditLogRepository auditLog;
     private final RefreshTokenRepository refreshTokens;
     private final MeMapper meMapper;
-    private final ApplicationEventPublisher publisher;
     private final Clock clock;
 
     public AdminUserService(AdminUserRepository users,
                             AuditLogRepository auditLog,
                             RefreshTokenRepository refreshTokens,
                             MeMapper meMapper,
-                            ApplicationEventPublisher publisher,
                             Clock clock) {
         this.users = users;
         this.auditLog = auditLog;
         this.refreshTokens = refreshTokens;
         this.meMapper = meMapper;
-        this.publisher = publisher;
         this.clock = clock;
     }
 
     /**
-     * {@code null} status means every account. Pending is ordered oldest first
-     * because it is a queue; every other list is a log, so it is newest first.
+     * {@code null} status means every account. Newest first: [D14] there is no
+     * account approval queue any more, so every list is a log.
      */
     @Transactional(readOnly = true)
     public List<AdminUserDto> list(AccountStatus status) {
-        List<AppUser> rows;
-        if (status == null) {
-            rows = users.findAllByOrderByCreatedAtDesc();
-        } else if (status == AccountStatus.PENDING) {
-            rows = users.findByStatusOldestFirst(status);
-        } else {
-            rows = users.findByStatusNewestFirst(status);
-        }
+        List<AppUser> rows = status == null
+                ? users.findAllByOrderByCreatedAtDesc()
+                : users.findByStatusNewestFirst(status);
         return rows.stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public AdminUserDto get(UUID id) {
         return toDto(require(id));
-    }
-
-    /** Only from {@code pending}: an approval is a decision on a submission. */
-    @Transactional
-    public AdminUserDto approve(UUID adminId, UUID id) {
-        AppUser user = require(id);
-        requireStatus(user, AccountStatus.PENDING, "only a pending account can be approved");
-
-        Instant now = clock.instant();
-        user.setStatus(AccountStatus.APPROVED);
-        user.setApprovedAt(now);
-        user.setApprovedBy(adminId);
-        record(adminId, AuditAction.APPROVE_USER, user, now);
-        // The person has been waiting for exactly this; the push layer tells them.
-        publisher.publishEvent(new AccountApproved(user.getId()));
-        return toDto(user);
-    }
-
-    @Transactional
-    public AdminUserDto reject(UUID adminId, UUID id) {
-        AppUser user = require(id);
-        requireStatus(user, AccountStatus.PENDING, "only a pending account can be rejected");
-
-        Instant now = clock.instant();
-        user.setStatus(AccountStatus.REJECTED);
-        record(adminId, AuditAction.REJECT_USER, user, now);
-        return toDto(user);
     }
 
     /**
@@ -134,7 +99,7 @@ public class AdminUserService {
         if (user.getRole() == Role.SUPER_ADMIN) {
             throw ApiException.conflict("conflict", "account is already a super admin", null);
         }
-        requireStatus(user, AccountStatus.APPROVED, "only an approved account can be promoted");
+        requireStatus(user, AccountStatus.ACTIVE, "only an active account can be promoted");
 
         Instant now = clock.instant();
         user.setRole(Role.SUPER_ADMIN);
@@ -164,7 +129,6 @@ public class AdminUserService {
                 user.getName(),
                 user.getBio(),
                 meMapper.avatarUrl(user.getAvatarKey()),
-                meMapper.toSectionRef(user.getSection()),
                 user.getStatus(),
                 user.getRole(),
                 user.getCreatedAt(),

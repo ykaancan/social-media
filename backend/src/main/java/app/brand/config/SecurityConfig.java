@@ -1,6 +1,6 @@
 package app.brand.config;
 
-import app.brand.security.ApprovedMemberFilter;
+import app.brand.security.ActiveAccountFilter;
 import app.brand.security.JwtAuthenticationFilter;
 import app.brand.security.SecurityErrorResponder;
 import org.springframework.context.annotation.Bean;
@@ -32,7 +32,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtAuthenticationFilter jwtFilter,
-                                                   ApprovedMemberFilter approvedFilter,
+                                                   ActiveAccountFilter activeFilter,
                                                    CorsConfigurationSource corsConfigurationSource,
                                                    SecurityErrorResponder responder) throws Exception {
         http
@@ -52,6 +52,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/media/**").permitAll()
                         // The server-rendered password reset page and its form post.
                         .requestMatchers("/reset", "/reset/**").permitAll()
+                        // [D18] The page an email-confirmation link opens; the token is the credential.
+                        .requestMatchers(HttpMethod.GET, "/confirm").permitAll()
                         // [B12] the STOMP handshake authenticates in its own interceptor.
                         .requestMatchers("/ws", "/ws/**").permitAll()
                         .requestMatchers("/error").permitAll()
@@ -63,7 +65,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(responder)
                         .accessDeniedHandler(responder))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(approvedFilter, JwtAuthenticationFilter.class);
+                .addFilterAfter(activeFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

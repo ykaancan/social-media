@@ -5,7 +5,8 @@ package app.brand.content;
  *
  * <p>The client never sends hint <em>values</em> — a section name or a country
  * could be anything if it did. The values are derived server-side from the
- * sender's account and the section snapshot [B4]/[D11], so a {@code country}
+ * sender's account (the first letter) and the section snapshot, which is the
+ * sender's membership section in the event's organisation [B4]/[D11]/[D15], so a {@code country}
  * hint is always checkable against the sender's section.
  *
  * <p>Boxed booleans, because an absent key and {@code false} both mean "not

@@ -70,7 +70,14 @@ function reducer(state: SessionState, action: Action): SessionState {
 }
 
 export interface SessionValue extends SessionState {
-  /** Creates an `incomplete` account and signs in. Resolves with the new `Me`. */
+  /**
+   * `Date.now()` at the moment `register` succeeded in this app run, or null
+   * when the session came from a login or from stored tokens. Not persisted.
+   * The Confirm-email screen uses it: the sign-up mail has just gone out, and
+   * the server sends no second link for 60 seconds (TENANT_PLAN.md P3).
+   */
+  registeredAt: number | null;
+  /** Creates an `incomplete`, unconfirmed account [D18] and signs in. Resolves with the new `Me`. */
   register(req: RegisterRequest): Promise<Me>;
   login(req: LoginRequest): Promise<Me>;
   logout(): Promise<void>;
@@ -84,10 +91,15 @@ export interface SessionValue extends SessionState {
   deleteAccount(): Promise<void>;
   /** Always resolves — the server answers the same whether the address exists or not. */
   forgotPassword(email: string): Promise<void>;
-  /** Sends the profile for review. The resulting `Me` is `pending`. */
+  /** Sends the profile. The resulting `Me` is `active` [D14]. */
   submitProfile(req: ProfileRequest): Promise<Me>;
-  /** Re-reads `GET /me`. This is what the Pending screen polls. */
-  refreshMe(): Promise<void>;
+  /**
+   * Re-reads `GET /me` and resolves with the new `Me`, or `undefined` when the
+   * session turned out to be gone (signed out). A network failure is swallowed
+   * (also `undefined`) — a poll that missed is not an event — unless
+   * `throwOnNetwork` is set: the Confirm-email button must tell the person [D18].
+   */
+  refreshMe(options?: { throwOnNetwork?: boolean }): Promise<Me | undefined>;
   /** Retries a boot that failed with `bootError`. */
   retryBoot(): Promise<void>;
 }
@@ -101,6 +113,8 @@ export interface SessionProviderProps {
 export function SessionProvider({ children }: SessionProviderProps) {
   const api = useApi();
   const [state, dispatch] = useReducer(reducer, INITIAL);
+  /** When this app run signed the account up; see `SessionValue.registeredAt`. */
+  const registeredAt = useRef<number | null>(null);
   /** Pre-logout work registered by hooks (see `onBeforeLogout`). */
   const beforeLogout = useRef(new Set<() => Promise<void>>());
 
@@ -154,9 +168,20 @@ export function SessionProvider({ children }: SessionProviderProps) {
     return {
       ...state,
 
-      register: (req) => api.register(req).then(authenticate),
+      registeredAt: registeredAt.current,
 
-      login: (req) => api.login(req).then(authenticate),
+      register: (req) =>
+        api.register(req).then((result) => {
+          // Set before the state change, so the screen that opens next reads it.
+          registeredAt.current = Date.now();
+          return authenticate(result);
+        }),
+
+      login: (req) =>
+        api.login(req).then((result) => {
+          registeredAt.current = null;
+          return authenticate(result);
+        }),
 
       async logout() {
         try {
@@ -200,19 +225,21 @@ export function SessionProvider({ children }: SessionProviderProps) {
         return me;
       },
 
-      async refreshMe() {
+      async refreshMe(options) {
         try {
-          dispatch({ type: 'me', me: await api.me() });
+          const me = await api.me();
+          dispatch({ type: 'me', me });
+          return me;
         } catch (err) {
           if (isApiError(err, 'unauthorized')) {
             await clearTokens();
             api.setTokens(null);
             dispatch({ type: 'signedOut' });
-            return;
+            return undefined;
           }
-          // A poll that missed the network is not an event: the Pending screen
-          // simply keeps the state it had and tries again on its own interval.
-          if (isApiError(err, 'network')) return;
+          // A poll that missed the network is not an event: the caller keeps the
+          // state it had. A caller that must tell the person reads `undefined`.
+          if (isApiError(err, 'network') && !options?.throwOnNetwork) return undefined;
           throw err;
         }
       },

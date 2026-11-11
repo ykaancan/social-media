@@ -1,4 +1,5 @@
 export * from './types';
+export * from './memberships';
 export * from './messages';
 export { HttpApi } from './http';
 export { MockApi, mockApi, type MockApiOptions } from './mock';

@@ -67,6 +67,50 @@ export const sections: SectionOption[] = [
 ];
 
 /* ------------------------------------------------------------------ *
+ * Organisations [D13]. Not in the design bundle: the bundle predates them.
+ * These three exist so the mock covers every combination the app must
+ * handle — approval + sections, open + sections, open without sections.
+ * Each section above belongs to exactly one of them.
+ * ------------------------------------------------------------------ */
+
+export interface OrganisationFixture {
+  id: string;
+  name: string;
+  approvalRequired: boolean;
+  hasSections: boolean;
+  /** [D16] Who may create events: organisation admins only, or any approved member. */
+  eventCreation: 'admins' | 'members';
+  sectionIds: string[];
+}
+
+export const organisations: OrganisationFixture[] = [
+  {
+    id: 'esn-tr',
+    name: 'ESN Türkiye',
+    approvalRequired: true,
+    hasSections: true,
+    eventCreation: 'members',
+    sectionIds: ['ankara', 'izmir', 'bogazici', 'metu'],
+  },
+  {
+    id: 'esn-eu',
+    name: 'ESN Europe',
+    approvalRequired: false,
+    hasSections: true,
+    eventCreation: 'members',
+    sectionIds: ['bologna', 'milano', 'sevilla', 'brno', 'koln'],
+  },
+  {
+    id: 'moda',
+    name: 'Moda Bar',
+    approvalRequired: false,
+    hasSections: false,
+    eventCreation: 'admins',
+    sectionIds: [],
+  },
+];
+
+/* ------------------------------------------------------------------ *
  * Events (HANDOFF §4). Day/month are what the card renders, so they are
  * kept as the prototypes wrote them.
  * ------------------------------------------------------------------ */

@@ -11,12 +11,16 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
  * navigator, which is what makes the tab bar disappear on a pushed screen [D2].
  */
 export type RootStackParamList = {
-  Settings: {page?:import('../screens/settings/SettingsScreen').SettingsPage}|undefined;
+  /** `organisationId` names the membership the `section` page changes [D15]. */
+  Settings: {page?:import('../screens/settings/SettingsScreen').SettingsPage;organisationId?:string}|undefined;
   Splash: undefined;
   SignUp: undefined;
   LogIn: undefined;
+  /** [D18] The only route of an account whose email is not confirmed. */
+  ConfirmEmail: undefined;
   /** `edit: true` when an existing profile is being changed, not first set up. */
   ProfileSetup: { edit?: boolean } | undefined;
+  /** The restricted (`banned`) account screen. The name predates [D14]. */
   Pending: undefined;
   Shell: NavigatorScreenParams<TabParamList> | undefined;
   Section: { id: string };

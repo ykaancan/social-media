@@ -16,6 +16,7 @@ import app.brand.section.SectionRepository;
 import app.brand.security.JwtService;
 import app.brand.support.AbstractIntegrationTest;
 import app.brand.support.MutableClock;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -57,6 +58,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @RecordApplicationEvents
 class AccountIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String FIRE = "🔥";
 
@@ -141,18 +146,18 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a pending account cannot read the entitlements or the export")
-    void memberRoutesNeedApproval() throws Exception {
-        AppUser pending = account("Ece");
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
+    @DisplayName("an incomplete account cannot read the entitlements or the export")
+    void memberRoutesNeedAnActiveAccount() throws Exception {
+        AppUser incomplete = account("Ece");
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
 
-        mockMvc.perform(get("/me/entitlements").header(HttpHeaders.AUTHORIZATION, bearer(pending)))
+        mockMvc.perform(get("/me/entitlements").header(HttpHeaders.AUTHORIZATION, bearer(incomplete)))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
-        mockMvc.perform(get("/me/export").header(HttpHeaders.AUTHORIZATION, bearer(pending)))
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+        mockMvc.perform(get("/me/export").header(HttpHeaders.AUTHORIZATION, bearer(incomplete)))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* ----------------------------------------------------------- GET /me/export */
@@ -162,9 +167,9 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
     void exportShape() throws Exception {
         Fixture f = fixture();
         jdbc.update("""
-                insert into section_change (user_id, from_section_id, to_section_id, changed_at)
-                values (?, ?, ?, ?)
-                """, f.me.getId(), f.sectionB.getId(), f.sectionA.getId(), Timestamp.from(base));
+                insert into section_change (user_id, organisation_id, from_section_id, to_section_id, changed_at)
+                values (?, (select organisation_id from section where id = ?), ?, ?, ?)
+                """, f.me.getId(), f.sectionA.getId(), f.sectionB.getId(), f.sectionA.getId(), Timestamp.from(base));
 
         JsonNode export = json(mockMvc.perform(
                 get("/me/export").header(HttpHeaders.AUTHORIZATION, bearer(f.me)))
@@ -263,9 +268,12 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
         jdbc.update("insert into password_reset_token (user_id, token_hash, expires_at) values (?, ?, ?)",
                 me, "hash-" + UUID.randomUUID(), Timestamp.from(base.plusSeconds(3600)));
         jdbc.update("""
-                insert into section_change (user_id, from_section_id, to_section_id, changed_at)
-                values (?, ?, ?, ?)
-                """, me, f.sectionB.getId(), f.sectionA.getId(), Timestamp.from(base));
+                insert into section_change (user_id, organisation_id, from_section_id, to_section_id, changed_at)
+                values (?, (select organisation_id from section where id = ?), ?, ?, ?)
+                """, me, f.sectionA.getId(), f.sectionB.getId(), f.sectionA.getId(), Timestamp.from(base));
+        // [D18] A confirmation token, like the reset token above.
+        jdbc.update("insert into email_confirmation_token (user_id, token_hash, expires_at) values (?, ?, ?)",
+                me, "hash-" + UUID.randomUUID(), Timestamp.from(base.plus(1, ChronoUnit.DAYS)));
 
         // [B10] An avatar is a file on disk and nothing cascades to it.
         String avatarKey = avatars.store(new byte[] {1, 2, 3});
@@ -289,6 +297,7 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
         }
         for (String table : List.of("post_reaction", "request_key", "device", "push_outbox",
                 "entitlement_usage", "section_change", "refresh_token", "password_reset_token",
+                "email_confirmation_token",
                 "user_settings", "event_member", "thread_participant")) {
             assertThat(count("select count(*) from " + table + " where user_id = ?", me))
                     .as(table).isZero();
@@ -345,15 +354,109 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("a pending account may delete itself too — they still own their data")
-    void pendingMayDelete() throws Exception {
-        AppUser pending = account("Zeynep");
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
+    @DisplayName("an incomplete account may delete itself too — they still own their data")
+    void incompleteMayDelete() throws Exception {
+        AppUser incomplete = account("Zeynep");
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
 
-        mockMvc.perform(delete("/me").header(HttpHeaders.AUTHORIZATION, bearer(pending)))
+        mockMvc.perform(delete("/me").header(HttpHeaders.AUTHORIZATION, bearer(incomplete)))
                 .andExpect(status().isNoContent());
-        assertThat(users.findById(pending.getId())).isEmpty();
+        assertThat(users.findById(incomplete.getId())).isEmpty();
+    }
+
+    /* ------------------------------------------------------------ [D14] memberships */
+
+    @Test
+    @DisplayName("deletion removes every membership, as a member and as an organisation admin")
+    void deletionRemovesMemberships() throws Exception {
+        UUID esn = esnTurkiye();
+        UUID bar = organisation("Deletion bar " + UUID.randomUUID().toString().substring(0, 6));
+        Section section = sections.findAll().stream()
+                .filter(candidate -> candidate.getOrganisationId().equals(esn))
+                .min(Comparator.comparing(Section::getName)).orElseThrow();
+
+        // Accounts without the default membership: each case writes its own.
+        AppUser member = account(null, "Member");
+        membership(esn, member.getId(), "approved", "member", section.getId(), null);
+        AppUser admin = account(null, "Admin");
+        membership(esn, admin.getId(), "approved", "admin", section.getId(), null);
+        membership(bar, admin.getId(), "approved", "admin", null, null);
+        // Someone the admin approved: the approval survives with approved_by nulled.
+        AppUser approvedByAdmin = account(null, "Approved");
+        membership(bar, approvedByAdmin.getId(), "approved", "member", null, admin.getId());
+
+        for (AppUser leaving : List.of(member, admin)) {
+            mockMvc.perform(delete("/me").header(HttpHeaders.AUTHORIZATION, bearer(leaving)))
+                    .andExpect(status().isNoContent());
+            assertThat(users.findById(leaving.getId())).isEmpty();
+            assertThat(count("select count(*) from organisation_member where user_id = ?", leaving.getId()))
+                    .isZero();
+        }
+        assertThat(jdbc.queryForMap("select status, approved_by from organisation_member"
+                        + " where organisation_id = ? and user_id = ?", bar, approvedByAdmin.getId()))
+                .containsEntry("status", "approved")
+                .containsEntry("approved_by", null);
+        jdbc.update("delete from organisation_member where user_id = ?", approvedByAdmin.getId());
+    }
+
+    @Test
+    @DisplayName("the export lists the owner's memberships by name, with status, role and times")
+    void exportCarriesMemberships() throws Exception {
+        UUID esn = esnTurkiye();
+        String barName = "Export bar " + UUID.randomUUID().toString().substring(0, 6);
+        UUID bar = organisation(barName);
+        Section section = sections.findAll().stream()
+                .filter(candidate -> candidate.getOrganisationId().equals(esn))
+                .min(Comparator.comparing(Section::getName)).orElseThrow();
+        AppUser me = account(null, "Exporter");
+        membership(esn, me.getId(), "approved", "admin", section.getId(), null);
+        membership(bar, me.getId(), "pending", "member", null, null);
+
+        JsonNode export = json(mockMvc.perform(
+                        get("/me/export").header(HttpHeaders.AUTHORIZATION, bearer(me)))
+                .andExpect(status().isOk()));
+        // [D15] No account-level section: the memberships carry it.
+        assertThat(export.get("profile").has("section")).isFalse();
+        JsonNode memberships = export.get("memberships");
+
+        assertThat(memberships).hasSize(2);
+        JsonNode first = memberships.get(0);
+        assertThat(first.get("organisation").asText()).isEqualTo("ESN Türkiye");
+        assertThat(first.get("status").asText()).isEqualTo("approved");
+        assertThat(first.get("role").asText()).isEqualTo("admin");
+        assertThat(first.get("section").asText()).isEqualTo(section.getName());
+        assertThat(first.get("submittedAt").asText()).isNotBlank();
+        assertThat(first.get("approvedAt").asText()).isNotBlank();
+        JsonNode second = memberships.get(1);
+        assertThat(second.get("organisation").asText()).isEqualTo(barName);
+        assertThat(second.get("status").asText()).isEqualTo("pending");
+        assertThat(second.has("section")).isFalse();
+        assertThat(second.has("approvedAt")).isFalse();
+
+        jdbc.update("delete from organisation_member where user_id = ?", me.getId());
+    }
+
+    private UUID esnTurkiye() {
+        return jdbc.queryForObject("select id from organisation where name = 'ESN Türkiye'", UUID.class);
+    }
+
+    private UUID organisation(String name) {
+        return jdbc.queryForObject("""
+                insert into organisation (name, approval_required, has_sections, event_creation)
+                values (?, true, false, 'members') returning id
+                """, UUID.class, name);
+    }
+
+    /** Created one second apart so the export's oldest-first order is a fact. */
+    private void membership(UUID orgId, UUID userId, String status, String role, UUID sectionId, UUID approvedBy) {
+        Instant at = Instant.now().plusSeconds(count("select count(*) from organisation_member"));
+        jdbc.update("""
+                insert into organisation_member (organisation_id, user_id, status, role, section_id,
+                                                 submitted_at, approved_at, approved_by, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, orgId, userId, status, role, sectionId, Timestamp.from(at),
+                "approved".equals(status) ? Timestamp.from(at) : null, approvedBy, Timestamp.from(at));
     }
 
     /* -------------------------------------------------------------- the fixture */
@@ -549,9 +652,9 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
 
     private UUID event(Section section, UUID creatorId) {
         UUID id = jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', 'approve_first', ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', 'approve_first', ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(base.minusSeconds(3600)),
@@ -598,10 +701,14 @@ class AccountIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "account-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash",
                 null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
         AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            testMemberships.approvedInEsn(saved.getId(), section.getId());
+        }
         created.add(saved.getId());
         return saved;
     }

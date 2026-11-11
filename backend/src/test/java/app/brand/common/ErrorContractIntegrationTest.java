@@ -78,8 +78,15 @@ class ErrorContractIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("JSON to the one multipart endpoint is 415 unsupported_media_type")
     void wrongContentTypeIsUnsupportedMediaType() throws Exception {
-        // /me/photo is reachable at any account status, so a fresh account is enough.
-        String bearer = bearerFor(register());
+        // /me/photo is reachable at any account status once the email is confirmed
+        // [D18], so a fresh, confirmed account is enough.
+        MvcResult registered = register();
+        UUID id = UUID.fromString(objectMapper.readTree(registered.getResponse().getContentAsString())
+                .get("me").get("id").asText());
+        AppUser user = users.findById(id).orElseThrow();
+        user.confirmEmail(java.time.Instant.now());
+        users.save(user);
+        String bearer = bearerFor(registered);
 
         mockMvc.perform(post("/me/photo")
                         .header(HttpHeaders.AUTHORIZATION, bearer)
@@ -118,7 +125,9 @@ class ErrorContractIntegrationTest extends AbstractIntegrationTest {
         UUID id = UUID.fromString(objectMapper.readTree(registered.getResponse().getContentAsString())
                 .get("me").get("id").asText());
         AppUser user = users.findById(id).orElseThrow();
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] confirmed, so the access filter judges the status alone.
+        user.confirmEmail(java.time.Instant.now());
         users.save(user);
         return bearerFor(registered);
     }

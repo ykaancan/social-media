@@ -23,8 +23,8 @@ export function EventPersonScreen({ route, navigation }: RootScreenProps<'EventP
       {selected && <MessageActions key={selected.id} message={selected} onClose={() => { setSelectedId(null); refresh(); }} />}
     </>}>
     {error || !wall ? <LoadState error={error} onRetry={refresh} /> : <>
-      <WallHeader user={{ name: wall.person.name, avatar: wall.person.avatarUrl, bio: wall.person.bio, section: wall.person.section.name, country: wall.person.section.country }}
-        count={wall.count} onSection={() => navigation.navigate('Section', { id: wall.person.section.id })} />
+      <WallHeader user={{ name: wall.person.name, avatar: wall.person.avatarUrl, bio: wall.person.bio, section: wall.person.section?.name, country: wall.person.section?.country }}
+        count={wall.count} onSection={wall.person.section ? () => navigation.navigate('Section', { id: wall.person.section!.id }) : undefined} />
       {!wall.isOwner && wall.writingPolicy === 'nobody' && <Note>{t('messageFlow.wallClosed')}</Note>}
       {wall.messages.map(message => <MessageCard key={message.id} message={message} wall onMore={wall.isOwner ? () => setSelectedId(message.id) : undefined} />)}
       {!wall.count && <Empty icon="StickyNote" text={t(wall.isOwner ? 'wall.emptyOwner' : 'wall.empty')} />}

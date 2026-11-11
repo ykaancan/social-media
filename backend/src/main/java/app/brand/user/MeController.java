@@ -17,7 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 /**
  * The owner's own account. These are the routes the onboarding shell runs on, so
- * they are reachable at every status — {@code ApprovedMemberFilter} exempts them
+ * they are reachable at every status, confirmed or not — {@code ActiveAccountFilter} exempts them
  * and each rule about who may do what lives in {@link ProfileService}.
  */
 @RestController
@@ -35,14 +35,14 @@ public class MeController {
         return profiles.me(principal.id());
     }
 
-    /** Sends the profile for review; the returned {@code Me} is {@code pending}. */
+    /** Sends the profile; the returned {@code Me} is {@code active} [D14]. */
     @PutMapping("/me/profile")
     public MeDto submitProfile(@CurrentUser AppPrincipal principal,
                                @RequestBody(required = false) ProfileSubmitRequest request) {
         return profiles.submit(principal.id(), request);
     }
 
-    /** Approved accounts only; name and bio, nothing else. */
+    /** Active accounts only; name and bio, nothing else. */
     @PatchMapping("/me/profile")
     public MeDto editProfile(@CurrentUser AppPrincipal principal,
                              @RequestBody(required = false) ProfileEditRequest request) {

@@ -12,10 +12,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * [B8] Device registration. Approved accounts only — {@code ApprovedMemberFilter}
- * answers a pending caller with {@code 403 approval_required} before anything here
- * runs, and a pending account has nothing to be notified about except its own
- * approval, which the app is already polling {@code GET /me} for.
+ * [B8] Device registration. Confirmed, active accounts only —
+ * {@code ActiveAccountFilter} answers any other caller with a 403 before anything
+ * here runs.
  *
  * <p>Both routes answer 204 and return nothing. There is no {@code GET}: the list
  * of phones an account has is not a product surface, and the app already knows its

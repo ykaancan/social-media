@@ -22,14 +22,18 @@ configure({ defaultIncludeHiddenElements: true });
 const WEB_LBL_CAPTIONS = 17;
 const CAPTIONS = {
   core: 13,
-  anonymity: 6,
-  cards: 15, // Generated QR and long-content inbox specimens.
+  anonymity: 7, // +1 T-3: the selector without section / country hints [D15].
+  cards: 17, // Generated QR and long-content inbox specimens; +1 the [D18] confirm-email states; +1 T-3 the rejected-membership note.
   projector: 2,
   // +2: the [D1] MoreSheet thread variant, which the web has as thread-app.jsx's
   // overflow sheet rather than a card specimen.
   // +15: the step-2 onboarding patterns (Screen, BottomBar x2, Wordmark x3,
   // CoverStrip x2, PhotoPicker x2, PickerRow x4, CoachMark).
-  patterns: 69, // Event header, load states, date picker/scanner.
+  // +1: OnboardingHeader, moved into the library in T-3.
+  // +7 T-3 part B: Settings rows per organisation, PickerRow error, WallHeader
+  // without a section, the JoinSheet membership step, CreateSheet without
+  // sections and with an organisation choice, Composer without section hints.
+  patterns: 77, // Event header, load states, date picker/scanner.
 };
 const TOTAL_CAPTIONS = Object.values(CAPTIONS).reduce((a, b) => a + b, 0);
 
@@ -78,7 +82,7 @@ describe('dev component gallery', () => {
     const captions = screen.getAllByTestId(CAPTION_TEST_ID);
     expect(captions).toHaveLength(TOTAL_CAPTIONS + barCaptions);
     expect(TOTAL_CAPTIONS).toBeGreaterThanOrEqual(WEB_LBL_CAPTIONS);
-    expect(TOTAL_CAPTIONS).toBe(105);
+    expect(TOTAL_CAPTIONS).toBe(116);
   });
 
   it('mirrors the web specimens the captions are copied from', async () => {

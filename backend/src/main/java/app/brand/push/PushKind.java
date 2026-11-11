@@ -38,7 +38,11 @@ public enum PushKind {
     /** [D4] The board ended with the post still in the queue. Never "rejected by someone". */
     POST_BOARD_CLOSED("post_board_closed"),
 
-    /** The one notification an account can get before it is approved. */
+    /**
+     * [D14] An organisation admin accepted this person's pending membership. The
+     * wire value keeps its stage-1 name; the body names the organisation, which
+     * the person asked to join and so already knows.
+     */
     ACCOUNT_APPROVED("account_approved"),
 
     /** An admin acted on a report with a warning (CLAUDE.md §4.9). */

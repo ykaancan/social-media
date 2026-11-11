@@ -182,12 +182,20 @@ describe('WallHeader', () => {
     expect(screen.queryByText('0 on the wall')).toBeNull();
   });
 
-  it('preview shows the placeholders and no count', async () => {
+  it('preview shows the name and bio placeholders, no section placeholder and no count', async () => {
     await wrap(<WallHeader user={{ name: '' }} preview count={9} />);
     expect(screen.getByText('YOUR NAME')).toBeTruthy();
-    expect(screen.getByText('Section · Country')).toBeTruthy();
+    // [D15] The section is not part of the profile: nothing stands in for it.
+    expect(screen.queryByText('Section · Country')).toBeNull();
     expect(screen.getByText('One line about you')).toBeTruthy();
     expect(screen.queryByText('9 on the wall')).toBeNull();
+  });
+
+  it('[34] renders nothing in the section slot when there is no section', async () => {
+    await wrap(<WallHeader user={{ name: 'Deniz Aksoy', bio: 'Here for the quiz' }} count={3} />);
+    expect(screen.queryByText(/·/)).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('3 on the wall')).toBeTruthy();
   });
 });
 

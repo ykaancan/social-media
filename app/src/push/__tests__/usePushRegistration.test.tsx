@@ -36,7 +36,7 @@ function Harness({ into }: { into: { current: SessionValue | null } }) {
 
 async function mount() {
   await clearTokens();
-  const api = new MockApi({ latencyMs: 0, approveAfterMs: 0 });
+  const api = new MockApi({ latencyMs: 0 });
   const registerDevice = jest.spyOn(api, 'registerDevice');
   const unregisterDevice = jest.spyOn(api, 'unregisterDevice');
   const session: { current: SessionValue | null } = { current: null };
@@ -50,13 +50,17 @@ async function mount() {
   return { api, session, registerDevice, unregisterDevice };
 }
 
-/** Sign up and land on `pending` — a real account that is not approved yet. */
-async function signUpPending(session: { current: SessionValue | null }) {
+/**
+ * Sign up and open the confirmation link [D18]: a real account that is not
+ * `active` yet, because its profile has not been sent.
+ */
+async function signUpIncomplete(api: MockApi, session: { current: SessionValue | null }) {
   await act(async () => {
     await session.current!.register({ email: 'owner@example.com', password: 'password123' });
   });
+  api.confirmEmail('owner@example.com');
   await act(async () => {
-    await session.current!.submitProfile({ name: 'Owner', sectionId: 'ankara' });
+    await session.current!.refreshMe();
   });
 }
 
@@ -65,19 +69,19 @@ afterEach(async () => {
   await clearTokens();
 });
 
-it('registers this phone once an account is approved, and not before', async () => {
-  const { session, registerDevice, unregisterDevice } = await mount();
+it('registers this phone once an account is active, and not before', async () => {
+  const { api, session, registerDevice, unregisterDevice } = await mount();
   expect(registerDevice).not.toHaveBeenCalled();
 
-  await signUpPending(session);
-  expect(session.current!.me!.status).toBe('pending');
-  // A pending account has nothing to be notified about: no token is asked for.
+  await signUpIncomplete(api, session);
+  expect(session.current!.me).toMatchObject({ status: 'incomplete', emailConfirmed: true });
+  // An account that is not active has nothing to be notified about: no token is asked for.
   expect(registerDevice).not.toHaveBeenCalled();
 
   await act(async () => {
-    await session.current!.refreshMe();
+    await session.current!.submitProfile({ name: 'Owner' });
   });
-  expect(session.current!.me!.status).toBe('approved');
+  expect(session.current!.me!.status).toBe('active');
   expect(registerDevice).toHaveBeenCalledTimes(1);
   expect(registerDevice).toHaveBeenCalledWith({
     token: TOKEN,
@@ -94,10 +98,10 @@ it('registers this phone once an account is approved, and not before', async () 
 });
 
 it('gives the token back on sign-out', async () => {
-  const { session, registerDevice, unregisterDevice } = await mount();
-  await signUpPending(session);
+  const { api, session, registerDevice, unregisterDevice } = await mount();
+  await signUpIncomplete(api, session);
   await act(async () => {
-    await session.current!.refreshMe();
+    await session.current!.submitProfile({ name: 'Owner' });
   });
   expect(registerDevice).toHaveBeenCalledTimes(1);
 
@@ -115,13 +119,13 @@ it('survives a device that cannot produce a push token', async () => {
   const notifications = jest.requireMock('expo-notifications');
   notifications.getExpoPushTokenAsync.mockRejectedValueOnce(new Error('no Google services'));
 
-  const { session, registerDevice } = await mount();
-  await signUpPending(session);
+  const { api, session, registerDevice } = await mount();
+  await signUpIncomplete(api, session);
   await act(async () => {
-    await session.current!.refreshMe();
+    await session.current!.submitProfile({ name: 'Owner' });
   });
 
-  expect(session.current!.me!.status).toBe('approved');
+  expect(session.current!.me!.status).toBe('active');
   expect(registerDevice).not.toHaveBeenCalled();
 });
 
@@ -129,10 +133,10 @@ it('does not register when notification permission is refused', async () => {
   const notifications = jest.requireMock('expo-notifications');
   notifications.requestPermissionsAsync.mockResolvedValueOnce({ status: 'denied' });
 
-  const { session, registerDevice } = await mount();
-  await signUpPending(session);
+  const { api, session, registerDevice } = await mount();
+  await signUpIncomplete(api, session);
   await act(async () => {
-    await session.current!.refreshMe();
+    await session.current!.submitProfile({ name: 'Owner' });
   });
 
   expect(registerDevice).not.toHaveBeenCalled();

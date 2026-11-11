@@ -1,6 +1,7 @@
 package app.brand.user;
 
 import app.brand.config.BrandProperties;
+import app.brand.organisation.MembershipReader;
 import app.brand.section.Section;
 import org.springframework.stereotype.Component;
 
@@ -18,21 +19,25 @@ public class MeMapper {
     public static final String AVATAR_PATH = "/media/avatars/";
 
     private final String publicBaseUrl;
+    private final MembershipReader memberships;
 
-    public MeMapper(BrandProperties properties) {
+    public MeMapper(BrandProperties properties, MembershipReader memberships) {
         this.publicBaseUrl = properties.publicBaseUrl();
+        this.memberships = memberships;
     }
 
     public MeDto toMe(AppUser user) {
         return new MeDto(
                 user.getId().toString(),
                 user.getEmail(),
+                user.isEmailConfirmed(),
                 user.getStatus(),
                 user.getRole(),
                 user.getName(),
                 user.getBio(),
                 avatarUrl(user.getAvatarKey()),
-                toSectionRef(user.getSection()));
+                // [D14] the caller's own memberships, read by the caller's own id.
+                memberships.of(user.getId()));
     }
 
     public SectionRefDto toSectionRef(Section section) {

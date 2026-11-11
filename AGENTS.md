@@ -4,6 +4,8 @@ This file is read at the start of every Codex session. It is the product contrac
 
 Rules marked **[D1]**–**[D12]** are decisions taken on 2026-09-06 that amend or extend the original brief, after reading the Codex Design prototype. The brief text below has been edited in place so no superseded sentence is left standing. The reasoning, the rejected alternatives and the "flip it if" conditions for each are in [`/DECISIONS.md`](DECISIONS.md); the record of the design bundle they came from is in [`/design/HANDOFF.md`](design/HANDOFF.md).
 
+Rules marked **[D13]**–**[D20]** are decisions taken on 2026-11-09 that turn the single-network product into a multi-organisation one. They follow the same convention: the text below is edited in place, the reasoning is in [`/DECISIONS.md`](DECISIONS.md), and the build plan is [`/TENANT_PLAN.md`](TENANT_PLAN.md). They were implemented in steps T-0 to T-4 of that plan, 2026-11-09 to 2026-11-11; the record of each step, including what is not verified, is in its section 10.
+
 ## Repo layout
 - `/backend` — Spring Boot 3 (Java 21), PostgreSQL, Flyway, STOMP over WebSocket, FCM/APNs push.
 - `/app` — Expo (React Native) + TypeScript, React Navigation, i18n (en default, tr).
@@ -14,10 +16,16 @@ Rules marked **[D1]**–**[D12]** are decisions taken on 2026-09-06 that amend o
 - Every content row (post, message, thread message) stores `sender_id` and `anonymity_level` (`anonymous` | `hint` | `named`) plus the hint fields the sender allowed. Anonymity is a display rule; the server always knows the sender.
 - **[D5]** A thread message's stored `anonymity_level` is the level it was **sent at** and is never rewritten. The level new messages go out at lives on `thread_participant` (`thread_id`, `user_id`, `anonymity_level`, hint fields, `revealed_at`). Reveal updates the participant row and inserts a system message; it must never unmask messages already sent. Render every bubble from its own row, not from the participant's current level.
 - API DTOs never expose `sender_id` or hidden hint fields unless the caller is `super_admin` viewing a report. Every such identity view is written to the audit log.
-- Roles: `member`, `event_moderator`, `super_admin`. Stored as data, never hardcoded to a user id.
-- Sections are membership tags (Country → Section → User). They have no administrative power.
-- **[D11]** Country is **not** an independent field. It is read through the user's section, and means where the person sits in the network, not their nationality. The `country` hint must always be checkable against the sender's section.
-- **[D7]** A user may change their own section. It does not re-enter the approval queue: log the change (user, from, to, timestamp) and rate-limit to one change per 30 days. There is no approved-but-read-only account state; `pending` means the account cannot use the app yet.
+- Roles: `member`, `event_moderator`, `super_admin`. Stored as data, never hardcoded to a user id. **[D14]** An organisation admin is not an account role: it is `organisation_member.role = 'admin'`, held per organisation the same way `event_moderator` is held per event.
+- **[D13]** An `organisation` owns events and, optionally, sections. Organisations are created by a `super_admin` when a client is onboarded; there is no self-service sign-up for organisers. A person belongs to an organisation through an `organisation_member` row.
+- Sections are membership tags (Organisation → Section → Membership → User; Country is read through the section). They have no administrative power. **[D15]** A section belongs to exactly one organisation, an organisation may have no sections, and a person's section is stored on their membership, not on their account.
+- **[D11]** Country is **not** an independent field. It is read through the section on the user's membership **[D15]**, and means where the person sits in the network, not their nationality. The `country` hint must always be checkable against the sender's section.
+- **[D7]** A user may change their own section. It does not re-enter the approval queue: log the change (user, organisation, from, to, timestamp) and rate-limit to one change per 30 days per organisation **[D15]**. There is no approved-but-read-only state. **[D14]** `pending` is a state of the membership, not of the account: it means the person cannot enter that organisation yet. Account status is only `incomplete`, `active` or `banned`.
+- **[D14]** Approval is switched on or off per organisation (`organisation.approval_required`). Where it is on, a new membership starts `pending` and that organisation's admins approve or reject it; where it is off, the membership is `approved` at once. A rejected person may ask again, which returns the membership to `pending`.
+- **[D16]** Who may create an event is a per-organisation switch, `organisation.event_creation`: `admins` (organisation admins only) or `members` (any approved member). The server enforces it; the app does not offer the create action to a person it would be refused to.
+- **[D17]** A person enters an organisation only by using a join code of one of its events. There is no organisation search or directory. Where approval is on, the pending membership stores the event the request came from, and approval joins the person to that event automatically.
+- **[D18]** Sign-up confirms the email address with a link. Until it is confirmed the account can reach only its own `/me`, the auth routes and the resend route. While `brand.mail.enabled` is false the link is written to the log, exactly like the password-reset link.
+- **[D19]** Organisation admins approve and reject their own members and nothing else. Reports, sender identity views and bans stay with `super_admin`, and every identity view is still audit-logged.
 - Posts addressed to a person never enter a board moderation queue in any board mode.
 - **[D9]** A creator's or co-moderator's post **to the room** publishes immediately in both board modes, recorded as `auto_approved_by_author`. Nothing else is exempt, and the post carries whatever anonymity level its author chose.
 - **[D8]** Rejecting a queued post is final — there is no un-reject. Moderators keep a read-only Rejected list. A mis-tap is recovered through a 5-second undo on the rejection toast, before the sender is notified.
@@ -30,7 +38,7 @@ Rules marked **[D1]**–**[D12]** are decisions taken on 2026-09-06 that amend o
 - Do not restyle the design system. Use the tokens and component names from `/design`. Do not add screens or features that are not in the brief's stage 1.
 - **[D1]** The component library is the 22 named design-system components **plus** the recurring patterns the prototypes rebuild inline (`/design/HANDOFF.md` §2.5): Empty, Note, Row, Group, Back, PersonRow, ConfirmSheet, ReportSheet, MoreSheet, Composer, ReplySheet, PersonPicker, SectionSheet, JoinSheet, CreateSheet, ModsSheet, ControlsSheet, Swipe, TabBar, WallHeader. Screen steps compose; they do not invent local helpers. If a screen needs something the library lacks, add it to the library.
 - **[D2]** The app shell is a four-tab bottom navigation: **Events · Inbox · Threads · Profile**. Profile is the owner's own wall. Tab badges: Inbox counts `new` messages, Threads counts unread. The tab bar is hidden whenever a screen is pushed on top of a tab.
-- Account deletion is real deletion (KVKK). This is distinct from block **[D6]** and from inbox delete **[D12]**, which hide rather than destroy. Keyword + model screening runs server-side before delivery.
+- Account deletion is real deletion (KVKK). This is distinct from block **[D6]** and from inbox delete **[D12]**, which hide rather than destroy. **[D20]** Keyword screening runs server-side before delivery; there is no model screening.
 
 ## Working rules for Codex
 - One step per session. Summarize the plan, wait for "go", then implement.
@@ -50,6 +58,7 @@ A mobile social app for the Erasmus / exchange-student community. Real, verified
 - Languages: English (default), Turkish. All UI copy is i18n from day one.
 - Audience: 18+ exchange students and student-network volunteers. Stage 1 users: volunteers at one national event in Türkiye (a few hundred people, all known to the admin).
 - Independent product. Not affiliated with any organization; "Erasmus" only in descriptive copy, never in the brand name.
+- **[D13]** The product is multi-organisation: a student network, a bar, a club or a festival each runs its own events inside its own organisation. The first organisation is the student network in Türkiye.
 
 ## 2. Product principles
 
@@ -69,25 +78,26 @@ A mobile social app for the Erasmus / exchange-student community. Real, verified
 Recipients can unlock only what the sender allowed. The reveal/unlock action exists in the API but is free and unlimited in stage 1.
 
 ### Graph
-- `Country` → `Section` → `User`.
-- `Event` belongs to a `Section` or to the national level of a `Country`.
+- **[D13]/[D15]** `Organisation` → `Section` → `Membership` → `User`. `Country` is read through the section. An organisation may have no sections.
+- **[D13]** `Event` belongs to an `Organisation`. In an organisation with sections it also belongs to a `Section` or to the national level of a `Country`.
 - `Event` has a join code + QR, a start and end time, and a status: `upcoming` / `live` / `archived`.
 - **[D4]** There is no fourth status. A board a moderator ends early goes to `archived` immediately and stamps `closed_at` / `closed_by`; "Closed" is a label rendered when `closed_at` is set and `now() < ends_at`. Board writability is `status = 'live'`, with no second condition. Closing transitions every still-pending post to `rejected` with reason `board_closed`, so the sender sees the ordinary "Not published" card — never leave a post pending forever.
 
 ### Sections are membership tags, not tenants
-- A user belongs to one section (self-selected at sign-up, confirmed by the admin on approval). Sections have no administrative power.
+- **[D15]** A user belongs to at most one section per organisation, self-selected when they first enter an organisation that has sections, and confirmed by that organisation's admin where approval is on **[D14]**. Sections have no administrative power.
 - **[D7]** Changing your section later is allowed, logged, and rate-limited to once per 30 days. It does **not** send you back to the approval queue. **[D11]** A section change is also a country change, and the UI says so.
-- Every member can open their section page and see its roster. Cross-section rosters are visible too (needed for hints and for finding people at events).
+- Every approved member of an organisation can open their section page and see its roster. Rosters of the organisation's other sections are visible too (needed for hints and for finding people at events). **[D15]** Rosters are not visible outside the organisation.
 - Section chat rooms are stage 2, not MVP.
 
 ### Roles
 - `member` — default.
 - `event_moderator` — creator of an event/board plus any co-moderators they add: approve/reject queued room posts, hide posts, close board, set end time. Cannot see identities, cannot ban, never sees posts addressed to a person.
-- `super_admin` — the only role that approves registrations, handles reports, views sender identity, and bans. Held by the founder in stage 1; stored as a role, not a hardcoded user, so a second trusted admin can be added later without code changes.
+- organisation admin **[D14]/[D19]** — a member whose membership has `role = 'admin'`: approves or rejects people asking to enter that organisation. Cannot see identities, cannot ban, never sees reports.
+- `super_admin` — creates organisations and assigns their admins **[D13]**; the only role that handles reports, views sender identity, and bans. Held by the founder in stage 1; stored as a role, not a hardcoded user, so a second trusted admin can be added later without code changes.
 
 ### Onboarding and verification
-- Register with email + phone or social login; profile fields: name, photo, section, one-line bio. **[D11]** Country is derived from the section, shown read-only, and never picked.
-- Account is `pending` until approved by an admin. Invite chain stored: who vouched for whom (inviter id on the user record). Invite-based onboarding is stage 2, but the field exists now.
+- Register with email + phone or social login; profile fields: name, photo, one-line bio. **[D18]** The email address is confirmed with a link before profile setup. **[D15]** The section is not part of the account profile: it is picked when the person first enters an organisation that has sections. **[D11]** Country is derived from the section, shown read-only, and never picked.
+- **[D14]** The account itself is not approved by anyone: once the email is confirmed and the profile is sent it is `active`. `pending` belongs to a membership in an organisation that has approval on. Invite chain stored: who vouched for whom (inviter id on the user record). Invite-based onboarding is stage 2, but the field exists now.
 
 ### Entitlement layer (present, switched off)
 - `free_inbox_reads` per period — messages beyond N appear as **locked cards**. Stage 1: N = unlimited.
@@ -98,7 +108,7 @@ Recipients can unlock only what the sender allowed. The reveal/unlock action exi
 ## 4. Stage 1 screens (design these, in this order)
 
 ### 4.1 Onboarding
-Splash → sign up → profile setup (photo, name, section picker, bio; **[D11]** country is a read-only row filled from the section) → "pending approval" state with what happens next → approved.
+Splash → sign up → **[D18]** confirm email → profile setup (photo, name, bio) → the app. **[D17]** The section picker (**[D11]** with country as a read-only row filled from the section) and the "pending approval" state with what happens next appear when the person first uses a join code of an organisation that has sections or approval; an organisation with neither is entered at once.
 
 ### 4.2 Profile & Wall (public)
 - Header: photo, name, section · country, bio.
@@ -114,11 +124,11 @@ Splash → sign up → profile setup (photo, name, section picker, bio; **[D11]*
 
 ### 4.4 Events
 - My events list: live events on top, upcoming, then archived.
-- Join by code or QR scan. Create event: name, section/national, start, end, cover color, **board mode**: `approve_first` (default) or `post_immediately`. Creator can add co-moderators (members of the event) who share the queue.
+- Join by code or QR scan. **[D17]** The code also brings the person into the event's organisation. Create event (**[D16]** only where the organisation allows this person to): organisation (when the person can create in more than one), name, section/national (only in an organisation with sections), start, end, cover color, **board mode**: `approve_first` (default) or `post_immediately`. Creator can add co-moderators (members of the event) who share the queue.
 - Event detail: board tab + people tab (joined members, tap → profile).
 
 ### 4.4b Section page
-- Section name, country, member count, roster (photo, name, tap → profile). Reached from any profile's section chip or from Settings.
+- Section name, country, member count, roster (photo, name, tap → profile). Reached from any profile's section chip or from Settings. **[D15]** Only organisations with sections have section pages, and only their approved members can open them.
 - No posting surface in stage 1; leave room for a "Room" tab (stage 2).
 
 ### 4.5 Live Event Board
@@ -134,7 +144,7 @@ Splash → sign up → profile setup (photo, name, section picker, bio; **[D11]*
 ### 4.6 Composer (shared)
 - Text only. Target: this wall / this board / this person.
 - Anonymity selector: anonymous · hint (pick: section / country / first letter) · named. Remembers last choice.
-- Pre-send screening: if the keyword/model filter flags it, show a "this may not be delivered" warning; delivery is decided server-side.
+- Pre-send screening: if the keyword filter **[D20]** flags it, show a "this may not be delivered" warning; delivery is decided server-side.
 
 ### 4.7 Thread ("reply privately")
 - Opened only from a post or inbox message in stage 1; no cold DMs from profiles.
@@ -144,16 +154,17 @@ Splash → sign up → profile setup (photo, name, section picker, bio; **[D11]*
 
 ### 4.8 Settings & safety
 - Who can write to me: anyone / named only / nobody.
-- Blocked list, muted words. **[D10]** A muted word never blocks delivery: the message is stored, filed to `private`, and its push is suppressed; the sender is never told. **[D7]** Change section lives here too, with no re-approval.
+- Blocked list, muted words. **[D10]** A muted word never blocks delivery: the message is stored, filed to `private`, and its push is suppressed; the sender is never told. **[D7]** Change section lives here too, per organisation **[D15]**, with no re-approval.
 - Notifications toggles (push is on by default for inbox, threads, board mentions).
 - Delete account (real deletion).
 
 ### 4.9 Admin (minimal, can be a plain web page, not a designed mobile screen)
-- Approve/reject pending registrations.
+- **[D13]** Super admin: create an organisation, set its approval and event-creation switches, assign its admins.
+- **[D14]** Organisation admin: approve/reject people waiting to enter their own organisation, and nothing else **[D19]**.
 - Reports queue: content, reporter, sender identity (audit-logged), actions: dismiss / hide / warn / ban.
 
 ## 5. Safety rules (server-side, stage 1)
-- Keyword + model screening on every post/message before delivery; hard-block list, soft-flag list.
+- **[D20]** Keyword screening on every post/message before delivery; hard-block list, soft-flag list. No model screening.
 - Per-sender rate limits on anonymous posts and thread openings.
 - Report → content and sender id visible to super admin only; every identity view is audit-logged.
 - Block is absolute: blocked user cannot write to the blocker in any surface, including anonymously. **[D6]** Absolute means refused server-side, not deleted: existing content is hidden from the blocker, board posts stay on the board, and a report filed before the block still shows the admin everything. Block is issued by message id; the blocker never learns who an anonymous sender was.
@@ -194,4 +205,5 @@ Splash → sign up → profile setup (photo, name, section picker, bio; **[D11]*
 - Spring Boot 3, PostgreSQL, STOMP over WebSocket, Flyway migrations, push via FCM/APNs.
 - Schema must include from migration 1: anonymity level on every content row, sender id on every content row, section/country graph (section = membership tag), event status + end time, roles (member / event_moderator / super_admin), inviter id, entitlement counters, report + identity-view audit log.
 - Also from migration 1: **[D4]** `event.closed_at` / `closed_by` and a post rejection reason; **[D5]** `thread_participant` (level, hint fields, `revealed_at`) alongside the per-message level; **[D6]** `block(blocker_id, blocked_id, created_at)`; **[D12]** `inbox_message.state` and `deleted_at`; **[D7]** a section-change audit row. Country is derived through the section, not stored on the user **[D11]**.
+- **[D13]–[D18]** Added by migration `V4`, never by editing an applied one: `organisation` (`approval_required`, `has_sections`, `event_creation`), `organisation_member` (status, role, section, the event a pending request came from), `organisation_id` on `section`, `event` and `section_change`, and email confirmation on the account.
 - All monetization gates are config flags; default off.

@@ -1,11 +1,8 @@
 package app.brand.user;
 
 import app.brand.common.ApiException;
-import app.brand.common.Ids;
 import app.brand.media.AvatarImageProcessor;
 import app.brand.media.AvatarStore;
-import app.brand.section.Section;
-import app.brand.section.SectionRepository;
 import app.brand.user.ProfileDtos.AvatarUploadedDto;
 import app.brand.user.ProfileDtos.ProfileEditRequest;
 import app.brand.user.ProfileDtos.ProfileSubmitRequest;
@@ -17,14 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * The owner's own account: read it, send it for review, edit it once approved,
- * replace the photo.
+ * The owner's own account: read it, send it, edit it once active, replace the
+ * photo.
  *
- * <p>The rules are {@code mock.ts}'s, unchanged: a {@code banned} account is
- * refused outright, an {@code approved} one is told to use the edit and
- * section-change routes instead of resubmitting, and everything else — including a
- * {@code rejected} account resubmitting [D7] — lands back in {@code pending}.
- * There is no approved-but-read-only state to represent.
+ * <p>[D14] Sending the profile makes the account {@code active}: nobody approves
+ * an account any more, approval belongs to an organisation's membership. A
+ * {@code banned} account is refused outright, and an {@code active} one is told to
+ * use the edit and section-change routes instead of sending again.
  */
 @Service
 public class ProfileService {
@@ -34,66 +30,58 @@ public class ProfileService {
     public static final int BIO_MAX = 80;
 
     private final AppUserRepository users;
-    private final SectionRepository sections;
     private final MeMapper meMapper;
     private final AvatarStore avatars;
     private final AvatarImageProcessor imageProcessor;
     private final Clock clock;
 
     public ProfileService(AppUserRepository users,
-                          SectionRepository sections,
                           MeMapper meMapper,
                           AvatarStore avatars,
                           AvatarImageProcessor imageProcessor,
                           Clock clock) {
         this.users = users;
-        this.sections = sections;
         this.meMapper = meMapper;
         this.avatars = avatars;
         this.imageProcessor = imageProcessor;
         this.clock = clock;
     }
 
-    /** Any signed-in status: this is what the Pending screen polls. */
+    /** Any signed-in status, confirmed or not. */
     @Transactional(readOnly = true)
     public MeDto me(UUID userId) {
         return meMapper.toMe(load(userId));
     }
 
-    /** Sends the profile for review. The returned {@code Me} is always {@code pending}. */
+    /** Sends the profile. The returned {@code Me} is always {@code active} [D14]. */
     @Transactional
     public MeDto submit(UUID userId, ProfileSubmitRequest request) {
         AppUser user = load(userId);
         if (user.getStatus() == AccountStatus.BANNED) {
             throw ApiException.forbidden("account_restricted", "account is restricted");
         }
-        if (user.getStatus() == AccountStatus.APPROVED) {
-            // Changing an approved profile is PATCH /me/profile, and changing the
-            // section is PUT /me/section [D7] — neither re-enters the queue.
+        if (user.getStatus() == AccountStatus.ACTIVE) {
+            // Changing an active profile is PATCH /me/profile, and changing a
+            // section is PUT /me/memberships/{organisationId}/section [D7]/[D15].
             throw ApiException.validation("use profile editing and section change", null);
         }
 
         String name = requireName(request == null ? null : request.name());
         String bio = optionalBio(request == null ? null : request.bio());
-        Section section = requireSection(request == null ? null : request.sectionId());
-
         user.setName(name);
         user.setBio(bio);
-        user.setSection(section);
-        // [D7] A rejected account resubmitting returns to pending, exactly like a
-        // first send: rejection is not a dead end.
-        user.setStatus(AccountStatus.PENDING);
+        user.setStatus(AccountStatus.ACTIVE);
         user.setSubmittedAt(clock.instant());
         // Whatever photo the account already has is kept: the app uploads a new one
         // to POST /me/photo before this call, or sends none at all.
         return meMapper.toMe(users.save(user));
     }
 
-    /** Approved accounts only, and never the section or the status. */
+    /** Active accounts only, and never the section or the status. */
     @Transactional
     public MeDto edit(UUID userId, ProfileEditRequest request) {
         AppUser user = load(userId);
-        requireApproved(user);
+        requireActive(user);
 
         user.setName(requireName(request == null ? null : request.name()));
         user.setBio(optionalBio(request == null ? null : request.bio()));
@@ -141,9 +129,10 @@ public class ProfileService {
                 .orElseThrow(() -> ApiException.unauthorized("unauthorized", "account no longer exists"));
     }
 
-    private static void requireApproved(AppUser user) {
-        if (user.getStatus() != AccountStatus.APPROVED) {
-            throw ApiException.forbidden("approval_required", "account is not approved");
+    /** Same code as {@code ActiveAccountFilter} answers on member routes. */
+    private static void requireActive(AppUser user) {
+        if (user.getStatus() != AccountStatus.ACTIVE) {
+            throw ApiException.forbidden("account_not_active", "account is not active");
         }
     }
 
@@ -165,18 +154,5 @@ public class ProfileService {
             throw ApiException.validation("bio too long", "bio");
         }
         return bio.isEmpty() ? null : bio;
-    }
-
-    /**
-     * 422, not 404: this is a form field the person just picked from a list, so a
-     * malformed id and an id that is not a section get the same answer.
-     */
-    private Section requireSection(String rawId) {
-        UUID id = Ids.orNull(rawId == null ? null : rawId.trim());
-        if (id == null) {
-            throw ApiException.validation("unknown section", "sectionId");
-        }
-        return sections.findById(id)
-                .orElseThrow(() -> ApiException.validation("unknown section", "sectionId"));
     }
 }

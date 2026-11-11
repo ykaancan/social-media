@@ -7,6 +7,9 @@ import { Button } from '../core/Button';
 import { Input } from '../core/Input';
 import { Sheet } from '../core/Sheet';
 import { Text } from '../core/Text';
+import { Note } from './Note';
+import { PickerRow } from './PickerRow';
+import { SectionSheet, type SectionOption } from './SectionSheet';
 
 /**
  * Join codes are 6 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
@@ -31,16 +34,53 @@ export function displayJoinCode(code: string): string {
 /** An event as the "You're in" card renders it. */
 export type JoinedEvent = EventCardProps & { status: NonNullable<EventCardProps['status']> };
 
+/** The organisation an event belongs to, as the join sheet names it [D13]. */
+export interface JoinOrganisation {
+  id: string;
+  name: string;
+  /** [D15] Only then does the second step ask for a section. */
+  hasSections: boolean;
+}
+
+/** The three membership answers of `POST /events/join` [D17]. */
+export type MembershipRefusal = {
+  ok: false;
+  reason: 'membership_required' | 'membership_pending' | 'membership_rejected';
+  organisation: JoinOrganisation;
+  /** [D14] The organisation's admin reviews the request. */
+  approvalRequired: boolean;
+  eventName: string;
+};
+
 export type JoinResult =
   | { ok: true; event: JoinedEvent }
-  | { ok: false; reason: 'not_found' | 'already_joined'; eventName?: string };
+  | { ok: false; reason: 'not_found' | 'already_joined'; eventName?: string }
+  | MembershipRefusal;
+
+/**
+ * What the screen reports after `POST /organisations/join`:
+ * - `approved` — the person is in; `event` is the joined event when the screen
+ *   could find it, so the sheet can show "You're in".
+ * - `pending` — the request waits for the organisation's admin.
+ * - `invalid_section` — the server refused the section (422 on `sectionId`).
+ * Any other failure is a rejection of the promise.
+ */
+export type MembershipAnswer =
+  | { status: 'approved'; event?: JoinedEvent }
+  | { status: 'pending' }
+  | { status: 'invalid_section' };
 
 export interface JoinSheetProps {
   renderScanner?: (onCode: (code: string) => void) => React.ReactNode;
   /** The screen resolves the code (server call in the real app). */
   onSubmitCode: (code: string) => JoinResult | Promise<JoinResult>;
+  /** [D15] The organisation's sections, for the second step's picker. */
+  loadSections?: (organisationId: string) => Promise<SectionOption[]>;
+  /** [D17] Sends the second step: the code the person used and the section they picked. */
+  onRequestMembership?: (request: { code: string; sectionId?: string }) => Promise<MembershipAnswer>;
   /** Called when the scan view opens, so the screen can start the camera. */
   onScan?: () => void;
+  /** Also called after a `pending` answer: the sheet has nothing more to show. */
   onClose: () => void;
   onOpenEvent: (event: JoinedEvent) => void;
 }
@@ -74,16 +114,23 @@ export function useMonthsShort(): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
-type JoinView = 'code' | 'scan' | 'done';
+type JoinView = 'code' | 'scan' | 'done' | 'request' | 'section';
 
 /**
- * Join an event by code, or by QR. Three views in one sheet: the code field,
- * the scanner frame, and "You're in".
+ * Join an event by code, or by QR. The views in one sheet: the code field, the
+ * scanner frame, "You're in", and [D17] the second step for an event whose
+ * organisation the person is not in yet — its name and the event's, the section
+ * picker with the read-only country row where it has sections [D11]/[D15], and a
+ * line about the admin's review where approval is on [D14].
+ *
+ * A `membership_pending` answer is said on the code view and has no second
+ * step; `membership_rejected` is said there with an action to ask again, which
+ * opens the second step (the server returns the membership to pending, P8).
  *
  * The camera itself is the screen's job — this sheet draws the frame and calls
  * `onScan` when it opens, so nothing here depends on a permission prompt.
  */
-export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderScanner }: JoinSheetProps) {
+export function JoinSheet({ onSubmitCode, loadSections, onRequestMembership, onScan, onClose, onOpenEvent, renderScanner }: JoinSheetProps) {
   const { colors, radius, text } = useTheme();
   const { t } = useTranslation();
   const months = useMonthsShort();
@@ -94,17 +141,43 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderSc
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [joined, setJoined] = useState<JoinedEvent | null>(null);
+  /** The membership answer for `askedCode`, and the code it was given for. */
+  const [refusal, setRefusal] = useState<MembershipRefusal | null>(null);
+  const [askedCode, setAskedCode] = useState('');
+  const [sections, setSections] = useState<SectionOption[] | null>(null);
+  const [sectionsFailed, setSectionsFailed] = useState(false);
+  const [section, setSection] = useState<SectionOption | null>(null);
+  const [sectionError, setSectionError] = useState<string | undefined>(undefined);
+
+  const openRequest = (answer: MembershipRefusal) => {
+    setSection(null);
+    setSectionError(undefined);
+    setError(undefined);
+    setView('request');
+    if (!answer.organisation.hasSections || !loadSections) return;
+    setSections(null);
+    setSectionsFailed(false);
+    loadSections(answer.organisation.id).then(setSections, () => setSectionsFailed(true));
+  };
 
   const submit = async (submittedCode = code) => {
     if (submitting.current) return;
     submitting.current = true;
     setError(undefined);
+    setRefusal(null);
     setBusy(true);
     try {
       const result = await onSubmitCode(submittedCode);
       if (result.ok) {
         setJoined(result.event);
         setView('done');
+        return;
+      }
+      if (result.reason === 'membership_required' || result.reason === 'membership_pending' || result.reason === 'membership_rejected') {
+        setRefusal(result);
+        setAskedCode(submittedCode);
+        setView('code');
+        if (result.reason === 'membership_required') openRequest(result);
         return;
       }
       setError(
@@ -120,6 +193,98 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderSc
       setBusy(false);
     }
   };
+
+  const request = async () => {
+    if (submitting.current || !refusal || !onRequestMembership) return;
+    submitting.current = true;
+    setError(undefined);
+    setSectionError(undefined);
+    setBusy(true);
+    try {
+      const answer = await onRequestMembership({ code: askedCode, ...(section ? { sectionId: section.id } : {}) });
+      if (answer.status === 'invalid_section') {
+        setSectionError(t('joinFlow.sectionInvalid'));
+      } else if (answer.status === 'approved' && answer.event) {
+        setJoined(answer.event);
+        setView('done');
+      } else {
+        onClose();
+      }
+    } catch {
+      setError(t('eventFlow.requestError'));
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  if (view === 'section' && refusal) {
+    return (
+      <SectionSheet
+        sections={sections ?? []}
+        value={section?.id}
+        onPick={(picked) => {
+          setSection(picked);
+          setSectionError(undefined);
+          setView('request');
+        }}
+        onClose={() => setView('request')}
+      />
+    );
+  }
+
+  if (view === 'request' && refusal) {
+    const names = { organisation: refusal.organisation.name, event: refusal.eventName };
+    const needsSection = refusal.organisation.hasSections;
+    return (
+      <Sheet title={t('events.joinTitle')} onClose={busy ? undefined : onClose} testID="join-sheet">
+        <Text variant="body" testID="join-request-intro">
+          {t('joinFlow.intro', names)}
+        </Text>
+        {needsSection ? (
+          <>
+            <PickerRow
+              label={t('onboarding.section')}
+              icon="MapPin"
+              value={section?.name}
+              placeholder={t('onboarding.pickSection')}
+              hint={sectionsFailed ? t('eventFlow.requestError') : t('onboarding.sectionHint')}
+              error={sectionError}
+              onPress={sections ? () => setView('section') : undefined}
+              testID="join-section"
+            />
+            <PickerRow
+              locked
+              label={t('onboarding.country')}
+              icon="Flag"
+              value={section?.country}
+              placeholder={t('onboarding.countryFromSection')}
+              testID="join-country"
+            />
+          </>
+        ) : null}
+        {refusal.approvalRequired ? (
+          <Note testID="join-approval-note">{t('joinFlow.approvalNote', names)}</Note>
+        ) : null}
+        {error ? (
+          <Text accessibilityRole="alert" color={colors.danger}>
+            {error}
+          </Text>
+        ) : null}
+        <Button
+          size="lg"
+          full
+          icon={refusal.approvalRequired ? 'Send' : 'LogIn'}
+          loading={busy}
+          disabled={busy || (needsSection && !section)}
+          onPress={() => void request()}
+          testID="join-request"
+        >
+          {refusal.approvalRequired ? t('joinFlow.sendRequest') : t('joinFlow.join')}
+        </Button>
+      </Sheet>
+    );
+  }
 
   if (view === 'done' && joined) {
     return (
@@ -173,6 +338,7 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderSc
         value={displayJoinCode(code)}
         onChange={(v) => {
           setError(undefined);
+          setRefusal(null);
           setCode(sanitizeJoinCode(v));
         }}
         placeholder="XXX-XXX"
@@ -183,6 +349,21 @@ export function JoinSheet({ onSubmitCode, onScan, onClose, onOpenEvent, renderSc
         inputStyle={[styles.codeInput, { fontFamily: text.displayMd.fontFamily }]}
         testID="join-code"
       />
+      {refusal?.reason === 'membership_pending' ? (
+        <Note icon="Clock" testID="join-pending">
+          {t('joinFlow.stillPending', { organisation: refusal.organisation.name })}
+        </Note>
+      ) : null}
+      {refusal?.reason === 'membership_rejected' ? (
+        <Note testID="join-rejected">
+          <Text variant="bodySm" color={colors.text2}>
+            {t('joinFlow.rejected', { organisation: refusal.organisation.name })}
+          </Text>
+          <Button variant="secondary" disabled={busy} onPress={() => openRequest(refusal)} testID="join-ask-again">
+            {t('joinFlow.askAgain')}
+          </Button>
+        </Note>
+      ) : null}
       <Button
         size="lg"
         full

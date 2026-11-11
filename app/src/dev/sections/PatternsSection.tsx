@@ -31,12 +31,13 @@ import {
   TabBar,
   WallHeader,
   Wordmark,
+  OnboardingHeader,
   type PickerPerson,
   type TabId,
 } from '../../components/patterns';
-import { useTranslation } from '../../i18n';
+import { useLocale, useTranslation } from '../../i18n';
 import { useTheme } from '../../theme';
-import { me, photoUri, posts, roster } from '../fixtures';
+import { me, organisations, people, photoUri, posts, roster } from '../fixtures';
 import { GallerySection, Specimen } from '../kit';
 import { PatternSheets } from './PatternSheets';
 
@@ -49,6 +50,7 @@ const OWNER = {
 
 export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent) => void }) {
   const { t } = useTranslation();
+  const locale = useLocale();
   const { colors, radius } = useTheme();
 
   const [tab, setTab] = useState<TabId>('events');
@@ -137,6 +139,18 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
         </Group>
       </Specimen>
 
+      {/* [D7]/[D15] Settings: one row per approved membership in an organisation
+          with sections, each with its own next-change date. */}
+      <Specimen label="Group of Rows · Settings · change section per organisation (available now / available on a date)">
+        <Group>
+          <Row icon="MapPin" label={t('settingsFlow.sectionIn', { organisation: organisations[0]!.name })}
+            description={`${me.section} · ${me.country}`} onPress={() => undefined} />
+          <Row icon="MapPin" label={t('settingsFlow.sectionIn', { organisation: organisations[1]!.name })}
+            description={`${people.giulia.section} · ${people.giulia.country}\n${t('settingsFlow.sectionWait', { date: new Date(2026, 11, 9).toLocaleDateString(locale) })}`}
+            onPress={() => undefined} />
+        </Group>
+      </Specimen>
+
       <Specimen label="Group of Rows · Legal · external chevrons">
         <Group label="Legal">
           <Row
@@ -195,9 +209,10 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
           Screen fills its parent and BottomBar pins itself to the bottom of it.
           The nested SafeAreaView pads the top a second time in here (the gallery
           already ate the real inset) — on a real screen there is only one. */}
-      <Specimen label="Screen · header + body (gap 16, measured bottom inset) + BottomBar, in a 300px window">
+      <Specimen label="Screen · header + body (gap 16, measured bottom inset) + BottomBar + pull to refresh, in a 300px window">
         <View style={frame}>
           <Screen
+            onRefresh={() => undefined}
             header={<Back title={t('onboarding.profileTitle')} onBack={() => undefined} />}
             bottom={
               <BottomBar>
@@ -251,6 +266,9 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
         <Wordmark size="sm" />
       </Specimen>
 
+      <Specimen label="OnboardingHeader · mark + one ghost action (confirm email, profile setup, restricted)">
+        <OnboardingHeader actionLabel={t('onboarding.logOut')} onAction={() => undefined} />
+      </Specimen>
       <Specimen label="Wordmark · inverse / lime blocks (--display-md)">
         <Wordmark treatment="inverse" />
         <Wordmark treatment="lime" />
@@ -303,6 +321,18 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
         />
       </Specimen>
 
+      <Specimen label="PickerRow · error (the server refused the section, 422 on sectionId)">
+        <PickerRow
+          label={t('onboarding.section')}
+          icon="MapPin"
+          value={me.section}
+          placeholder={t('onboarding.pickSection')}
+          hint={t('onboarding.sectionHint')}
+          error={t('joinFlow.sectionInvalid')}
+          onPress={() => undefined}
+        />
+      </Specimen>
+
       <Specimen label="PickerRow · locked, empty ([D11] country waits on the section)">
         <PickerRow
           locked
@@ -342,6 +372,10 @@ export function PatternsSection({ onLayout }: { onLayout?: (e: LayoutChangeEvent
 
       <Specimen label="WallHeader · preview, empty (sign-up, nothing typed yet)">
         <WallHeader preview user={{ name: '' }} />
+      </Specimen>
+
+      <Specimen label="WallHeader · no section ([D15] none in this organisation, or not exactly one on your own wall): nothing in that slot">
+        <WallHeader user={{ name: OWNER.name, bio: OWNER.bio }} count={12} />
       </Specimen>
 
       <Specimen label="WallHeader · preview, filled">

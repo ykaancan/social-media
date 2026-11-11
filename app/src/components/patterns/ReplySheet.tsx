@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from '../../i18n';
 import { useTheme } from '../../theme';
-import { AnonymitySelector, type AnonymityLevel, type HintFields } from '../anonymity';
+import { allowedHintFields, AnonymitySelector, type AnonymityLevel, type HintFields } from '../anonymity';
 import { PostCard } from '../cards';
 import { Button } from '../core/Button';
 import { Icon } from '../core/Icon';
@@ -110,7 +110,10 @@ export function ReplySheet({
 
   const [text, setText] = useState('');
   const [level, setLevel] = useState<AnonymityLevel>(initialLevel);
-  const [hintFields, setHintFields] = useState<HintFields>(initialHintFields);
+  // [D15] Section and country hints only when the sender has a section in the
+  // organisation of the event the thread starts from.
+  const sectionHints = Boolean(me.section);
+  const [hintFields, setHintFields] = useState<HintFields>(() => allowedHintFields(initialHintFields, sectionHints));
 
   const [busy,setBusy]=useState(false), [error,setError]=useState(false), [warned,setWarned]=useState<string>();
   const running=useRef(false), draft=JSON.stringify([text.trim(),level,hintFields]);
@@ -168,6 +171,7 @@ export function ReplySheet({
           hintFields={hintFields}
           onHintFieldsChange={value=>{if(!running.current)setHintFields(value);}}
           me={me}
+          sectionHints={sectionHints}
         />
       </View>
 

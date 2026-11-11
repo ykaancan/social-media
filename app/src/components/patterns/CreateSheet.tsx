@@ -9,7 +9,10 @@ import { Input } from '../core/Input';
 import { Sheet } from '../core/Sheet';
 import { Tabs } from '../core/Tabs';
 import { Text } from '../core/Text';
+import { ChoiceRow } from './ChoiceRow';
+import { Group } from './Group';
 import { useMonthsShort } from './JoinSheet';
+import { PickerRow } from './PickerRow';
 
 /** event name — HANDOFF §4. */
 export const EVENT_NAME_MAX = 40;
@@ -24,7 +27,7 @@ export interface EventDraftInput {
   end: Date;
   cover: CoverName;
   mode: BoardMode;
-  /** The creator's own section, shown when `scope === 'section'`. */
+  /** The creator's own section, shown when `scope === 'section'`; the organisation's name for an organisation without sections. */
   mySection: string;
   /** Already-translated label for the national scope; defaults to i18n. */
   nationalLabel?: string;
@@ -109,22 +112,44 @@ export function buildEventDraft({
   };
 }
 
+/** An organisation this person may create an event in [D16]. */
+export interface CreateOrganisation {
+  id: string;
+  name: string;
+  /** [D15] Only then is the section / national choice shown. */
+  hasSections: boolean;
+  /** The creator's own section there, for the "My section" choice. */
+  section?: string;
+}
+
 export interface CreateSheetProps {
   busy?: boolean;
   error?: string;
   datePicker?: React.ReactNode;
-  me: { section: string };
+  /**
+   * [D16] The organisations whose membership has `canCreateEvents`. With one it
+   * is implied and shown read-only; with more the person picks one first.
+   */
+  organisations: CreateOrganisation[];
   start: Date;
   end: Date;
   /** The screen owns the date/time picker and passes the chosen date back down. */
   onPickStart: () => void;
   onPickEnd: () => void;
   onClose: () => void;
-  onCreate: (draft: EventDraft) => void;
+  /** `draft.scopeKind` is meaningful only when `organisation.hasSections` (P9). */
+  onCreate: (draft: EventDraft, organisation: CreateOrganisation) => void;
 }
 
 /**
- * Create an event: name, scope, dates, cover colour, board mode, preview.
+ * Create an event: organisation, name, scope, dates, cover colour, board mode,
+ * preview.
+ *
+ * [D13]/[D16] The organisation is asked for only when more than one may be
+ * created in, and is not pre-chosen then; with one it is a read-only line.
+ * [D15]/P9 The section / national choice appears only for an organisation with
+ * sections; without, the preview's scope line is the organisation's name, as
+ * the event card will show it.
  *
  * The web uses two `<input type="datetime-local">` controls, which have no RN
  * equivalent. Starts/Ends are therefore pressable fields styled like the
@@ -133,7 +158,7 @@ export interface CreateSheetProps {
  */
 export function CreateSheet({
   busy = false, error, datePicker,
-  me,
+  organisations,
   start,
   end,
   onPickStart,
@@ -150,18 +175,25 @@ export function CreateSheet({
   const [scope, setScope] = useState<EventScope>('section');
   const [cover, setCover] = useState<CoverName>('coral');
   const [mode, setMode] = useState<BoardMode>('approve_first');
+  const [organisationId, setOrganisationId] = useState<string | undefined>(undefined);
+  const [picking, setPicking] = useState(false);
+
+  const choosing = organisations.length > 1;
+  const organisation = choosing ? organisations.find((o) => o.id === organisationId) : organisations[0];
+  const withSections = Boolean(organisation?.hasSections);
+  const mySection = organisation?.section ?? '';
 
   const namedEnough = name.trim().length > 1;
-  const valid = namedEnough && end.getTime() > start.getTime();
+  const valid = namedEnough && end.getTime() > start.getTime() && Boolean(organisation);
 
   const draft = buildEventDraft({
     name,
-    scope,
+    scope: withSections ? scope : 'section',
     start,
     end,
     cover,
     mode,
-    mySection: me.section,
+    mySection: withSections ? mySection : organisation?.name ?? '',
     nationalLabel: t('events.national'),
     locale,
     placeholderName: t('events.name'),
@@ -188,8 +220,38 @@ export function CreateSheet({
     scope: draft.scope,
   };
 
+  if (picking) {
+    return (
+      <Sheet title={t('createFlow.organisation')} onClose={() => setPicking(false)} testID="create-organisation-sheet">
+        <Group>
+          {organisations.map((o) => (
+            <ChoiceRow
+              key={o.id}
+              label={o.name}
+              selected={o.id === organisation?.id}
+              onPress={() => {
+                setOrganisationId(o.id);
+                setPicking(false);
+              }}
+            />
+          ))}
+        </Group>
+      </Sheet>
+    );
+  }
+
   return (
     <Sheet title={t('events.createTitle')} onClose={busy ? undefined : onClose} style={styles.sheet} testID="create-sheet">
+      <PickerRow
+        label={t('createFlow.organisation')}
+        icon="Users"
+        value={organisation?.name}
+        placeholder={t('createFlow.pickOrganisation')}
+        locked={!choosing}
+        onPress={choosing && !busy ? () => setPicking(true) : undefined}
+        testID="create-organisation"
+      />
+
       <Input
         label={t('events.name')}
         placeholder={t('events.namePlaceholder')}
@@ -200,21 +262,23 @@ export function CreateSheet({
         testID="create-name"
       />
 
-      <View style={styles.block}>
-        <Text variant="captionCaps" upper color={colors.text2}>
-          {t('events.scope')}
-        </Text>
-        <Tabs
-          variant="segmented"
-          value={scope}
-          onChange={(id) => setScope(id as EventScope)}
-          items={[
-            { id: 'section', label: t('events.mySection', { name: me.section.replace('ESN ', '') }) },
-            { id: 'national', label: t('events.national') },
-          ]}
-          testID="create-scope"
-        />
-      </View>
+      {withSections ? (
+        <View style={styles.block}>
+          <Text variant="captionCaps" upper color={colors.text2}>
+            {t('events.scope')}
+          </Text>
+          <Tabs
+            variant="segmented"
+            value={scope}
+            onChange={(id) => setScope(id as EventScope)}
+            items={[
+              { id: 'section', label: t('events.mySection', { name: mySection.replace('ESN ', '') }) },
+              { id: 'national', label: t('events.national') },
+            ]}
+            testID="create-scope"
+          />
+        </View>
+      ) : null}
 
       <View style={styles.dates}>
         {(
@@ -323,7 +387,9 @@ export function CreateSheet({
         icon="Plus"
         disabled={!valid || busy}
         loading={busy}
-        onPress={() => onCreate(draft)}
+        onPress={() => {
+          if (organisation) onCreate(draft, organisation);
+        }}
         testID="create-submit"
       >
         {t('events.create')}

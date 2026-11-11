@@ -11,7 +11,7 @@ import java.util.UUID;
  * {@code thread_participant} and the display columns of {@code block}.
  *
  * <p>{@code senderSectionId} is the section the sender belonged to <em>when they
- * sent</em>. The section chip and the country chip are rendered from it, so a
+ * sent</em>, in the organisation of the event the content belongs to [D15]. The section chip and the country chip are rendered from it, so a
  * later section change [D7] never rewrites history and [D11] stays checkable:
  * the country is always that snapshot section's country.
  *
@@ -59,6 +59,13 @@ public class Anonymity {
      * two rules, unchanged. The booleans are forced false for {@code anonymous}
      * and {@code named}, so a stray {@code allowedHints} can never leak a chip the
      * sender did not pick.
+     *
+     * <p>[D15] {@code senderSectionId} is the sender's section in the organisation
+     * of the event the content belongs to ({@code MembershipSections}). When it is
+     * null — an organisation without sections, or no approved membership there — a
+     * {@code hint} asking for {@code section} or {@code country} is 422 on
+     * {@code allowedHints}: there is no section to show, and no country to read
+     * through one [D11]. {@code letter} alone is accepted.
      */
     public static Anonymity from(String rawLevel, AllowedHints hints, UUID senderSectionId) {
         return from(AnonymityLevel.ofWire(rawLevel), hints, senderSectionId);
@@ -74,6 +81,9 @@ public class Anonymity {
         }
         if (!allowed.any()) {
             throw ApiException.validation("select a hint", "allowedHints");
+        }
+        if (senderSectionId == null && (allowed.wantsSection() || allowed.wantsCountry())) {
+            throw ApiException.validation("section and country hints are not available here", "allowedHints");
         }
         return new Anonymity(level, allowed.wantsSection(), allowed.wantsCountry(),
                 allowed.wantsLetter(), senderSectionId);

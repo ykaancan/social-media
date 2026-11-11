@@ -18,6 +18,7 @@ import app.brand.message.MessageDtos.SourceDto;
 import app.brand.message.MessageDtos.WallMessageDto;
 import app.brand.message.MessageDtos.WallPersonDto;
 import app.brand.message.MessageDtos.WallSnapshotDto;
+import app.brand.organisation.MembershipSections;
 import app.brand.safety.BlockService;
 import app.brand.safety.ContentScreener;
 import app.brand.safety.ContentScreener.ScreeningResult;
@@ -82,6 +83,7 @@ public class MessageService {
     private final EventAccess access;
     private final SenderPresenter presenter;
     private final MeMapper meMapper;
+    private final MembershipSections membershipSections;
     private final BlockService blocks;
     private final RecipientPolicy recipients;
     private final RateLimiter rateLimiter;
@@ -97,6 +99,7 @@ public class MessageService {
                           EventAccess access,
                           SenderPresenter presenter,
                           MeMapper meMapper,
+                          MembershipSections membershipSections,
                           BlockService blocks,
                           RecipientPolicy recipients,
                           RateLimiter rateLimiter,
@@ -111,6 +114,7 @@ public class MessageService {
         this.access = access;
         this.presenter = presenter;
         this.meMapper = meMapper;
+        this.membershipSections = membershipSections;
         this.blocks = blocks;
         this.recipients = recipients;
         this.rateLimiter = rateLimiter;
@@ -153,7 +157,7 @@ public class MessageService {
      * 1 has no surface for (brief §6).
      *
      * <p>Everything that fails is 404: a board the viewer is not in, a person who
-     * is not on it, an account that is not approved. "Exists but not yours" must
+     * is not on it, an account that is not active. "Exists but not yours" must
      * not be distinguishable from "does not exist".
      */
     @Transactional(readOnly = true)
@@ -162,7 +166,7 @@ public class MessageService {
         UUID personId = Ids.orNotFound(rawPersonId, "no such wall");
 
         AppUser target = users.findById(personId).orElseThrow(() -> ApiException.notFound("no such wall"));
-        if (target.getStatus() != AccountStatus.APPROVED
+        if (target.getStatus() != AccountStatus.ACTIVE
                 || !members.existsByEventIdAndUserId(event.getId(), personId)) {
             throw ApiException.notFound("no such wall");
         }
@@ -179,7 +183,8 @@ public class MessageService {
                 target.getId().toString(),
                 target.getName(),
                 meMapper.avatarUrl(target.getAvatarKey()),
-                meMapper.toSectionRef(target.getSection()),
+                // [D15] Their section in this event's organisation; absent without sections.
+                meMapper.toSectionRef(membershipSections.sectionIn(event.getOrganisationId(), personId)),
                 target.getBio());
 
         return new WallSnapshotDto(person, dtos, dtos.size(), viewerId.equals(personId),
@@ -210,7 +215,7 @@ public class MessageService {
         if (request == null) {
             throw refused();
         }
-        AppUser sender = users.findById(senderId).orElseThrow(MessageService::refused);
+        users.findById(senderId).orElseThrow(MessageService::refused);
         UUID recipientId = Ids.orNull(request.recipientId());
         UUID eventId = Ids.orNull(request.eventId());
         if (recipientId == null || eventId == null || recipientId.equals(senderId)) {
@@ -218,7 +223,7 @@ public class MessageService {
         }
         AppUser recipient = users.findById(recipientId).orElseThrow(MessageService::refused);
         Event event = events.findById(eventId).orElseThrow(MessageService::refused);
-        if (recipient.getStatus() != AccountStatus.APPROVED
+        if (recipient.getStatus() != AccountStatus.ACTIVE
                 || !members.existsByEventIdAndUserId(event.getId(), senderId)
                 || !members.existsByEventIdAndUserId(event.getId(), recipientId)
                 || blocks.isBlocked(recipientId, senderId)) {
@@ -238,9 +243,11 @@ public class MessageService {
         if (text.isEmpty() || text.length() > InboxMessage.TEXT_MAX) {
             throw ApiException.validation("invalid message", "text");
         }
+        // [D15] The hint snapshot is the sender's membership section in this event's
+        // organisation — never another membership's, never the account's.
         Anonymity anonymity = Anonymity.from(request.anonymityLevel(),
                 AllowedHints.orNone(request.allowedHints()),
-                sender.getSection() == null ? null : sender.getSection().getId());
+                membershipSections.sectionIdIn(event.getOrganisationId(), senderId));
         // CLAUDE.md §5: per-sender rate limit on anonymous content. Named and hint
         // levels are untouched — the limit is about the surface nobody can be seen on.
         if (anonymity.level() == AnonymityLevel.ANONYMOUS) {

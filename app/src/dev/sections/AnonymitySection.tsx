@@ -79,6 +79,15 @@ export function AnonymitySection({ onLayout }: { onLayout?: (e: LayoutChangeEven
           me={{ name: me.name, section: me.section, country: me.country }}
         />
       </Specimen>
+
+      <Specimen label="AnonymitySelector · no section in this organisation [D15] (first letter only)">
+        <AnonymitySelector
+          value="hint"
+          hintFields={{ letter: true }}
+          sectionHints={false}
+          me={{ name: me.name }}
+        />
+      </Specimen>
     </GallerySection>
   );
 }

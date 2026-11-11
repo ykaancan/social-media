@@ -11,6 +11,7 @@ import app.brand.support.AbstractWebSocketIntegrationTest;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import java.lang.reflect.Type;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
@@ -53,6 +54,10 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
  * who gets told and who does not.
  */
 class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -136,7 +141,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("CONNECT with a valid access token opens a session")
     void connectWithAValidToken() throws Exception {
-        AppUser member = account(AccountStatus.APPROVED);
+        AppUser member = account(AccountStatus.ACTIVE);
 
         StompSession session = connect(bearer(member));
 
@@ -163,14 +168,26 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     }
 
     @Test
-    @DisplayName("CONNECT from a pending account is refused: pending cannot use the app yet")
-    void connectWhilePending() throws Exception {
-        AppUser waiting = account(AccountStatus.PENDING);
+    @DisplayName("CONNECT from an incomplete account is refused: it cannot use the app yet")
+    void connectWhileIncomplete() throws Exception {
+        AppUser incomplete = account(AccountStatus.INCOMPLETE);
 
-        assertThatThrownBy(() -> connectExpectingRefusal(bearer(waiting)))
+        assertThatThrownBy(() -> connectExpectingRefusal(bearer(incomplete)))
                 .isInstanceOf(ExecutionException.class)
                 .hasRootCauseInstanceOf(ConnectionLostException.class);
-        // Exactly what a forged token gets: an approval queue is not a probe.
+        // Exactly what a forged token gets: an account state is not a probe.
+        assertThat(refusal()).isEqualTo("unauthorized");
+    }
+
+    @Test
+    @DisplayName("[D18] CONNECT from an active account whose email is not confirmed is refused")
+    void connectWhileUnconfirmed() throws Exception {
+        AppUser unconfirmed = account(AccountStatus.ACTIVE);
+        jdbc.update("update app_user set email_confirmed_at = null where id = ?", unconfirmed.getId());
+
+        assertThatThrownBy(() -> connectExpectingRefusal(bearer(unconfirmed)))
+                .isInstanceOf(ExecutionException.class)
+                .hasRootCauseInstanceOf(ConnectionLostException.class);
         assertThat(refusal()).isEqualTo("unauthorized");
     }
 
@@ -179,7 +196,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("a member subscribed to the board topic is told when the board changes")
     void boardTopicReachesAMember() throws Exception {
-        AppUser member = account(AccountStatus.APPROVED);
+        AppUser member = account(AccountStatus.ACTIVE);
         UUID eventId = event(member);
         join(eventId, member);
 
@@ -192,8 +209,8 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("someone who is not a member of the board hears nothing from it")
     void boardTopicIgnoresAStranger() throws Exception {
-        AppUser member = account(AccountStatus.APPROVED);
-        AppUser stranger = account(AccountStatus.APPROVED);
+        AppUser member = account(AccountStatus.ACTIVE);
+        AppUser stranger = account(AccountStatus.ACTIVE);
         UUID eventId = event(member);
         join(eventId, member);
 
@@ -210,7 +227,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("a board id that does not exist is refused exactly like one you are not in")
     void boardTopicIgnoresAnUnknownEvent() throws Exception {
-        AppUser member = account(AccountStatus.APPROVED);
+        AppUser member = account(AccountStatus.ACTIVE);
         UUID nobodysEvent = UUID.randomUUID();
 
         BlockingQueue<String> frames = subscribe(connect(bearer(member)),
@@ -228,8 +245,8 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("the private board queue reaches only the people named in the event")
     void ownEventQueueIsPrivate() throws Exception {
-        AppUser sender = account(AccountStatus.APPROVED);
-        AppUser other = account(AccountStatus.APPROVED);
+        AppUser sender = account(AccountStatus.ACTIVE);
+        AppUser other = account(AccountStatus.ACTIVE);
         UUID eventId = event(sender);
         join(eventId, sender);
         join(eventId, other);
@@ -246,8 +263,8 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("the threads queue reaches each named person and nobody else")
     void threadsQueueIsPerUser() throws Exception {
-        AppUser participant = account(AccountStatus.APPROVED);
-        AppUser bystander = account(AccountStatus.APPROVED);
+        AppUser participant = account(AccountStatus.ACTIVE);
+        AppUser bystander = account(AccountStatus.ACTIVE);
 
         BlockingQueue<String> mine = subscribe(connect(bearer(participant)), "/user/queue/threads");
         BlockingQueue<String> theirs = subscribe(connect(bearer(bystander)), "/user/queue/threads");
@@ -261,7 +278,7 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
     @Test
     @DisplayName("a destination outside the three the app uses delivers nothing")
     void foreignDestinationsAreRefused() throws Exception {
-        AppUser member = account(AccountStatus.APPROVED);
+        AppUser member = account(AccountStatus.ACTIVE);
         UUID eventId = event(member);
         join(eventId, member);
 
@@ -361,18 +378,21 @@ class RealtimeIntegrationTest extends AbstractWebSocketIntegrationTest {
         AppUser user = AppUser.register(
                 "realtime-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName("Member " + UUID.randomUUID().toString().substring(0, 4));
-        user.setSection(anySection());
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), anySection().getId());
+        return saved;
     }
 
     /** Plain SQL: this suite is about frames, not about /events. */
     private UUID event(AppUser creator) {
         UUID id = UUID.randomUUID();
         Instant starts = Instant.now().minus(1, ChronoUnit.HOURS);
-        jdbc.update("insert into event (id, name, scope, section_id, starts_at, ends_at, cover, board_mode,"
-                        + " join_code, creator_id) values (?, ?, 'section', ?, ?, ?, 'azure', 'approve_first', ?, ?)",
-                id, "Realtime night", creator.getSection().getId(),
+        jdbc.update("insert into event (organisation_id, id, name, scope, section_id, starts_at, ends_at, cover, board_mode,"
+                        + " join_code, creator_id) values ((select id from organisation where name = 'ESN Türkiye'), ?, ?, 'section', ?, ?, ?, 'azure', 'approve_first', ?, ?)",
+                id, "Realtime night", anySection().getId(),
                 Timestamp.from(starts), Timestamp.from(starts.plus(4, ChronoUnit.HOURS)),
                 joinCode(), creator.getId());
         fixtureEvents.add(id);

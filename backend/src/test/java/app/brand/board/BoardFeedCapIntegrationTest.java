@@ -11,6 +11,7 @@ import app.brand.support.AbstractIntegrationTest;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -43,6 +44,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @TestPropertySource(properties = "brand.limits.board-feed=5")
 class BoardFeedCapIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     /** Must match the @TestPropertySource above. */
     private static final int CAP = 5;
@@ -80,9 +85,9 @@ class BoardFeedCapIntegrationTest extends AbstractIntegrationTest {
         AppUser member = approved(section, "Mert");
 
         UUID eventId = jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Long night', 'section', ?, ?, ?, 'coral', 'post_immediately', ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Long night', 'section', ?, ?, ?, 'coral', 'post_immediately', ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(base.minusSeconds(7200)),
@@ -129,10 +134,13 @@ class BoardFeedCapIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "feedcap-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null,
                 Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 
     private static String joinCode() {

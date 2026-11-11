@@ -7,26 +7,27 @@ import java.util.UUID;
 
 /**
  * Who is calling. Built fresh from the {@code app_user} row on every request, not
- * from claims in the token: an approval, a ban or a promotion must take effect at
- * once and not wait out the 15-minute access token.
+ * from claims in the token: an email confirmation, a ban or a promotion must take
+ * effect at once and not wait out the 15-minute access token.
  *
  * <p>{@code sessionId} is the one thing that does come from the token — the
  * {@code sid} claim, naming the refresh row this access token was issued beside,
  * so {@code POST /auth/logout} can end this session and not the person's other
  * devices. It is {@code null} for a token issued without one.
  */
-public record AppPrincipal(UUID id, Role role, AccountStatus status, UUID sessionId) {
+public record AppPrincipal(UUID id, Role role, AccountStatus status, boolean emailConfirmed, UUID sessionId) {
 
     public static AppPrincipal of(AppUser user) {
         return of(user, null);
     }
 
     public static AppPrincipal of(AppUser user, UUID sessionId) {
-        return new AppPrincipal(user.getId(), user.getRole(), user.getStatus(), sessionId);
+        return new AppPrincipal(user.getId(), user.getRole(), user.getStatus(), user.isEmailConfirmed(), sessionId);
     }
 
-    public boolean isApproved() {
-        return status == AccountStatus.APPROVED;
+    /** [D14] The account half of access; organisations decide the rest per membership. */
+    public boolean isActive() {
+        return status == AccountStatus.ACTIVE;
     }
 
     public boolean isSuperAdmin() {

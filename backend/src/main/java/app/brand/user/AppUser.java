@@ -1,15 +1,11 @@
 package app.brand.user;
 
-import app.brand.section.Section;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
@@ -21,6 +17,11 @@ import java.util.UUID;
  * <p>Deletion of this row is real deletion (KVKK), which is why almost every
  * foreign key pointing here is RESTRICT: the deletion service removes content in
  * a fixed order and the database refuses a half-done job.
+ *
+ * <p>[D15] The {@code section_id} column of {@code app_user} is not mapped: a
+ * section belongs to a membership ({@code organisation_member.section_id}), and
+ * nothing reads the account's section any more. The column stays in the database
+ * because migrations are never edited.
  */
 @Entity
 @Table(name = "app_user")
@@ -60,10 +61,6 @@ public class AppUser {
     @Column(name = "avatar_key")
     private String avatarKey;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "section_id")
-    private Section section;
-
     /** Invite chain — stage 2 uses it, the column exists from migration 1. */
     @Column(name = "inviter_id")
     private UUID inviterId;
@@ -83,10 +80,20 @@ public class AppUser {
     @Column(name = "banned_at")
     private Instant bannedAt;
 
+    /**
+     * [D18] Null until the confirmation link is opened. An account without it can
+     * reach only its status-independent routes ({@code ActiveAccountFilter}).
+     */
+    @Column(name = "email_confirmed_at")
+    private Instant emailConfirmedAt;
+
     protected AppUser() {
     }
 
-    /** A fresh registration: {@code incomplete} and {@code member}, always. */
+    /**
+     * A fresh registration: {@code incomplete}, {@code member} and, [D18], with the
+     * email not confirmed — always.
+     */
     public static AppUser register(String email, String passwordHash, String phone, Instant now) {
         AppUser user = new AppUser();
         user.email = email;
@@ -158,14 +165,6 @@ public class AppUser {
         this.avatarKey = avatarKey;
     }
 
-    public Section getSection() {
-        return section;
-    }
-
-    public void setSection(Section section) {
-        this.section = section;
-    }
-
     public UUID getInviterId() {
         return inviterId;
     }
@@ -204,5 +203,20 @@ public class AppUser {
 
     public void setBannedAt(Instant bannedAt) {
         this.bannedAt = bannedAt;
+    }
+
+    public Instant getEmailConfirmedAt() {
+        return emailConfirmedAt;
+    }
+
+    public boolean isEmailConfirmed() {
+        return emailConfirmedAt != null;
+    }
+
+    /** [D18] The first confirmation wins: a second one never moves the time. */
+    public void confirmEmail(Instant now) {
+        if (emailConfirmedAt == null) {
+            emailConfirmedAt = now;
+        }
     }
 }

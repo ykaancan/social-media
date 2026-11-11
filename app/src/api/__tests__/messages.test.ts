@@ -1,15 +1,14 @@
+import { memberAccount } from '../testing';
 import { HttpApi } from '../http';
 import { MockApi, type MockApiOptions } from '../mock';
 import type { SendWallMessage } from '../messages';
 
 async function setup(options: MockApiOptions = {}) {
   const api = new MockApi({ latencyMs: 0, approveAfterMs: 0, ...options });
-  const owner = await api.register({ email:'owner@example.com', password:'password123' });
-  await api.submitProfile({ name:'Owner', sectionId:'ankara' }); await api.me();
-  const event = await api.createEvent({ name:'Welcome night',scope:'section',cover:'coral',boardMode:'approve_first',
+  const owner=await memberAccount(api,'owner@example.com','ankara','Owner');
+  const event = await api.createEvent({organisationId:'esn-tr', name:'Welcome night',scope:'section',cover:'coral',boardMode:'approve_first',
     startsAt:new Date(Date.now()+3600000).toISOString(), endsAt:new Date(Date.now()+7200000).toISOString() });
-  const sender = await api.register({ email:'sender@example.com', password:'password123' });
-  await api.submitProfile({ name:'Şeyma Kaya',sectionId:'izmir' }); await api.me(); await api.joinEvent(event.joinCode);
+  const sender=await memberAccount(api,'sender@example.com','izmir','Şeyma Kaya'); await api.joinEvent(event.joinCode);
   const input: SendWallMessage = {eventId:event.id,recipientId:owner.me.id,text:'Thank you for welcoming everyone.',anonymityLevel:'anonymous',allowedHints:{}};
   return {api,owner,sender,event,input};
 }
@@ -89,8 +88,7 @@ it('refuses non-owner actions, wall discovery and named-only violations', async 
   await expect(api.deleteInboxMessage(id)).rejects.toMatchObject({status:404});
   await expect(api.blockMessage(id)).rejects.toMatchObject({status:404});
   await expect(api.reportMessage(id,'spam')).rejects.toMatchObject({status:404});
-  await api.register({email:'outside@example.com',password:'password123'});
-  await api.submitProfile({name:'Outsider',sectionId:'ankara'}); await api.me();
+  await memberAccount(api,'outside@example.com','ankara','Outsider');
   await expect(api.getWall(event.id,owner.me.id)).rejects.toMatchObject({status:404});
   await expect(api.sendWallMessage(input)).rejects.toMatchObject({status:403});
 });

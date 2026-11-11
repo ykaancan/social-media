@@ -17,9 +17,13 @@ import java.util.UUID;
  * A time-boxed board. There is no {@code status} column [B5]/[D4] — see
  * {@link EventStatus}.
  *
- * <p>{@code section} is always the creator's section at creation time [D11]: the
- * DTO shows it only when {@code scope = section}, but the country is read from it
- * either way, because country is not a field of its own anywhere in this product.
+ * <p>{@code section} is the creator's section <em>in the event's organisation</em>
+ * (their membership's section) at creation time [D11]/[D15]: the DTO shows it only
+ * when {@code scope = section}, but the country is read from it either way,
+ * because country is not a field of its own anywhere in this product.
+ *
+ * <p>TENANT_PLAN.md P9: in an organisation without sections an event has neither
+ * a section nor a scope, so both are optional.
  */
 @Entity
 @Table(name = "event")
@@ -33,13 +37,18 @@ public class Event {
     @Column(name = "name", nullable = false)
     private String name;
 
-    /** {@code section | national}. */
-    @Column(name = "scope", nullable = false)
+    /** {@code section | national}; null in an organisation without sections (P9). */
+    @Column(name = "scope")
     private String scope;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "section_id", nullable = false)
+    /** Null in an organisation without sections (P9). */
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    @JoinColumn(name = "section_id")
     private Section section;
+
+    /** [D13] The organisation that owns this event, named by the create request. */
+    @Column(name = "organisation_id", nullable = false, updatable = false)
+    private UUID organisationId;
 
     @Column(name = "starts_at", nullable = false)
     private Instant startsAt;
@@ -76,6 +85,7 @@ public class Event {
     public static Event create(String name,
                                String scope,
                                Section section,
+                               UUID organisationId,
                                Instant startsAt,
                                Instant endsAt,
                                String cover,
@@ -87,6 +97,7 @@ public class Event {
         event.name = name;
         event.scope = scope;
         event.section = section;
+        event.organisationId = organisationId;
         event.startsAt = startsAt;
         event.endsAt = endsAt;
         event.cover = cover;
@@ -111,6 +122,10 @@ public class Event {
 
     public Section getSection() {
         return section;
+    }
+
+    public UUID getOrganisationId() {
+        return organisationId;
     }
 
     public Instant getStartsAt() {

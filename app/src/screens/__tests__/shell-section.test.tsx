@@ -1,3 +1,4 @@
+import { memberAccount } from '../../api/testing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
@@ -64,28 +65,32 @@ async function mount(api: ApiClient) {
 }
 
 /**
- * Registers, sends a profile and lets the mock's demo admin approve it, which
- * is what puts the four-tab shell in the tree at all.
+ * Registers, opens the confirmation link [D18], sends a profile [D14] and gives
+ * the account an approved membership in ESN Türkiye with section Ankara [D15] —
+ * the shell plus the state every account had before T-3.
  */
 async function signInApproved(api: ApiClient) {
   const s = await mount(api);
+  const mock = api as MockApi;
 
   await waitFor(() => expect(s().phase).toBe('signedOut'));
   await act(async () => {
     await s().register({ email: 'deniz@example.com', password: 'sekizkarakter' });
+    mock.confirmEmail('deniz@example.com');
+    await s().refreshMe();
     await s().submitProfile({
       name: 'Deniz Aksoy',
-      sectionId: 'ankara',
       bio: 'Board member at ESN Ankara.',
     });
+    mock.addMember('esn-tr', 'deniz@example.com', 'ankara');
     await s().refreshMe();
   });
-  await waitFor(() => expect(s().me?.status).toBe('approved'));
+  await waitFor(() => expect(s().me?.status).toBe('active'));
 
   return s;
 }
 
-const approvedApi = () => new MockApi({ latencyMs: 0, approveAfterMs: 0 });
+const approvedApi = () => new MockApi({ latencyMs: 0 });
 
 it('opens a private board reply, sends, reveals and blocks through the real navigator',async()=>{
   const {api,eventId}=await openLiveBoardWithQueuedPost();
@@ -120,10 +125,9 @@ it('shows a real unread thread badge and clears it on opening the conversation',
   const api=approvedApi();await signInApproved(api);
   await waitFor(()=>expect(screen.getByTestId('events-empty')).toBeTruthy());
   await act(async()=>{
-    const event=await api.createEvent({name:'Thread test',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
+    const event=await api.createEvent({organisationId:'esn-tr',name:'Thread test',scope:'section',cover:'coral',boardMode:'post_immediately',startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});
     await api.sendBoardPost({eventId:event.id,text:'My original post',anonymityLevel:'anonymous',allowedHints:{}});
-    await api.register({email:'reply-member@example.com',password:'password123'});
-    await api.submitProfile({name:'Reply member',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+    await memberAccount(api,'reply-member@example.com','izmir','Reply member');await api.joinEvent(event.joinCode);
     await api.openThread({origin:{kind:'post',id:'post-1',eventId:event.id},text:'An incoming reply',anonymityLevel:'anonymous',allowedHints:{},requestId:'incoming'});
     await api.login({email:'deniz@example.com',password:'sekizkarakter'});
   });
@@ -160,11 +164,11 @@ it('saves privacy, muted words, notifications and section changes through Settin
   await waitFor(()=>expect(screen.getByRole('switch',{name:'Inbox'})).toBeTruthy());
   await fireEvent.press(screen.getByRole('switch',{name:'Inbox'}));
   await waitFor(()=>expect(screen.getByRole('switch',{name:'Inbox'}).props.accessibilityState.checked).toBe(false));
-  await fireEvent.press(screen.getByLabelText('Back'));await fireEvent.press(screen.getByText('My section'));
+  await fireEvent.press(screen.getByLabelText('Back'));await fireEvent.press(screen.getByTestId('settings-section-esn-tr'));
   await waitFor(()=>expect(screen.getByTestId('change-section')).toBeTruthy());await fireEvent.press(screen.getByTestId('change-section'));
-  await fireEvent.press(screen.getByTestId('section-bologna'));await fireEvent.press(screen.getByTestId('confirm-action'));
+  await fireEvent.press(screen.getByTestId('section-izmir'));await fireEvent.press(screen.getByTestId('confirm-action'));
   await waitFor(()=>expect(screen.queryByTestId('confirm-sheet')).toBeNull());
-  expect(session().me).toMatchObject({status:'approved',section:{id:'bologna',country:'Italy'}});
+  expect(session().me?.status).toBe('active');expect(session().me?.memberships.find(m=>m.organisation.id==='esn-tr')).toMatchObject({section:{id:'izmir',country:'Türkiye'}});
   await waitFor(()=>expect(screen.queryByTestId('change-section')).toBeNull());
 });
 
@@ -173,7 +177,7 @@ it('edits the approved profile and requires typed confirmation before real accou
   await fireEvent.press(screen.getByTestId('tab-profile'));await fireEvent.press(screen.getByTestId('profile-settings'));
   await waitFor(()=>expect(screen.getByText('Edit profile')).toBeTruthy());await fireEvent.press(screen.getByText('Edit profile'));
   await fireEvent.changeText(screen.getByTestId('profile-name'),'Deniz Updated');await fireEvent.press(screen.getByTestId('profile-submit'));
-  await waitFor(()=>expect(screen.queryByTestId('profile-setup')).toBeNull());expect(session().me).toMatchObject({name:'Deniz Updated',status:'approved'});
+  await waitFor(()=>expect(screen.queryByTestId('profile-setup')).toBeNull());expect(session().me).toMatchObject({name:'Deniz Updated',status:'active'});
   jest.spyOn(api,'deleteAccount').mockRejectedValueOnce(new ApiError('network','offline'));
   await fireEvent.press(screen.getByText('Delete account'));await fireEvent.press(screen.getByTestId('confirm-action'));
   expect(screen.getByTestId('confirm-action').props.accessibilityState.disabled).toBe(true);
@@ -243,9 +247,8 @@ describe('Events tab', () => {
 
   it('joins another member’s event and opens the joined detail', async () => {
     const api = approvedApi();
-    await api.register({ email: 'organizer@example.com', password: 'password123' });
-    await api.submitProfile({ name: 'Organizer', sectionId: 'izmir' }); await api.me();
-    const event = await api.createEvent({ name: 'İzmir meetup', scope: 'section', cover: 'azure', boardMode: 'approve_first',
+    await memberAccount(api,'organizer@example.com','izmir','Organizer');
+    const event = await api.createEvent({organisationId:'esn-tr', name: 'İzmir meetup', scope: 'section', cover: 'azure', boardMode: 'approve_first',
       startsAt: new Date(Date.now()+3600000).toISOString(), endsAt: new Date(Date.now()+7200000).toISOString() });
     await api.logout();
     await signInApproved(api);
@@ -375,7 +378,7 @@ describe('Section screen', () => {
       }
     }
 
-    await openSection(new WholeRoster({ latencyMs: 0, approveAfterMs: 0 }));
+    await openSection(new WholeRoster({ latencyMs: 0 }));
 
     await waitFor(() => expect(screen.getByTestId('section-roster')).toBeTruthy());
     expect(screen.getByText('2 members')).toBeTruthy();
@@ -395,7 +398,7 @@ describe('Section screen', () => {
       }
     }
 
-    await openSection(new FlakyApi({ latencyMs: 0, approveAfterMs: 0 }));
+    await openSection(new FlakyApi({ latencyMs: 0 }));
 
     await waitFor(() => expect(screen.getByTestId('section-error')).toBeTruthy());
     expect(
@@ -418,10 +421,9 @@ it('keeps the New badge, inbox filters and owner wall synchronized', async () =>
   const ownerId = session().me!.id;
   await waitFor(() => expect(screen.getByTestId('events-empty')).toBeTruthy());
   await act(async () => {
-    const event = await api.createEvent({name:'Message test',scope:'section',cover:'coral',boardMode:'approve_first',
+    const event = await api.createEvent({organisationId:'esn-tr',name:'Message test',scope:'section',cover:'coral',boardMode:'approve_first',
       startsAt:new Date(Date.now()+3600000).toISOString(),endsAt:new Date(Date.now()+7200000).toISOString()});
-    await api.register({email:'sender@example.com',password:'password123'});
-    await api.submitProfile({name:'Sender',sectionId:'izmir'}); await api.me(); await api.joinEvent(event.joinCode);
+    await memberAccount(api,'sender@example.com','izmir','Sender'); await api.joinEvent(event.joinCode);
     await api.sendWallMessage({eventId:event.id,recipientId:ownerId,text:'A real test message',anonymityLevel:'anonymous',allowedHints:{}});
     await api.login({email:'deniz@example.com',password:'sekizkarakter'});
   });
@@ -469,10 +471,9 @@ async function openLiveBoardWithQueuedPost() {
   await waitFor(()=>expect(screen.getByTestId('events-empty')).toBeTruthy());
   let eventId='';
   await act(async()=>{
-    const event=await api.createEvent({name:'Live board test',scope:'section',cover:'coral',boardMode:'approve_first',
+    const event=await api.createEvent({organisationId:'esn-tr',name:'Live board test',scope:'section',cover:'coral',boardMode:'approve_first',
       startsAt:new Date(Date.now()-60000).toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()});eventId=event.id;
-    await api.register({email:'board-member@example.com',password:'password123'});
-    await api.submitProfile({name:'Board member',sectionId:'izmir'});await api.me();await api.joinEvent(event.joinCode);
+    await memberAccount(api,'board-member@example.com','izmir','Board member');await api.joinEvent(event.joinCode);
     await api.sendBoardPost({eventId:event.id,text:'A queued room post',anonymityLevel:'anonymous',allowedHints:{}});
     await api.login({email:'deniz@example.com',password:'sekizkarakter'});
   });

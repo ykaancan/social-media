@@ -19,6 +19,7 @@ import app.brand.support.MutableClock;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -54,6 +55,10 @@ import org.springframework.test.web.servlet.ResultActions;
  */
 @RecordApplicationEvents
 class BoardIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String FIRE = "🔥";
     private static final String EYES = "👀";
@@ -958,9 +963,9 @@ class BoardIntegrationTest extends AbstractIntegrationTest {
     private UUID event(Section section, UUID creatorId, Instant startsAt, Instant endsAt,
                        String boardMode) {
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code, creator_id)
-                        values ('Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), 'Welcome night', 'section', ?, ?, ?, 'coral', ?, ?, ?)
                         returning id
                         """,
                 UUID.class, section.getId(), Timestamp.from(startsAt), Timestamp.from(endsAt),
@@ -984,10 +989,13 @@ class BoardIntegrationTest extends AbstractIntegrationTest {
     private AppUser approved(Section section, String name) {
         AppUser user = AppUser.register(
                 "board-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 
     private String bearer(AppUser user) {

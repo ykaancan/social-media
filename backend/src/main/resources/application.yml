@@ -82,12 +82,19 @@ brand:
   bootstrap-admin-email: ${BRAND_BOOTSTRAP_ADMIN_EMAIL:}
   media:
     dir: ${BRAND_MEDIA_DIR:./data/avatars}
-  # Used to build absolute avatar URLs and the password-reset link.
+  # Used to build absolute avatar URLs and the password-reset and confirmation links.
   public-base-url: ${BRAND_PUBLIC_BASE_URL:http://localhost:8080}
   mail:
     from: ${BRAND_MAIL_FROM:no-reply@localhost}
-    # false -> reset links are written to the log at INFO instead of being sent.
+    # false -> reset and email-confirmation links are written to the log at INFO
+    # instead of being sent.
     enabled: ${BRAND_MAIL_ENABLED:false}
+    # [D18] How long an email-confirmation link works (TENANT_PLAN.md P2).
+    confirmation-ttl: ${BRAND_MAIL_CONFIRMATION_TTL:24h}
+    # [D18] POST /auth/resend-confirmation sends a new link only when the newest
+    # one is at least this old (TENANT_PLAN.md P3); otherwise it does nothing and
+    # still answers 202.
+    confirmation-resend-interval: ${BRAND_MAIL_CONFIRMATION_RESEND_INTERVAL:60s}
   cors:
     # Expo dev server origins by default; the native app sends no Origin header.
     allowed-origins: ${BRAND_CORS_ALLOWED_ORIGINS:http://localhost:8081,http://localhost:19006}

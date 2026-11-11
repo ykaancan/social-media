@@ -14,6 +14,7 @@ import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
 import app.brand.user.Role;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
@@ -24,14 +25,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * Brief §4.9 — the admin queue, and the rule that only a {@code super_admin}
- * reaches it. Every decision is checked for its audit row as well as its effect:
+ * Brief §4.9 — the admin account list, and the rule that only a {@code super_admin}
+ * reaches it. [D14] Account approve and reject are gone; ban and promote stay. Every decision is checked for its audit row as well as its effect:
  * an unaudited ban is a bug, not a detail.
  */
 class AdminApiIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -45,6 +51,9 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private AdminBootstrap bootstrap;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
     /* ------------------------------------------------------------- access */
 
     @Test
@@ -56,9 +65,9 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("an approved member is 403 forbidden, not 404")
+    @DisplayName("an active member is 403 forbidden, not 404")
     void memberIsForbidden() throws Exception {
-        Account member = account(AccountStatus.APPROVED);
+        Account member = account(AccountStatus.ACTIVE);
 
         mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(member)))
                 .andExpect(status().isForbidden())
@@ -73,56 +82,59 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     @Test
-    @DisplayName("a super_admin whose account is back to pending is 403 as well")
-    void pendingAdminLosesTheQueue() throws Exception {
+    @DisplayName("a super_admin whose account is incomplete, or whose email is unconfirmed, is 403 as well")
+    void inactiveAdminLosesTheQueue() throws Exception {
         Account admin = admin();
-        setStatus(admin.id, AccountStatus.PENDING);
+        setStatus(admin.id, AccountStatus.INCOMPLETE);
 
-        mockMvc.perform(post("/admin/api/users/" + UUID.randomUUID() + "/approve")
+        mockMvc.perform(post("/admin/api/users/" + UUID.randomUUID() + "/ban")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("account_not_active"));
 
-        setStatus(admin.id, AccountStatus.REJECTED);
+        setStatus(admin.id, AccountStatus.ACTIVE);
+        jdbc.update("update app_user set email_confirmed_at = null where id = ?", admin.id);
         mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("email_unconfirmed"));
     }
 
     /* --------------------------------------------------------------- list */
 
     @Test
-    @DisplayName("the list defaults to pending, oldest submission first, with the identity fields")
-    void listsPendingOldestFirst() throws Exception {
+    @DisplayName("the list defaults to every account, newest first, with the identity fields")
+    void listsEveryAccountNewestFirst() throws Exception {
         Account admin = admin();
         Section section = sections.findAll().get(0);
 
-        Instant base = Instant.parse("2026-01-01T00:00:00Z");
-        Account older = pending(section, base, "Older Person", "first bio");
-        Account newer = pending(section, base.plusSeconds(3600), "Newer Person", "second bio");
+        Account older = active(section, Instant.parse("2026-01-01T00:00:00Z"), "Older Person", "first bio");
+        Account newer = active(section, Instant.parse("2026-01-01T01:00:00Z"), "Newer Person", "second bio");
 
         MvcResult result = mockMvc.perform(get("/admin/api/users")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isOk())
                 .andReturn();
 
+        // Ordered by created_at: `newer` registered after `older`.
         List<String> ids = idsOf(result);
         assertThat(ids).contains(older.id.toString(), newer.id.toString());
-        assertThat(ids.indexOf(older.id.toString())).isLessThan(ids.indexOf(newer.id.toString()));
+        assertThat(ids.indexOf(newer.id.toString())).isLessThan(ids.indexOf(older.id.toString()));
 
         JsonNode row = rowFor(result, older.id);
         assertThat(row.get("email").asText()).isEqualTo(older.email);
         assertThat(row.get("phone").asText()).isEqualTo("+90 555 000 0000");
         assertThat(row.get("name").asText()).isEqualTo("Older Person");
         assertThat(row.get("bio").asText()).isEqualTo("first bio");
-        assertThat(row.get("status").asText()).isEqualTo("pending");
+        assertThat(row.get("status").asText()).isEqualTo("active");
         assertThat(row.get("role").asText()).isEqualTo("member");
         assertThat(row.get("submittedAt").asText()).startsWith("2026-01-01");
-        // [D11] country rides on the section and is never a field of its own.
-        assertThat(row.get("section").get("name").asText()).isEqualTo(section.getName());
-        assertThat(row.get("section").get("country").asText()).isEqualTo(section.getCountry().getName());
+        // [D15] The account has no section (the person has one through a membership),
+        // and [D11] there is never a country field of its own.
+        assertThat(row.has("section")).isFalse();
         assertThat(row.has("country")).isFalse();
         // Optional fields are absent, never null, as everywhere else in the API.
         assertThat(row.has("avatarUrl")).isFalse();
@@ -136,7 +148,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("status=all lists every account and an unknown status is 422")
     void listFilters() throws Exception {
         Account admin = admin();
-        Account member = account(AccountStatus.APPROVED);
+        Account member = account(AccountStatus.ACTIVE);
 
         MvcResult all = mockMvc.perform(get("/admin/api/users?status=all")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
@@ -144,24 +156,27 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
         assertThat(idsOf(all)).contains(member.id.toString(), admin.id.toString());
 
-        MvcResult approved = mockMvc.perform(get("/admin/api/users?status=approved")
+        MvcResult active = mockMvc.perform(get("/admin/api/users?status=active")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isOk())
                 .andReturn();
-        assertThat(idsOf(approved)).contains(member.id.toString());
+        assertThat(idsOf(active)).contains(member.id.toString());
 
-        mockMvc.perform(get("/admin/api/users?status=nonsense")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("validation"))
-                .andExpect(jsonPath("$.field").value("status"));
+        // [D14] the approval statuses are no longer account statuses.
+        for (String unknown : List.of("nonsense", "pending", "approved", "rejected")) {
+            mockMvc.perform(get("/admin/api/users?status=" + unknown)
+                            .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.code").value("validation"))
+                    .andExpect(jsonPath("$.field").value("status"));
+        }
     }
 
     @Test
     @DisplayName("one account by id, and 404 for an id that is not an account")
     void readsOneAccount() throws Exception {
         Account admin = admin();
-        Account member = account(AccountStatus.APPROVED);
+        Account member = account(AccountStatus.ACTIVE);
 
         mockMvc.perform(get("/admin/api/users/" + member.id)
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
@@ -175,73 +190,13 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("not_found"));
     }
 
-    /* ------------------------------------------------------------ approve */
-
-    @Test
-    @DisplayName("approve stamps approved_at/approved_by and writes an audit row")
-    void approvesPendingAccount() throws Exception {
-        Account admin = admin();
-        Account waiting = pending(sections.findAll().get(0), Instant.parse("2026-02-01T00:00:00Z"),
-                "Waiting Person", "hello");
-
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/approve")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("approved"))
-                .andExpect(jsonPath("$.approvedAt").isNotEmpty());
-
-        AppUser stored = users.findById(waiting.id).orElseThrow();
-        assertThat(stored.getStatus()).isEqualTo(AccountStatus.APPROVED);
-        assertThat(stored.getApprovedBy()).isEqualTo(admin.id);
-        assertAudited(waiting.id, "approve_user", admin.id);
-
-        // Approving twice is a conflict, not a second audit row.
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/approve")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("conflict"));
-        assertThat(auditLog.findBySubjectUserIdAndActionOrderByCreatedAtDesc(waiting.id, "approve_user"))
-                .hasSize(1);
-    }
-
-    /* ------------------------------------------------------------- reject */
-
-    @Test
-    @DisplayName("reject moves a pending account to rejected and is audited")
-    void rejectsPendingAccount() throws Exception {
-        Account admin = admin();
-        Account waiting = pending(sections.findAll().get(0), Instant.parse("2026-02-02T00:00:00Z"),
-                "Rejected Person", null);
-
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/reject")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("rejected"));
-
-        assertThat(users.findById(waiting.id).orElseThrow().getStatus())
-                .isEqualTo(AccountStatus.REJECTED);
-        assertAudited(waiting.id, "reject_user", admin.id);
-    }
-
-    @Test
-    @DisplayName("rejecting an account that is not pending is 409")
-    void rejectNeedsPending() throws Exception {
-        Account admin = admin();
-        Account member = account(AccountStatus.APPROVED);
-
-        mockMvc.perform(post("/admin/api/users/" + member.id + "/reject")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("conflict"));
-    }
-
     /* ---------------------------------------------------------------- ban */
 
     @Test
     @DisplayName("ban revokes every refresh token; the account can neither refresh nor be banned twice")
     void banEndsTheSession() throws Exception {
         Account admin = admin();
-        Account member = account(AccountStatus.APPROVED);
+        Account member = account(AccountStatus.ACTIVE);
 
         mockMvc.perform(post("/admin/api/users/" + member.id + "/ban")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
@@ -270,7 +225,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("a banned account still reads its own status, so the app can say why")
     void bannedAccountStillReadsMe() throws Exception {
         Account admin = admin();
-        Account member = account(AccountStatus.APPROVED);
+        Account member = account(AccountStatus.ACTIVE);
 
         mockMvc.perform(post("/admin/api/users/" + member.id + "/ban")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
@@ -293,7 +248,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("conflict"));
 
         assertThat(users.findById(second.id).orElseThrow().getStatus())
-                .isEqualTo(AccountStatus.APPROVED);
+                .isEqualTo(AccountStatus.ACTIVE);
         // Including themselves: the founder cannot be locked out by a mis-tap either.
         mockMvc.perform(post("/admin/api/users/" + first.id + "/ban")
                         .header(HttpHeaders.AUTHORIZATION, bearer(first)))
@@ -314,35 +269,32 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     /* ------------------------------------------------------------ promote */
 
     @Test
-    @DisplayName("promote makes an approved member a super_admin; a pending one is 409")
-    void promotesApprovedMember() throws Exception {
+    @DisplayName("promote makes an active account a super_admin; an incomplete one is 409")
+    void promotesActiveAccount() throws Exception {
         Account admin = admin();
-        Account waiting = pending(sections.findAll().get(0), Instant.parse("2026-03-01T00:00:00Z"),
-                "Future Admin", null);
+        Account future = account(AccountStatus.INCOMPLETE);
 
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/promote")
+        mockMvc.perform(post("/admin/api/users/" + future.id + "/promote")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("conflict"));
 
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/approve")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
-                .andExpect(status().isOk());
+        setStatus(future.id, AccountStatus.ACTIVE);
 
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/promote")
+        mockMvc.perform(post("/admin/api/users/" + future.id + "/promote")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("super_admin"));
 
-        assertThat(users.findById(waiting.id).orElseThrow().getRole()).isEqualTo(Role.SUPER_ADMIN);
-        assertAudited(waiting.id, "promote_admin", admin.id);
+        assertThat(users.findById(future.id).orElseThrow().getRole()).isEqualTo(Role.SUPER_ADMIN);
+        assertAudited(future.id, "promote_admin", admin.id);
 
-        // The role is data: the newly promoted account reaches the queue at once.
+        // The role is data: the newly promoted account reaches the admin API at once.
         mockMvc.perform(get("/admin/api/users")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(waiting)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(future)))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/admin/api/users/" + waiting.id + "/promote")
+        mockMvc.perform(post("/admin/api/users/" + future.id + "/promote")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
                 .andExpect(status().isConflict());
     }
@@ -373,7 +325,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         // The page is the exemption; the API behind it is not.
         mockMvc.perform(get("/admin/api/users").header(HttpHeaders.AUTHORIZATION, bearer(banned)))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* ------------------------------------------------------------ helpers */
@@ -385,7 +337,10 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
         return "Bearer " + account.accessToken;
     }
 
-    /** Registers a real account through the API, then puts it in the state under test. */
+    /**
+     * Registers a real account through the API, marks its email confirmed [D18] so
+     * the filter judges the status alone, then puts it in the state under test.
+     */
     private Account account(AccountStatus status) throws Exception {
         String email = "admin-test-" + UUID.randomUUID() + "@example.com";
         MvcResult result = mockMvc.perform(post("/auth/register")
@@ -399,6 +354,7 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         UUID id = UUID.fromString(body.get("me").get("id").asText());
+        jdbc.update("update app_user set email_confirmed_at = now() where id = ?", id);
         if (status != AccountStatus.INCOMPLETE) {
             setStatus(id, status);
         }
@@ -408,18 +364,18 @@ class AdminApiIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A registration waiting in the queue, as {@code PUT /me/profile} leaves it.
+     * An account whose profile was sent, as {@code PUT /me/profile} leaves it.
      * Written directly so this suite does not depend on that endpoint's own rules.
      */
-    private Account pending(Section section, Instant submittedAt, String name, String bio) throws Exception {
+    private Account active(Section section, Instant submittedAt, String name, String bio) throws Exception {
         Account created = account(AccountStatus.INCOMPLETE);
         AppUser user = users.findById(created.id).orElseThrow();
         user.setName(name);
         user.setBio(bio);
-        user.setSection(sections.findById(section.getId()).orElseThrow());
         user.setSubmittedAt(submittedAt);
-        user.setStatus(AccountStatus.PENDING);
+        user.setStatus(AccountStatus.ACTIVE);
         users.save(user);
+        testMemberships.approvedInEsn(created.id, section.getId());
         return created;
     }
 

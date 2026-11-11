@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useApi, type AllowedHints, type MessageLevel, type WallSnapshot } from '../api';
+import { sectionIn, useApi, type AllowedHints, type MessageLevel, type WallSnapshot } from '../api';
+import { useEventOrganisation } from '../events/useEventOrganisation';
 import { Composer, LoadState, Sheet, useToast } from '../components';
 import { useSession } from '../session';
 import { useTranslation } from '../i18n';
@@ -10,6 +11,7 @@ interface Choice { level: MessageLevel; hints: AllowedHints }
 export function WallComposer({ wall, eventId, onClose }: { wall: WallSnapshot; eventId: string; onClose: () => void }) {
   const api = useApi(), { me } = useSession(), toast = useToast(), { t } = useTranslation();
   const [choice, setChoice] = useState<Choice | null>(null);
+  const organisation = useEventOrganisation(eventId);
   const key = `anonymity.${me!.id}` as const;
   useEffect(() => {
     let active = true;
@@ -26,9 +28,13 @@ export function WallComposer({ wall, eventId, onClose }: { wall: WallSnapshot; e
     });
     return () => { active = false; };
   }, [key]);
-  if (!choice) return <Sheet onClose={onClose}><LoadState onRetry={() => undefined} /></Sheet>;
-  return <Composer me={{ name: me!.name!, avatar: me!.avatarUrl, section: me!.section!.name, country: me!.section!.country }}
-    wallOwner={{ id: wall.person.id, name: wall.person.name, section: wall.person.section.name, avatar: wall.person.avatarUrl }}
+  if (!choice || !organisation.ready) return <Sheet onClose={onClose}><LoadState onRetry={() => undefined} /></Sheet>;
+  // [D15] The hint section is the sender's section in the organisation of the
+  // event the wall was opened from. The wall snapshot does not name it, so the
+  // event is read once; if that fails, no section or country hint is offered.
+  const mine = sectionIn(me, organisation.organisationId);
+  return <Composer me={{ name: me!.name!, avatar: me!.avatarUrl, section: mine?.name, country: mine?.country }}
+    wallOwner={{ id: wall.person.id, name: wall.person.name, section: wall.person.section?.name, avatar: wall.person.avatarUrl }}
     initialLevel={choice.level} initialHintFields={choice.hints} namedOnly={wall.writingPolicy === 'named_only'}
     onLevelChange={(level, hints) => { void setPref(key, JSON.stringify({ level, hints })); }}
     onScreen={text => api.screenMessage(text)} onClose={onClose} onSend={async payload => {

@@ -225,6 +225,8 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "avatar-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
         user.setStatus(status);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         return users.saveAndFlush(user);
     }
 

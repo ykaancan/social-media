@@ -2,7 +2,6 @@ package app.brand.admin;
 
 import app.brand.user.AccountStatus;
 import app.brand.user.Role;
-import app.brand.user.SectionRefDto;
 import java.time.Instant;
 
 /**
@@ -13,6 +12,9 @@ import java.time.Instant;
  * asks the super admin to decide whether a registration is a real person. Nothing
  * here reveals the identity behind a piece of anonymous content — that is the
  * reports queue in step B-5, and it writes an {@code identity_view} audit row.
+ *
+ * <p>[D15] No {@code section}: a section belongs to a membership in one
+ * organisation, not to the account.
  */
 public record AdminUserDto(
         String id,
@@ -21,7 +23,6 @@ public record AdminUserDto(
         String name,
         String bio,
         String avatarUrl,
-        SectionRefDto section,
         AccountStatus status,
         Role role,
         Instant createdAt,

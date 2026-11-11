@@ -246,3 +246,144 @@ Items 1–3 and 13–14 from the review triage are untouched here and still need
 - **1–3** (component library scope, the bottom navigation, whether stage 1 shows the hatched locked-card shell) block step 1 and are the ones I actually need before the next session.
 - **13–14** (the pre-send screening warning, "hide post") aren't decisions — they're two brief requirements nobody designed. They need design before steps 4 and 6 respectively.
 - **Projector behaviour** (`HANDOFF.md` §7 AA) is a genuine design gap on the screen the brief calls the "aha" moment.
+
+---
+---
+
+# Decisions 13–20 — organisations (2026-11-09)
+
+**Status: decided by Kaan on 2026-11-09, folded into `CLAUDE.md` as [D13]–[D20], implemented 2026-11-09 to 2026-11-11.** The build plan, the API contract and the acceptance tests are in [`TENANT_PLAN.md`](TENANT_PLAN.md).
+
+These do not come from the design prototype. They come from a change of direction: the product should serve any organiser (a student network, a bar, a club, a festival), not one network with one admin. The numbers 13 and 14 used in "What this leaves open" above refer to an older review triage, not to these decisions.
+
+| # | Question | Decision |
+|---|---|---|
+| 13 | Who owns an event? | An organisation. We create each organisation ourselves when onboarding a client |
+| 14 | Who is approved, and by whom? | The membership, per organisation, by that organisation's admins. The account itself is never approved |
+| 15 | Where does the section live? | On the membership. Sections belong to one organisation and are optional |
+| 16 | Who can create an event? | A per-organisation switch: admins only, or any approved member |
+| 17 | How does a person enter an organisation? | Through an event join code. After approval they are joined to that event automatically |
+| 18 | Is the email address confirmed? | Yes, by a link at sign-up |
+| 19 | What can an organisation admin do? | Approve and reject their own members. Reports, identity views and bans stay with the super admin |
+| 20 | Is there model screening? | No. Keyword screening only |
+
+---
+
+## 13. Organisations own events
+
+**Before:** an event belonged to its creator's section (`event.section_id`, not null), and every account lived in one network.
+
+### Decision: add `organisation`. Every event and every section belongs to one.
+
+A super admin creates the organisation and assigns its admins from the admin page. There is no self-service sign-up for organisers and no billing flow.
+
+**Why:** a bar or a festival has no sections and no national level, so an event cannot be hung on a section. Creating organisations ourselves keeps the first version small and means every organiser is someone we have spoken to.
+
+**Consequences:** `event.organisation_id` (not null); `event.section_id` and `event.scope` become nullable for organisations without sections; `section.organisation_id` (not null). Existing rows move into one organisation, "ESN Türkiye".
+
+**Flip it if:** organisers start arriving faster than we can create them by hand. Then self-service creation is a separate step with its own abuse rules.
+
+---
+
+## 14. Approval is per organisation, on the membership
+
+**Before:** `app_user.status` carried `pending / approved / rejected`, one filter refused every member route to a non-approved account, and one super admin approved everybody.
+
+### Decision: `organisation_member.status` carries approval. `organisation.approval_required` switches it on or off.
+
+Account status shrinks to `incomplete / active / banned`. Where approval is on, the organisation's own admins approve or reject. A rejected person may ask again, which returns the membership to `pending` — the same rule a rejected account had.
+
+**Why:** a student network wants to know who its members are; a bar on a Saturday night cannot approve people at the door. One global gate cannot serve both.
+
+**Consequences:** the access filter checks `active` instead of `approved`; the membership check happens at event join, and every board, wall and people route already requires event membership. The approval push names the organisation.
+
+**Flip it if:** open organisations produce abuse that block and report cannot contain. Then the lever is the verified badge and a "verified only" writing setting, not a return to global approval.
+
+---
+
+## 15. The section lives on the membership
+
+**Before:** `app_user.section_id`, required at profile setup.
+
+### Decision: `organisation_member.section_id`. Sections are optional per organisation (`organisation.has_sections`).
+
+The `sender_section_id` snapshot on content is taken from the sender's membership in the organisation of the event the content was written in. Every inbox message and board post is written from an event (`MessageService.deliver` refuses a message without one), so there is always exactly one organisation to read it from. In an organisation without sections the `section` and `country` hints are not offered; `first letter` is.
+
+Display: inside an event, a person's "section · country" line comes from their membership in that event's organisation. On your own Profile tab it shows only if you have exactly one membership with a section.
+
+**Why:** a section belongs to one organisation, so a person in two organisations with sections has two. Keeping it on the account would force a bar-goer to pick a student section, or leave the hint unverifiable — and [D11] requires the country hint to be checkable.
+
+**Consequences:** profile setup loses the section picker; [D7] section change and its 30-day limit become per organisation (`section_change.organisation_id`); section lists stay readable by any active account (the picker needs them before a membership exists), rosters only by approved members of that organisation.
+
+**Flip it if:** nobody is ever in two organisations with sections. It would still not be worth moving back.
+
+---
+
+## 16. Who can create an event
+
+**Before:** any approved account.
+
+### Decision: `organisation.event_creation` is `admins` or `members`.
+
+"ESN Türkiye" is migrated as `members`, which is today's behaviour. A bar is created as `admins`.
+
+**Why:** in a student network any volunteer may run a local event; in a bar only the bar should.
+
+**Flip it if:** an organisation needs a middle group (named organisers who are not admins). That would be a third membership role, not a third switch value.
+
+---
+
+## 17. Entering an organisation through an event code
+
+### Decision: no organisation search or directory. A join code of one of its events is the only way in.
+
+- Approval off: the membership is created `approved` and the event is joined in the same request.
+- Approval on: the person picks a section (if the organisation has sections), the membership is created `pending` and stores the event the request came from. Approval joins them to that event automatically.
+
+**Why:** the event is the reason the person is there, and the code is already in their hand. It also means an organisation cannot be probed for or browsed, which matches the existing rule that an event you are not in looks like an event that does not exist.
+
+**Consequences:** the first people in a new organisation are the admins we assign; they create its first event.
+
+**Flip it if:** organisations want members before their first event exists. Then an organisation-level join code is the smallest addition.
+
+---
+
+## 18. Email confirmation at sign-up
+
+**Before:** the address was never confirmed. Any string that looked like an email could register.
+
+### Decision: a confirmation link. An unconfirmed account can reach only its own `/me`, the auth routes and the resend route.
+
+It reuses the password-reset mail path: SMTP when `brand.mail.enabled` is true, the link in the log when it is false.
+
+**Why:** in an open organisation, block is the main protection and it works per account. An account that costs nothing to create makes a block last one minute.
+
+**Consequences:** outgoing mail must be configured before any deployment where sign-up is open. Existing development accounts are marked confirmed by the migration so they keep working.
+
+**Flip it if:** confirmation visibly costs sign-ups at the door of an event. Then confirm lazily (let the person in, require confirmation before the first anonymous post) rather than drop it.
+
+---
+
+## 19. What an organisation admin can do
+
+### Decision: approve and reject people asking to enter their own organisation. Nothing else.
+
+Reports, sender identity views, hiding by report, warnings and bans stay with `super_admin`, and identity views stay audit-logged.
+
+**Why:** a report shows who wrote an anonymous message. The product's promise is that only the platform ever sees that. A bar owner reading who wrote what about whom in their own bar is exactly the case that promise exists for.
+
+**Flip it if:** report volume outgrows one person. Then add trusted platform moderators with the `super_admin` role (already possible without code changes), not organisation admins.
+
+---
+
+## 20. Keyword screening only
+
+**Before:** "Keyword + model screening" in the brief; only keyword screening was ever built.
+
+### Decision: no model screening. The keyword hard-block and soft-flag lists stay.
+
+**Why:** a model check on every message is a running cost, and Kaan's position is that block and report are the answer to unwanted messages.
+
+**Not verified:** whether Apple's and Google's review rules for apps with anonymous user content are satisfied by keyword filtering, reporting and blocking alone. Check before store submission.
+
+**Flip it if:** store review requires more, or abuse at a real event shows the keyword list is not enough.

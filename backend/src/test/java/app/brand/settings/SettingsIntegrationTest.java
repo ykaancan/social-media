@@ -21,6 +21,7 @@ import app.brand.support.MutableClock;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -56,6 +57,10 @@ import org.springframework.test.web.servlet.MvcResult;
  */
 @RecordApplicationEvents
 class SettingsIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     @Autowired
     private AppUserRepository users;
@@ -95,7 +100,7 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     /* ------------------------------------------------------- GET /me/settings */
 
     @Test
-    @DisplayName("a fresh account reads the defaults, and sectionChangeAvailableAt is a literal null")
+    @DisplayName("a fresh account reads the defaults, with no sectionChangeAvailableAt [D15]")
     void defaults() throws Exception {
         AppUser me = account();
 
@@ -109,25 +114,23 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.notifications.boardMentions").value(true))
                 .andReturn();
 
-        // `string | null` in settings.ts, not an optional key: the field has to be
-        // in the body even though Jackson's global inclusion is non_null.
+        // [D7]/[D15] The next-change date is per organisation and lives on each
+        // membership in Me.memberships, not in the settings.
         assertThat(result.getResponse().getContentAsString())
-                .contains("\"sectionChangeAvailableAt\":null");
+                .doesNotContain("sectionChangeAvailableAt");
     }
 
     @Test
-    @DisplayName("sectionChangeAvailableAt is the last section change plus 30 days [D7]")
-    void sectionChangeCooldown() throws Exception {
+    @DisplayName("after a section change the settings still carry no sectionChangeAvailableAt [D15]")
+    void sectionChangeCooldownIsNotInSettings() throws Exception {
         AppUser me = account();
         Instant changedAt = Instant.parse("2026-03-01T12:00:00Z");
-        // Frozen well past the cooldown: the field is the cooldown's end, not a
-        // countdown, and it keeps its value once the 30 days have run out.
-        clock.freezeAt(changedAt.plus(90, ChronoUnit.DAYS));
+        clock.freezeAt(changedAt.plus(1, ChronoUnit.DAYS));
         sectionChange(me, changedAt);
 
         mockMvc.perform(get("/me/settings").header(HttpHeaders.AUTHORIZATION, bearer(me)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.sectionChangeAvailableAt").value("2026-03-31T12:00:00Z"));
+                .andExpect(jsonPath("$.sectionChangeAvailableAt").doesNotExist());
     }
 
     /* ----------------------------------------------------- PATCH /me/settings */
@@ -392,8 +395,9 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
 
         blocks.block(me.getId(), other.getId(), Anonymity.from(
                 AnonymityLevel.HINT, new AllowedHints(true, false, false), before.getId()));
-        other.setSection(after);
-        users.saveAndFlush(other);
+        // [D15] The section moves on the membership; the block's snapshot stays.
+        jdbc.update("update organisation_member set section_id = ? where user_id = ? and organisation_id = ?",
+                after.getId(), other.getId(), testMemberships.esnTurkiye());
 
         mockMvc.perform(get("/me/blocks").header(HttpHeaders.AUTHORIZATION, bearer(me)))
                 .andExpect(status().isOk())
@@ -466,25 +470,25 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     /* --------------------------------------------------------------- access */
 
     @Test
-    @DisplayName("a pending account gets 403 approval_required on all four routes")
-    void pendingIsRefused() throws Exception {
-        AppUser pending = account();
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
-        String token = bearer(pending);
+    @DisplayName("an incomplete account gets 403 account_not_active on all four routes")
+    void incompleteIsRefused() throws Exception {
+        AppUser incomplete = account();
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
+        String token = bearer(incomplete);
 
         mockMvc.perform(get("/me/settings").header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
-        mockMvc.perform(patchRequest(pending, Map.of("writingPolicy", "nobody")))
+                .andExpect(jsonPath("$.code").value("account_not_active"));
+        mockMvc.perform(patchRequest(incomplete, Map.of("writingPolicy", "nobody")))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
         mockMvc.perform(get("/me/blocks").header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
         mockMvc.perform(delete("/me/blocks/" + UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* -------------------------------------------------------------- helpers */
@@ -530,11 +534,11 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void sectionChange(AppUser me, Instant changedAt) {
-        Section to = me.getSection();
+        Section to = anySection();
         jdbc.update("""
-                insert into section_change (user_id, from_section_id, to_section_id, changed_at)
-                values (?, ?, ?, ?)
-                """, me.getId(), to.getId(), to.getId(), java.sql.Timestamp.from(changedAt));
+                insert into section_change (user_id, organisation_id, from_section_id, to_section_id, changed_at)
+                values (?, (select organisation_id from section where id = ?), ?, ?, ?)
+                """, me.getId(), to.getId(), to.getId(), to.getId(), java.sql.Timestamp.from(changedAt));
     }
 
     /** A message that is already in the inbox — nothing a later muted word may touch. */
@@ -553,10 +557,14 @@ class SettingsIntegrationTest extends AbstractIntegrationTest {
     private AppUser account(Section section, String name) {
         AppUser user = AppUser.register(
                 "settings-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null, Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
         AppUser saved = users.saveAndFlush(user);
+        if (section != null) {
+            testMemberships.approvedInEsn(saved.getId(), section.getId());
+        }
         created.add(saved.getId());
         return saved;
     }

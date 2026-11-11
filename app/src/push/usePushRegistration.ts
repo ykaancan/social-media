@@ -12,7 +12,7 @@ import { useSession } from '../session';
  *
  * No push copy is rendered in the app — the OS draws the notification and the
  * server writes the words, in the language this call reports. So this hook has
- * exactly one job: while an approved session is on screen, make sure the current
+ * exactly one job: while an active, confirmed session is on screen, make sure the current
  * Expo push token is registered to it; when that session ends, try to take it
  * back.
  *
@@ -32,7 +32,8 @@ import { useSession } from '../session';
 export function usePushRegistration(): void {
   const api = useApi();
   const { phase, me, onBeforeLogout } = useSession();
-  const approved = phase === 'signedIn' && me?.status === 'approved';
+  // [D14]/[D18] An active account with a confirmed email: the server refuses `PUT /me/devices` to anything else.
+  const approved = phase === 'signedIn' && me?.status === 'active' && me.emailConfirmed;
   const accountId = me?.id;
 
   /** The token we last registered, so sign-out has something to unregister. */

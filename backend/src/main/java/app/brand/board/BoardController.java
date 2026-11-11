@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The board routes, exactly as {@code http.ts} calls them. Approved members only
- * — {@code ApprovedMemberFilter} answers 403 {@code approval_required} before any
- * of this runs, so nothing here checks a status.
+ * The board routes, exactly as {@code http.ts} calls them. Confirmed, active
+ * accounts only — {@code ActiveAccountFilter} answers 403 before any of this
+ * runs, so nothing here checks a status.
  *
  * <p>Three status codes carry meaning the client acts on: <b>404</b> for a board
  * the caller is not a member of (never 403 — "exists but not yours" must not

@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React, { type ReactNode } from 'react';
-import { ApiProvider } from '../../api';
+import { ApiError, ApiProvider } from '../../api';
 import { MockApi } from '../../api/mock';
 import { SessionProvider, useSession } from '../SessionProvider';
 import { clearTokens, loadTokens } from '../storage';
 
 /**
  * The session, driven through `MockApi`. No navigator is mounted: routing is a
- * pure function of `phase` + `me.status`, so testing the state is testing the
+ * pure function of `phase` + `me.status` + `me.emailConfirmed`, so testing the state is testing the
  * routing.
  */
 
@@ -35,7 +35,7 @@ test('boots signed out when there are no stored tokens', async () => {
   expect(result.current.bootError).toBeNull();
 });
 
-test('register signs in with an incomplete account and stores the tokens', async () => {
+test('register signs in with an incomplete, unconfirmed account and stores the tokens', async () => {
   const { result } = await mount(new MockApi({ latencyMs: 0 }));
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
 
@@ -45,12 +45,13 @@ test('register signs in with an incomplete account and stores the tokens', async
 
   expect(result.current.phase).toBe('signedIn');
   expect(result.current.me?.status).toBe('incomplete');
-  // Nothing is known about the person yet, and no country was invented [D11].
+  // [D18] The link is sent; nothing is confirmed until it is opened.
+  expect(result.current.me?.emailConfirmed).toBe(false);
+  // Nothing is known about the person yet, and no organisation was invented.
   expect(result.current.me?.name).toBeUndefined();
-  expect(result.current.me?.section).toBeUndefined();
+  expect(result.current.me?.memberships).toEqual([]);
   expect(await loadTokens()).not.toBeNull();
 });
-
 test('a second account on the same email is refused, case-insensitively', async () => {
   const { result } = await mount(new MockApi({ latencyMs: 0 }));
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
@@ -78,39 +79,70 @@ test('login rejects a wrong password with invalid_credentials', async () => {
   ).rejects.toMatchObject({ code: 'invalid_credentials' });
 });
 
-test('submitProfile moves the account to pending and fills the section', async () => {
+test('[D18] the profile cannot be sent before the email is confirmed', async () => {
   const { result } = await mount(new MockApi({ latencyMs: 0 }));
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
-
   await act(async () => {
     await result.current.register(credentials);
-    await result.current.submitProfile({ name: 'Deniz Aksoy', sectionId: 'ankara', bio: 'ESN Ankara' });
   });
-
-  expect(result.current.me?.status).toBe('pending');
-  expect(result.current.me?.name).toBe('Deniz Aksoy');
-  // [D11] the country is only reachable through the section.
-  expect(result.current.me?.section).toEqual({ id: 'ankara', name: 'ESN Ankara', country: 'Türkiye' });
+  await expect(result.current.submitProfile({ name: 'Deniz Aksoy' })).rejects.toMatchObject({ code: 'email_unconfirmed', status: 403 });
+  expect(result.current.me?.status).toBe('incomplete');
 });
 
-test('refreshMe sees the approval once the demo admin has acted', async () => {
-  const { result } = await mount(new MockApi({ latencyMs: 0, approveAfterMs: 10 }));
+test('[D14] submitProfile makes the account active, with no section and no membership', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  const { result } = await mount(api);
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
 
   await act(async () => {
     await result.current.register(credentials);
-    await result.current.submitProfile({ name: 'Deniz Aksoy', sectionId: 'ankara' });
-  });
-  expect(result.current.me?.status).toBe('pending');
-
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    await result.current.refreshMe();
+    api.confirmEmail(credentials.email);
+    await result.current.submitProfile({ name: 'Deniz Aksoy', bio: 'ESN Ankara' });
   });
 
-  expect(result.current.me?.status).toBe('approved');
+  expect(result.current.me?.status).toBe('active');
+  expect(result.current.me?.name).toBe('Deniz Aksoy');
+  // [D15] The section is not part of the account any more.
+  expect(result.current.me).not.toHaveProperty('section');
+  expect(result.current.me?.memberships).toEqual([]);
 });
 
+test('refreshMe sees the confirmation once the demo has opened the link', async () => {
+  const { result } = await mount(new MockApi({ latencyMs: 0, confirmAfterMs: 10 }));
+  await waitFor(() => expect(result.current.phase).toBe('signedOut'));
+
+  await act(async () => {
+    await result.current.register(credentials);
+  });
+  expect(result.current.me?.emailConfirmed).toBe(false);
+
+  let read: Awaited<ReturnType<typeof result.current.refreshMe>>;
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    read = await result.current.refreshMe();
+  });
+
+  expect(result.current.me?.emailConfirmed).toBe(true);
+  expect(read!).toMatchObject({ emailConfirmed: true });
+});
+
+test('refreshMe swallows a network failure unless asked to throw it', async () => {
+  const api = new MockApi({ latencyMs: 0 });
+  const { result } = await mount(api);
+  await waitFor(() => expect(result.current.phase).toBe('signedOut'));
+  await act(async () => {
+    await result.current.register(credentials);
+  });
+  const me = jest.spyOn(api, 'me').mockRejectedValue(new ApiError('network', 'offline'));
+  try {
+    await expect(result.current.refreshMe()).resolves.toBeUndefined();
+    await expect(result.current.refreshMe({ throwOnNetwork: true })).rejects.toMatchObject({ code: 'network' });
+    // The session is kept either way.
+    expect(result.current.phase).toBe('signedIn');
+  } finally {
+    me.mockRestore();
+  }
+});
 test('logout clears the stored tokens', async () => {
   const { result } = await mount(new MockApi({ latencyMs: 0 }));
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
@@ -150,14 +182,17 @@ test('the viewer is counted in their own section, once', async () => {
   const { result } = await mount(api);
   await waitFor(() => expect(result.current.phase).toBe('signedOut'));
 
-  const before = (await api.getSection('ankara')).memberCount;
-
   await act(async () => {
     await result.current.register(credentials);
+    api.confirmEmail(credentials.email);
     // A name that is not already in the seeded roster, so "the viewer is first"
     // is not confused with "the seed happens to start with them".
-    await result.current.submitProfile({ name: 'Zehra Ak', sectionId: 'ankara' });
+    await result.current.submitProfile({ name: 'Zehra Ak' });
   });
+
+  const before = (await api.listOrganisationSections('esn-tr')).find((s) => s.id === 'ankara')!.memberCount;
+  // [D15] The person is counted once their membership with that section is approved.
+  api.addMember('esn-tr', credentials.email, 'ankara');
 
   const after = await api.getSection('ankara');
   expect(after.memberCount).toBe(before + 1);

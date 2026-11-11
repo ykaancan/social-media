@@ -1,12 +1,11 @@
+import { memberAccount } from '../testing';
 import { MockApi } from '../mock';
 import { HttpApi } from '../http';
 
 /** An approved account, which is the only kind that may register a device. */
 async function approved() {
   const api = new MockApi({ latencyMs: 0, approveAfterMs: 0 });
-  await api.register({ email: 'owner@example.com', password: 'password123' });
-  await api.submitProfile({ name: 'Owner', sectionId: 'ankara' });
-  await api.me();
+  await memberAccount(api,'owner@example.com','ankara','Owner');
   return api;
 }
 

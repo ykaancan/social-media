@@ -20,9 +20,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The thread routes, exactly as {@code http.ts} calls them. Approved members only
- * — {@code ApprovedMemberFilter} answers 403 {@code approval_required} before any
- * of this runs, so nothing here checks a status.
+ * The thread routes, exactly as {@code http.ts} calls them. Confirmed, active
+ * accounts only — {@code ActiveAccountFilter} answers 403 before any of this
+ * runs, so nothing here checks a status.
  *
  * <p>{@code /me/threads} is the caller's own list; everything else acts on one
  * thread by id, and a thread that is not theirs is 404 on every one of them.

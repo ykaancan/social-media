@@ -3,9 +3,12 @@ import { buildEventDraft } from '../components/patterns/CreateSheet';
 import type { Locale } from '../i18n';
 
 export function eventCard(event: EventSummary, locale: Locale, nationalLabel: string) {
-  const draft = buildEventDraft({ name: event.name, scope: event.scope, start: new Date(event.startsAt),
+  // [D15]/P9 An event of an organisation without sections has no scope and no
+  // country; its scope line is the organisation's name.
+  const draft = buildEventDraft({ name: event.name, scope: event.scope ?? 'section', start: new Date(event.startsAt),
     end: new Date(event.endsAt), cover: event.cover, mode: event.boardMode,
-    mySection: event.section?.name ?? '', nationalLabel: `${nationalLabel} · ${event.country}`, locale });
+    mySection: event.scope ? event.section?.name ?? '' : event.organisation.name,
+    nationalLabel: event.country ? `${nationalLabel} · ${event.country}` : nationalLabel, locale });
   return { ...draft, status: event.status, memberCount: event.memberCount, postCount: event.postCount };
 }
 

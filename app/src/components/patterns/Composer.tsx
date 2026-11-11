@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from '../../i18n';
 import { useTheme } from '../../theme';
-import { AnonymitySelector, type HintFields } from '../anonymity';
+import { allowedHintFields, AnonymitySelector, type HintFields } from '../anonymity';
 import type { AnonymityLevel } from '../anonymity/AnonymityBadge';
 import { PostCard } from '../cards';
 import { Avatar } from '../core/Avatar';
@@ -83,7 +83,10 @@ export function Composer({
   const [target, setTarget] = useState<ComposerTarget>(wallOwner ? 'person' : 'room');
   const [person, setPerson] = useState<PickerPerson | undefined>(wallOwner);
   const [level, setLevel] = useState<AnonymityLevel>(initialLevel);
-  const [hintFields, setHintFields] = useState<HintFields>(initialHintFields);
+  // [D15] Section and country hints only when the sender has a section in this
+  // event's organisation; a remembered choice that had them keeps the rest.
+  const sectionHints = Boolean(me.section);
+  const [hintFields, setHintFields] = useState<HintFields>(() => allowedHintFields(initialHintFields, sectionHints));
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
@@ -231,6 +234,7 @@ export function Composer({
           hintFields={hintFields}
           onHintFieldsChange={changeHintFields}
           me={me}
+          sectionHints={sectionHints}
         />
       </View>
 

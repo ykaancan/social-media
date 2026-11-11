@@ -20,6 +20,7 @@ import app.brand.support.RecordingPushSender;
 import app.brand.user.AccountStatus;
 import app.brand.user.AppUser;
 import app.brand.user.AppUserRepository;
+import app.brand.support.TestMemberships;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -54,6 +55,10 @@ import org.springframework.test.web.servlet.ResultActions;
  * produce this notification" a question with one answer.
  */
 class PushIntegrationTest extends AbstractIntegrationTest {
+
+    /** [D15] People get their section through an approved ESN Türkiye membership. */
+    @Autowired
+    private TestMemberships testMemberships;
 
     private static final String TOKEN = "ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]";
     private static final String OTHER_TOKEN = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]";
@@ -187,15 +192,15 @@ class PushIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("device registration is a member route: a pending account is refused")
-    void registrationRequiresApproval() throws Exception {
-        AppUser pending = approved("Mert");
-        pending.setStatus(AccountStatus.PENDING);
-        users.saveAndFlush(pending);
+    @DisplayName("device registration is a member route: an incomplete account is refused")
+    void registrationRequiresAnActiveAccount() throws Exception {
+        AppUser incomplete = approved("Mert");
+        incomplete.setStatus(AccountStatus.INCOMPLETE);
+        users.saveAndFlush(incomplete);
 
-        register(pending, TOKEN, "ios", "en")
+        register(incomplete, TOKEN, "ios", "en")
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("approval_required"));
+                .andExpect(jsonPath("$.code").value("account_not_active"));
     }
 
     /* ------------------------------------------------------------- the outbox */
@@ -207,7 +212,7 @@ class PushIntegrationTest extends AbstractIntegrationTest {
         UUID eventId = event("Welcome night");
 
         publisher.publishEvent(new InboxMessageDelivered(UUID.randomUUID(), owner.getId(), eventId, false));
-        publisher.publishEvent(new AccountApproved(owner.getId()));
+        publisher.publishEvent(new AccountApproved(owner.getId(), "ESN Türkiye"));
 
         assertThat(outbox.findAll()).isEmpty();
     }
@@ -274,7 +279,7 @@ class PushIntegrationTest extends AbstractIntegrationTest {
         clock.freezeAt(base.plusSeconds(30));
         register(owner, OTHER_TOKEN, "android", "tr").andExpect(status().isNoContent());
 
-        publisher.publishEvent(new AccountApproved(owner.getId()));
+        publisher.publishEvent(new AccountApproved(owner.getId(), "ESN Türkiye"));
 
         assertThat(only(owner).getLocale()).isEqualTo("tr");
     }
@@ -343,13 +348,13 @@ class PushIntegrationTest extends AbstractIntegrationTest {
         settings(owner, false, false, false);
         UUID reportId = UUID.randomUUID();
 
-        publisher.publishEvent(new AccountApproved(owner.getId()));
+        publisher.publishEvent(new AccountApproved(owner.getId(), "ESN Türkiye"));
         publisher.publishEvent(new UserWarned(owner.getId(), reportId));
 
         List<PushOutbox> rows = outbox.findByUserIdOrderByCreatedAtAsc(owner.getId());
         assertThat(rows).extracting(PushOutbox::getKind).containsExactly("account_approved", "warned");
         assertThat(bodyOf(rows.get(0)))
-                .isEqualTo("Your account has been approved. Open the app to get started.");
+                .isEqualTo("ESN Türkiye accepted you as a member. Open the app to get started.");
         assertThat(objectMapper.readTree(rows.get(1).getPayload()).get("data").get("reportId").asText())
                 .isEqualTo(reportId.toString());
     }
@@ -428,7 +433,7 @@ class PushIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(devices.findByPushToken(TOKEN)).isEmpty();
         // And the next enqueue for this account has nowhere to go, so it writes nothing.
-        publisher.publishEvent(new AccountApproved(owner.getId()));
+        publisher.publishEvent(new AccountApproved(owner.getId(), "ESN Türkiye"));
         assertThat(outbox.findByUserIdOrderByCreatedAtAsc(owner.getId())).hasSize(1);
     }
 
@@ -441,7 +446,7 @@ class PushIntegrationTest extends AbstractIntegrationTest {
                 UUID.randomUUID(), owner.getId(), event("Welcome night"), false));
         housekeeping.drain();
 
-        publisher.publishEvent(new AccountApproved(owner.getId()));
+        publisher.publishEvent(new AccountApproved(owner.getId(), "ESN Türkiye"));
         sender.failEverythingWith("still down");
         housekeeping.drain();
 
@@ -493,10 +498,13 @@ class PushIntegrationTest extends AbstractIntegrationTest {
         AppUser user = AppUser.register(
                 "push-" + UUID.randomUUID() + "@example.com", "$2a$12$notarealhash", null,
                 Instant.now());
-        user.setStatus(AccountStatus.APPROVED);
+        user.setStatus(AccountStatus.ACTIVE);
+        // [D18] Confirmed, so the access filter judges the status alone.
+        user.confirmEmail(Instant.now());
         user.setName(name);
-        user.setSection(section);
-        return users.saveAndFlush(user);
+        AppUser saved = users.saveAndFlush(user);
+        testMemberships.approvedInEsn(saved.getId(), section.getId());
+        return saved;
     }
 
     private UUID event(String name) {
@@ -504,9 +512,9 @@ class PushIntegrationTest extends AbstractIntegrationTest {
                 .min(java.util.Comparator.comparing(Section::getName))
                 .orElseThrow();
         return jdbc.queryForObject("""
-                        insert into event (name, scope, section_id, starts_at, ends_at, cover,
+                        insert into event (organisation_id, name, scope, section_id, starts_at, ends_at, cover,
                                            board_mode, join_code)
-                        values (?, 'section', ?, ?, ?, 'coral', 'approve_first', ?)
+                        values ((select id from organisation where name = 'ESN Türkiye'), ?, 'section', ?, ?, ?, 'coral', 'approve_first', ?)
                         returning id
                         """,
                 UUID.class, name, section.getId(), Timestamp.from(base.minusSeconds(3600)),

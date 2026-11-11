@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -32,6 +33,10 @@ export interface ScreenProps {
   contentStyle?: StyleProp<ViewStyle>;
   /** Lift the body above the keyboard. iOS only — Android's adjustResize already does it. */
   keyboard?: boolean;
+  /** Pull-to-refresh on the scrolling body. Only drawn when `onRefresh` is given. */
+  onRefresh?: () => void;
+  /** True while the pull-to-refresh spinner should show. */
+  refreshing?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -51,6 +56,8 @@ export function Screen({
   bottom,
   contentStyle,
   keyboard = false,
+  onRefresh,
+  refreshing = false,
   style,
   testID,
 }: ScreenProps) {
@@ -73,6 +80,7 @@ export function Screen({
       style={styles.fill}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
+      refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.text2} colors={[colors.text2]} /> : undefined}
     >
       {body}
     </ScrollView>

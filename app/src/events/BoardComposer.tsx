@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useApi, type BoardSnapshot, type BoardPost, type AllowedHints, type MessageLevel } from '../api';
+import { sectionIn, useApi, type BoardSnapshot, type BoardPost, type AllowedHints, type MessageLevel } from '../api';
 import { Composer, LoadState, Sheet, useToast } from '../components';
 import { getPref, setPref } from '../prefs';
 import { useSession } from '../session';
@@ -19,8 +19,10 @@ export function BoardComposer({ board, rewrite, onClose }: { board: BoardSnapsho
     if(active) setChoice(next);
   }); return ()=>{active=false;};},[key,rewrite]);
   if(!choice) return <Sheet onClose={onClose}><LoadState onRetry={()=>undefined}/></Sheet>;
-  return <Composer me={{name:me!.name!,avatar:me!.avatarUrl,section:me!.section!.name,country:me!.section!.country}}
-    members={board.event.people.filter(p=>p.id!==me!.id).map(p=>({id:p.id,name:p.name,avatar:p.avatarUrl,section:p.section.name}))}
+  // [D15] The hint section is the sender's section in this event's organisation.
+  const mine=sectionIn(me,board.event.organisation.id);
+  return <Composer me={{name:me!.name!,avatar:me!.avatarUrl,section:mine?.name,country:mine?.country}}
+    members={board.event.people.filter(p=>p.id!==me!.id).map(p=>({id:p.id,name:p.name,avatar:p.avatarUrl,section:p.section?.name}))}
     initialText={rewrite?.text} initialLevel={choice.level} initialHintFields={choice.hints}
     boardMode={board.event.boardMode} isModerator={board.event.isModerator} onClose={onClose}
     onLevelChange={(level,hints)=>{void setPref(key,JSON.stringify({level,hints}));}}

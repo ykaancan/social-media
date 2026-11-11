@@ -18,9 +18,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Settings and the blocked list (brief §4.8). Approved accounts only — these are
- * not onboarding routes, so {@code ApprovedMemberFilter} answers a pending caller
- * with {@code 403 approval_required} before anything here runs.
+ * Settings and the blocked list (brief §4.8). Confirmed, active accounts only —
+ * these are not onboarding routes, so {@code ActiveAccountFilter} answers any
+ * other caller with a 403 before anything here runs.
  *
  * <p>The export and account deletion are {@code user/AccountController}: they are
  * about the account itself rather than its preferences, and deletion has to be
@@ -48,16 +48,19 @@ public class SettingsController {
     }
 
     /**
-     * [D7] Change your own section: logged, once per 30 days, no re-approval.
-     * [D11] It is a country change too, and the returned {@code Me} shows both.
+     * [D7]/[D15] Change your own section in one organisation: logged, once per 30
+     * days per organisation, no re-approval. [D11] It is a country change too, and
+     * the returned {@code Me} shows both on that membership.
      */
-    @PutMapping("/me/section")
+    @PutMapping("/me/memberships/{organisationId}/section")
     public MeDto changeSection(@CurrentUser AppPrincipal principal,
+                               @PathVariable String organisationId,
                                @RequestBody(required = false) SectionChangeRequest request) {
-        return settings.changeSection(principal.id(), request == null ? null : request.sectionId());
+        return settings.changeSection(principal.id(), organisationId,
+                request == null ? null : request.sectionId());
     }
 
-    /** {@code PUT /me/section {sectionId}}. */
+    /** {@code PUT /me/memberships/{organisationId}/section {sectionId}}. */
     public record SectionChangeRequest(String sectionId) {
     }
 

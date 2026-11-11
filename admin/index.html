@@ -13,9 +13,17 @@
   not grow a design system: /design is the app's, and nothing here is shared with
   it.
 
-  Four tabs: Users, Reports, Flagged, Screening terms.
+  Two kinds of admin sign in here, decided from GET /me after sign-in:
+    * A super admin (account role super_admin) gets five tabs: Users, Reports,
+      Flagged, Screening terms, Organisations. From an organisation they open its
+      member queue.
+    * [D14]/[D19] An organisation admin (account role member, with an approved
+      membership whose role is admin) gets only the member queue of those
+      organisations. The tabs are hidden and never loaded, so the page makes no
+      request to a route that would answer 403. P7: the member queue shows no
+      email and no phone, to anyone - the route does not return them.
 
-  Two rules this page keeps and never bends:
+  Three rules this page keeps and never bends:
     * The sender of reported content is shown as the members see them. The admin
       has to press "Show sender" to see who it is, and the notice next to that
       button says, before anything is fetched, that the view is written to the
@@ -23,6 +31,8 @@
       accident - never on render, never on a row click.
     * [D6]/[D12] Copy never says "removed". Hiding a post or a message hides it;
       the row survives, for a second report and for a KVKK question.
+    * Every value from the server is put on the page with textContent (or as an
+      img src), never as HTML: names and bios are written by members.
 -->
 <style>
   :root { color-scheme: light dark; }
@@ -61,6 +71,12 @@
   .bubble.mine { margin-left: auto; background: rgba(128,128,128,.28); }
   .bubble .who { font-size: 12px; opacity: .7; }
   form.inline { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+  form.stack { max-width: 420px; display: grid; gap: 12px; margin: 12px 0 16px; }
+  form.stack input, form.stack select { width: 100%; box-sizing: border-box; }
+  .fielderror { color: #b00020; font-size: 12px; margin: 4px 0 0; }
+  .fielderror:empty { display: none; }
+  .note { font-size: 12px; opacity: .7; margin: 4px 0 0; }
+  h2.spaced { margin-top: 24px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -90,11 +106,13 @@
     <button type="button" id="logout">Log out</button>
   </div>
 
-  <nav class="tabs" role="tablist">
+  <!-- Super admin only. Hidden for an organisation admin [D19]. -->
+  <nav class="tabs" role="tablist" id="tabs" hidden>
     <button type="button" role="tab" data-tab="users" aria-selected="true">Users</button>
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
     <button type="button" role="tab" data-tab="flagged" aria-selected="false">Flagged</button>
     <button type="button" role="tab" data-tab="terms" aria-selected="false">Screening terms</button>
+    <button type="button" role="tab" data-tab="organisations" aria-selected="false">Organisations</button>
   </nav>
 
   <p class="error" id="error"></p>
@@ -106,9 +124,7 @@
       <div>
         <label for="filter">Status</label>
         <select id="filter">
-          <option value="pending" selected>Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
+          <option value="active" selected>Active</option>
           <option value="banned">Banned</option>
           <option value="incomplete">Incomplete</option>
           <option value="all">All</option>
@@ -124,7 +140,7 @@
     <table>
       <thead>
         <tr>
-          <th>Photo</th><th>Name</th><th>Section</th><th>Bio</th>
+          <th>Photo</th><th>Name</th><th>Bio</th>
           <th>Email</th><th>Phone</th><th>Submitted</th><th>Status</th><th></th>
         </tr>
       </thead>
@@ -221,6 +237,157 @@
     </table>
     </div>
   </div>
+
+  <!-- ---------------------------------------------------- organisations -->
+  <!-- [D13] Super admin only. -->
+  <div id="tab-organisations" hidden>
+    <div class="row">
+      <button type="button" id="orgReload">Reload</button>
+    </div>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th><th>Approval</th><th>Sections</th><th>Who creates events</th>
+          <th>Created</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="orgRows"></tbody>
+    </table>
+    </div>
+
+    <div class="panel" id="orgPanel" hidden>
+      <div class="row">
+        <h2 id="orgPanelTitle"></h2>
+        <span class="spacer"></span>
+        <button type="button" id="orgPanelMembers">Member queue</button>
+        <button type="button" id="orgPanelClose">Close</button>
+      </div>
+      <div id="orgPanelFacts"></div>
+
+      <h2>Change</h2>
+      <form class="stack" id="orgEditForm">
+        <div>
+          <label for="orgEditName">Name</label>
+          <input id="orgEditName" minlength="2" maxlength="40" required>
+          <p class="fielderror" id="orgEditName-error"></p>
+        </div>
+        <div>
+          <label for="orgEditApproval">Approval</label>
+          <select id="orgEditApproval">
+            <option value="true">On - an admin approves each new member</option>
+            <option value="false">Off - people enter at once</option>
+          </select>
+          <p class="fielderror" id="orgEditApproval-error"></p>
+        </div>
+        <div>
+          <label for="orgEditCreation">Who creates events</label>
+          <select id="orgEditCreation">
+            <option value="admins">Organisation admins only</option>
+            <option value="members">Any approved member</option>
+          </select>
+          <p class="fielderror" id="orgEditCreation-error"></p>
+        </div>
+        <div><button type="submit" id="orgEditSave">Save changes</button></div>
+      </form>
+
+      <h2>Assign an admin</h2>
+      <form class="stack" id="adminForm">
+        <div>
+          <label for="adminEmail">Email</label>
+          <input id="adminEmail" type="email" required>
+          <p class="note">The email of an existing account whose email is confirmed.</p>
+          <p class="fielderror" id="adminEmail-error"></p>
+        </div>
+        <div id="adminSectionField">
+          <label for="adminSection">Section</label>
+          <select id="adminSection"></select>
+          <p class="note">Used only if this person is not a member of this organisation yet. A new member needs a section.</p>
+          <p class="fielderror" id="adminSection-error"></p>
+        </div>
+        <div><button type="submit" id="adminAssign">Assign admin</button></div>
+      </form>
+    </div>
+
+    <h2 class="spaced">New organisation</h2>
+    <form class="stack" id="orgForm">
+      <div>
+        <label for="orgName">Name</label>
+        <input id="orgName" minlength="2" maxlength="40" required>
+        <p class="note">2 to 40 characters.</p>
+        <p class="fielderror" id="orgName-error"></p>
+      </div>
+      <div>
+        <label for="orgApproval">Approval</label>
+        <select id="orgApproval" required>
+          <option value="" selected>Choose...</option>
+          <option value="true">On - an admin approves each new member</option>
+          <option value="false">Off - people enter at once</option>
+        </select>
+        <p class="fielderror" id="orgApproval-error"></p>
+      </div>
+      <div>
+        <label for="orgSections">Sections</label>
+        <select id="orgSections" required>
+          <option value="" selected>Choose...</option>
+          <option value="true">Yes - members pick a section</option>
+          <option value="false">No</option>
+        </select>
+        <p class="note">This cannot be changed after the organisation is created.</p>
+        <p class="fielderror" id="orgSections-error"></p>
+      </div>
+      <div>
+        <label for="orgCreation">Who creates events</label>
+        <select id="orgCreation" required>
+          <option value="" selected>Choose...</option>
+          <option value="admins">Organisation admins only</option>
+          <option value="members">Any approved member</option>
+        </select>
+        <p class="fielderror" id="orgCreation-error"></p>
+      </div>
+      <div><button type="submit" id="orgCreate">Create organisation</button></div>
+    </form>
+  </div>
+
+  <!-- ---------------------------------------------------------- members -->
+  <!--
+    [D14] One organisation's member queue. The only view an organisation admin
+    has; a super admin opens it from an organisation. P7: no email, no phone.
+  -->
+  <div id="tab-members" hidden>
+    <h2 id="memberOrgName"></h2>
+    <div class="row">
+      <div id="memberOrgField">
+        <label for="memberOrg">Organisation</label>
+        <select id="memberOrg"></select>
+      </div>
+      <div>
+        <label for="memberFilter">Status</label>
+        <select id="memberFilter">
+          <option value="pending" selected>Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="button" id="memberReload">Reload</button>
+      </div>
+    </div>
+
+    <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Photo</th><th>Name</th><th>Section</th><th>Bio</th>
+          <th>Submitted</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="memberRows"></tbody>
+    </table>
+    </div>
+  </div>
 </section>
 
 <script>
@@ -245,17 +412,21 @@
     sessionStorage.removeItem(REFRESH);
   }
 
-  /* Every non-2xx body is {code, message, field?} [B14]; the code is what we show. */
-  function ApiError(code, message, status) {
+  /*
+    Every non-2xx body is {code, message, field?} [B14]; the code is what we show.
+    A validation error that names a field is shown at that field where a form has it.
+  */
+  function ApiError(code, message, status, field) {
     this.code = code || 'unknown';
     this.message = message || '';
     this.status = status;
+    this.field = field || null;
   }
   ApiError.prototype = Object.create(Error.prototype);
 
   function readError(response) {
     return response.json().then(function (body) {
-      return new ApiError(body && body.code, body && body.message, response.status);
+      return new ApiError(body && body.code, body && body.message, response.status, body && body.field);
     }, function () {
       return new ApiError('unknown', '', response.status);
     });
@@ -312,7 +483,7 @@
       if (!response.ok) { return readError(response).then(function (e) { throw e; }); }
       return response.json();
     }).then(function (auth) {
-      if (!auth.me || auth.me.role !== 'super_admin') {
+      if (!accessOf(auth.me)) {
         /* Said plainly: a real account, simply not an admin one. */
         throw new ApiError('not_an_admin',
           'This account is not an admin. Ask the super admin to promote it.', 403);
@@ -346,16 +517,46 @@
     el('loginError').textContent = message || '';
   }
 
+  /*
+    Who may use this page, read from GET /me (the login answer carries the same
+    shape). 'super' for account role super_admin; otherwise 'organisation' when
+    at least one membership is approved with role admin [D14]; otherwise null.
+  */
+  function accessOf(me) {
+    if (!me) { return null; }
+    if (me.role === 'super_admin') { return 'super'; }
+    return adminOrganisations(me).length ? 'organisation' : null;
+  }
+
+  /* The organisations an account is an approved admin of: [{id, name}]. */
+  function adminOrganisations(me) {
+    return (me.memberships || []).filter(function (membership) {
+      return membership.status === 'approved' && membership.role === 'admin';
+    }).map(function (membership) {
+      return { id: membership.organisation.id, name: membership.organisation.name };
+    });
+  }
+
   function showAdmin(me) {
     loginView.hidden = true;
     adminView.hidden = false;
     el('who').textContent = (me && (me.name || me.email)) || '';
-    selectTab('users');
+    if (accessOf(me) === 'super') {
+      el('tabs').hidden = false;
+      selectTab('users');
+    } else {
+      /* [D19] No tabs, and none of their routes is ever called. */
+      el('tabs').hidden = true;
+      openMembers(adminOrganisations(me), null);
+    }
   }
 
   /* --------------------------------------------------------------- tabs */
 
-  var TABS = { users: load, reports: loadReports, flagged: loadFlagged, terms: loadTerms };
+  var TABS = {
+    users: load, reports: loadReports, flagged: loadFlagged, terms: loadTerms,
+    organisations: loadOrganisations, members: loadMembers
+  };
 
   Array.prototype.forEach.call(document.querySelectorAll('[role="tab"]'), function (button) {
     button.addEventListener('click', function () { selectTab(button.getAttribute('data-tab')); });
@@ -365,11 +566,14 @@
     Object.keys(TABS).forEach(function (key) {
       el('tab-' + key).hidden = key !== name;
     });
+    /* The member queue has no tab of its own; a super admin reaches it from Organisations. */
+    var marked = name === 'members' ? 'organisations' : name;
     Array.prototype.forEach.call(document.querySelectorAll('[role="tab"]'), function (button) {
-      button.setAttribute('aria-selected', String(button.getAttribute('data-tab') === name));
+      button.setAttribute('aria-selected', String(button.getAttribute('data-tab') === marked));
     });
     el('reportPanel').hidden = true;
     el('flaggedPanel').hidden = true;
+    el('orgPanel').hidden = true;
     clearMessages();
     TABS[name]();
   }
@@ -413,23 +617,9 @@
     rows.forEach(function (user) {
       var tr = document.createElement('tr');
 
-      var photo = document.createElement('td');
-      if (user.avatarUrl) {
-        var img = document.createElement('img');
-        img.className = 'avatar';
-        img.src = user.avatarUrl;
-        img.alt = '';
-        photo.appendChild(img);
-      } else {
-        var blank = document.createElement('div');
-        blank.className = 'noavatar';
-        photo.appendChild(blank);
-      }
-      tr.appendChild(photo);
-
-      /* [D11] The country is read through the section and shown with it, never alone. */
+      /* [D15] An account has no section; sections are shown per organisation, in the member queue. */
+      tr.appendChild(photoCell(user.avatarUrl));
       tr.appendChild(cell(user.name || '-'));
-      tr.appendChild(cell(user.section ? user.section.name + ' · ' + user.section.country : '-'));
       tr.appendChild(cell(user.bio || '-'));
       tr.appendChild(cell(user.email));
       tr.appendChild(cell(user.phone || '-'));
@@ -438,11 +628,6 @@
 
       var actions = document.createElement('td');
       actions.className = 'actions';
-      if (user.status === 'pending') {
-        actions.appendChild(action('Approve', user, 'approve', null));
-        actions.appendChild(action('Reject', user, 'reject',
-          'Reject this registration? The person will see that they were not approved.'));
-      }
       if (user.status !== 'banned') {
         actions.appendChild(action('Ban', user, 'ban',
           'Ban this account? Their sessions end immediately.'));
@@ -780,7 +965,322 @@
     });
   }
 
+  /* -------------------------------------------------- organisations tab */
+
+  /*
+    [D13] Super admin only (the routes answer 403 to anyone else). There is no
+    "list admins" route and the member rows carry no role, so this page cannot
+    know who an organisation's admins are, and offers no "remove admin".
+  */
+
+  var organisations = [];   /* the last list loaded, for the member queue's selector */
+  var openOrganisation = null;
+
+  var APPROVAL = { 'true': 'On', 'false': 'Off' };
+  var CREATION = { admins: 'Organisation admins only', members: 'Any approved member' };
+
+  el('orgReload').addEventListener('click', loadOrganisations);
+  el('orgPanelClose').addEventListener('click', function () { el('orgPanel').hidden = true; });
+  el('orgPanelMembers').addEventListener('click', function () {
+    if (openOrganisation) { openMembers(organisations, openOrganisation.id); }
+  });
+
+  function loadOrganisations() {
+    clearMessages();
+    el('status').textContent = 'Loading...';
+    return request('/admin/api/organisations')
+      .then(renderOrganisations)
+      .catch(failed('Could not load the organisations'));
+  }
+
+  function renderOrganisations(rows) {
+    organisations = rows;
+    var body = el('orgRows');
+    body.textContent = '';
+    el('status').textContent = counted(rows, 'organisation', 'organisations');
+
+    rows.forEach(function (organisation) {
+      var tr = document.createElement('tr');
+      tr.appendChild(cell(organisation.name));
+      tr.appendChild(cell(APPROVAL[String(organisation.approvalRequired)]));
+      tr.appendChild(cell(organisation.hasSections ? 'Yes' : 'No'));
+      tr.appendChild(cell(CREATION[organisation.eventCreation] || organisation.eventCreation));
+      tr.appendChild(cell(when(organisation.createdAt)));
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      actions.appendChild(button('Open', function () { openOrganisationPanel(organisation); }));
+      actions.appendChild(button('Member queue', function () { openMembers(organisations, organisation.id); }));
+      tr.appendChild(actions);
+
+      body.appendChild(tr);
+    });
+  }
+
+  /* The panel: what the organisation is, the change form, and assigning an admin. */
+  function openOrganisationPanel(organisation) {
+    openOrganisation = organisation;
+    var panel = el('orgPanel');
+    panel.hidden = false;
+    el('orgPanelTitle').textContent = organisation.name;
+
+    var factsBox = el('orgPanelFacts');
+    factsBox.textContent = '';
+    factsBox.appendChild(facts([
+      ['Approval', APPROVAL[String(organisation.approvalRequired)]],
+      ['Sections', (organisation.hasSections ? 'Yes' : 'No') + ' - cannot be changed'],
+      ['Who creates events', CREATION[organisation.eventCreation] || organisation.eventCreation],
+      ['Created', when(organisation.createdAt)]
+    ]));
+
+    clearFieldErrors(['orgEditName', 'orgEditApproval', 'orgEditCreation', 'adminEmail', 'adminSection']);
+    el('orgEditName').value = organisation.name;
+    el('orgEditApproval').value = String(organisation.approvalRequired);
+    el('orgEditCreation').value = organisation.eventCreation;
+    el('adminEmail').value = '';
+
+    var select = el('adminSection');
+    select.textContent = '';
+    el('adminSectionField').hidden = !organisation.hasSections;
+    if (organisation.hasSections) {
+      select.appendChild(option('', 'No section'));
+      request('/organisations/' + encodeURIComponent(organisation.id) + '/sections')
+        .then(function (sections) {
+          if (openOrganisation !== organisation) { return; }
+          sections.forEach(function (section) {
+            /* [D11] The country is read through the section and shown with it, never alone. */
+            select.appendChild(option(section.id, section.name + ' · ' + section.country));
+          });
+        })
+        .catch(failed('Could not load the sections'));
+    }
+  }
+
+  el('orgEditForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (!openOrganisation) { return; }
+    var fields = { name: 'orgEditName', approvalRequired: 'orgEditApproval', eventCreation: 'orgEditCreation' };
+    clearFieldErrors(values(fields));
+    el('error').textContent = '';
+    el('orgEditSave').disabled = true;
+    request('/admin/api/organisations/' + encodeURIComponent(openOrganisation.id), {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: el('orgEditName').value,
+        approvalRequired: el('orgEditApproval').value === 'true',
+        eventCreation: el('orgEditCreation').value
+      })
+    }).then(function (organisation) {
+      return loadOrganisations().then(function () {
+        openOrganisationPanel(organisation);
+        el('status').textContent = 'Saved.';
+      });
+    }).catch(fieldFailed(fields, 'Could not save the changes'))
+      .then(function () { el('orgEditSave').disabled = false; });
+  });
+
+  /* TENANT_PLAN.md P6: by the email of an existing account. 204 on success. */
+  el('adminForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (!openOrganisation) { return; }
+    var fields = { email: 'adminEmail', sectionId: 'adminSection' };
+    clearFieldErrors(values(fields));
+    el('error').textContent = '';
+    el('adminAssign').disabled = true;
+    var body = { email: el('adminEmail').value.trim() };
+    if (openOrganisation.hasSections && el('adminSection').value) {
+      body.sectionId = el('adminSection').value;
+    }
+    var email = body.email;
+    request('/admin/api/organisations/' + encodeURIComponent(openOrganisation.id) + '/admins', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }).then(function () {
+      el('adminEmail').value = '';
+      el('status').textContent = email + ' is now an admin of ' + openOrganisation.name + '.';
+    }).catch(fieldFailed(fields, 'Could not assign the admin'))
+      .then(function () { el('adminAssign').disabled = false; });
+  });
+
+  el('orgForm').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var fields = {
+      name: 'orgName', approvalRequired: 'orgApproval',
+      hasSections: 'orgSections', eventCreation: 'orgCreation'
+    };
+    clearFieldErrors(values(fields));
+    el('error').textContent = '';
+    el('orgCreate').disabled = true;
+    request('/admin/api/organisations', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: el('orgName').value,
+        approvalRequired: el('orgApproval').value === 'true',
+        hasSections: el('orgSections').value === 'true',
+        eventCreation: el('orgCreation').value
+      })
+    }).then(function (organisation) {
+      el('orgForm').reset();
+      return loadOrganisations().then(function () {
+        openOrganisationPanel(organisation);
+        el('status').textContent = organisation.name + ' was created.';
+      });
+    }).catch(fieldFailed(fields, 'Could not create the organisation'))
+      .then(function () { el('orgCreate').disabled = false; });
+  });
+
+  /* A validation error naming one of this form's fields is shown at that field. */
+  function fieldFailed(fields, what) {
+    return function (error) {
+      var id = error && error.field && fields[error.field];
+      if (error && error.status === 422 && id) {
+        el('status').textContent = '';
+        el(id + '-error').textContent = error.message;
+        return;
+      }
+      failed(what)(error);
+    };
+  }
+
+  function clearFieldErrors(ids) {
+    ids.forEach(function (id) { el(id + '-error').textContent = ''; });
+  }
+
+  function values(object) {
+    return Object.keys(object).map(function (key) { return object[key]; });
+  }
+
+  /* --------------------------------------------------------- member queue */
+
+  /*
+    [D14] One organisation's members in one status. Each row is exactly what
+    GET /admin/api/organisations/{id}/members returns (P7): photo, name, bio,
+    section, status, submitted time - nothing else, for any caller.
+  */
+
+  var memberOrganisations = [];
+
+  el('memberOrg').addEventListener('change', loadMembers);
+  el('memberFilter').addEventListener('change', loadMembers);
+  el('memberReload').addEventListener('click', loadMembers);
+
+  /* list: [{id, name}]; selectedId: the one to show, or null for the first. */
+  function openMembers(list, selectedId) {
+    memberOrganisations = list.map(function (o) { return { id: o.id, name: o.name }; });
+    var select = el('memberOrg');
+    select.textContent = '';
+    memberOrganisations.forEach(function (o) { select.appendChild(option(o.id, o.name)); });
+    if (selectedId) { select.value = selectedId; }
+    el('memberOrgField').hidden = memberOrganisations.length < 2;
+    el('memberFilter').value = 'pending';
+    selectTab('members');
+  }
+
+  function loadMembers() {
+    clearMessages();
+    var organisationId = el('memberOrg').value;
+    var chosen = memberOrganisations.filter(function (o) { return o.id === organisationId; })[0];
+    el('memberOrgName').textContent = chosen ? chosen.name : '';
+    el('memberRows').textContent = '';
+    if (!chosen) { return Promise.resolve(false); }
+    el('status').textContent = 'Loading...';
+    return request('/admin/api/organisations/' + encodeURIComponent(organisationId)
+        + '/members?status=' + encodeURIComponent(el('memberFilter').value))
+      .then(function (rows) {
+        renderMembers(organisationId, rows);
+        return true;
+      })
+      .catch(function (error) {
+        failed('Could not load the members')(error);
+        return false;
+      });
+  }
+
+  function renderMembers(organisationId, rows) {
+    var body = el('memberRows');
+    body.textContent = '';
+    el('status').textContent = counted(rows, 'person', 'people');
+
+    rows.forEach(function (member) {
+      var tr = document.createElement('tr');
+      tr.appendChild(photoCell(member.avatarUrl));
+      tr.appendChild(cell(member.name || '-'));
+      /* [D11] The country is read through the section and shown with it, never alone. */
+      tr.appendChild(cell(member.section ? member.section.name + ' · ' + member.section.country : '-'));
+      tr.appendChild(cell(member.bio || '-'));
+      tr.appendChild(cell(when(member.submittedAt)));
+      tr.appendChild(cell(member.status));
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      if (member.status === 'pending') {
+        actions.appendChild(memberAction('Approve', organisationId, member, 'approve', null));
+        actions.appendChild(memberAction('Reject', organisationId, member, 'reject',
+          'Reject this request? The person sees that they were not accepted and can ask again.'));
+      }
+      tr.appendChild(actions);
+
+      body.appendChild(tr);
+    });
+  }
+
+  /* Approve or reject; a 409 means somebody already decided, so the list is reloaded. */
+  function memberAction(label, organisationId, member, verb, confirmation) {
+    return button(label, function (pressed) {
+      if (confirmation && !window.confirm(confirmation + '\n\n' + (member.name || ''))) { return; }
+      pressed.disabled = true;
+      el('error').textContent = '';
+      request('/admin/api/organisations/' + encodeURIComponent(organisationId)
+          + '/members/' + encodeURIComponent(member.userId) + '/' + verb, { method: 'POST' })
+        .then(loadMembers)
+        .catch(function (error) {
+          pressed.disabled = false;
+          if (error.status === 409) {
+            loadMembers().then(function (loaded) {
+              if (loaded) {
+                el('error').textContent = 'This request was already decided. The list was reloaded.';
+              }
+            });
+            return;
+          }
+          failed(label + ' failed')(error);
+        });
+    });
+  }
+
   /* ------------------------------------------------------------ shared */
+
+  function button(label, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', function () { onClick(b); });
+    return b;
+  }
+
+  function option(value, text) {
+    var o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    return o;
+  }
+
+  /* The photo, or a blank circle. The URL is set as a property, never as markup. */
+  function photoCell(url) {
+    var td = document.createElement('td');
+    if (url) {
+      var img = document.createElement('img');
+      img.className = 'avatar';
+      img.src = url;
+      img.alt = '';
+      td.appendChild(img);
+    } else {
+      var blank = document.createElement('div');
+      blank.className = 'noavatar';
+      td.appendChild(blank);
+    }
+    return td;
+  }
 
   function cell(text) {
     var td = document.createElement('td');
@@ -835,7 +1335,7 @@
   /* Resume a session that is still in this tab. */
   if (tokens().access) {
     request('/me').then(function (me) {
-      if (me.role !== 'super_admin') {
+      if (!accessOf(me)) {
         clearTokens();
         showLogin('This account is not an admin.');
         return;

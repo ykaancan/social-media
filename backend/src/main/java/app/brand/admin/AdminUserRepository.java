@@ -16,18 +16,6 @@ import org.springframework.data.repository.query.Param;
  */
 public interface AdminUserRepository extends JpaRepository<AppUser, UUID> {
 
-    /**
-     * The queue: oldest submission first, so the person who has waited longest is
-     * decided first. A pending row without {@code submitted_at} cannot happen
-     * (PUT /me/profile stamps it) but it must not vanish if it ever does.
-     */
-    @Query("""
-            select u from AppUser u
-            where u.status = :status
-            order by u.submittedAt asc nulls last, u.createdAt asc
-            """)
-    List<AppUser> findByStatusOldestFirst(@Param("status") AccountStatus status);
-
     @Query("""
             select u from AppUser u
             where u.status = :status
