@@ -252,7 +252,7 @@ Items 1–3 and 13–14 from the review triage are untouched here and still need
 
 # Decisions 13–20 — organisations (2026-11-09)
 
-**Status: decided by Kaan on 2026-11-09, folded into `CLAUDE.md` as [D13]–[D20], not implemented.** The build plan, the API contract and the acceptance tests are in [`TENANT_PLAN.md`](TENANT_PLAN.md).
+**Status: decided by Kaan on 2026-11-09, folded into `CLAUDE.md` as [D13]–[D20], implemented 2026-11-09 to 2026-11-11.** The build plan, the API contract and the acceptance tests are in [`TENANT_PLAN.md`](TENANT_PLAN.md).
 
 These do not come from the design prototype. They come from a change of direction: the product should serve any organiser (a student network, a bar, a club, a festival), not one network with one admin. The numbers 13 and 14 used in "What this leaves open" above refer to an older review triage, not to these decisions.
 

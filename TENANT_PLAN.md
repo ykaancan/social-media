@@ -1,6 +1,6 @@
 # Tenant plan — organisations own events, approval is per organisation
 
-Status: **step T-0 done 2026-11-09 (contract and decisions written); waiting for "go" on step T-1**. No backend, schema or screen code is built.
+Status: **all steps T-0 to T-4 are built (2026-11-09 to 2026-11-11).** Sections 1 to 6 describe the plan as it was written before the work; section 10 records what each step actually did, what was decided along the way and what is not verified.
 Written 2026-11-09 from a read of `V1__schema.sql`, `V2__reference_data.sql`,
 `ApprovedMemberFilter`, `EventService`, `EventAccess`, `ProfileService`,
 `SectionService`, `SharedEventLookup` and `RootNavigator.tsx`.

@@ -4,7 +4,7 @@ This file is read at the start of every Codex session. It is the product contrac
 
 Rules marked **[D1]**–**[D12]** are decisions taken on 2026-09-06 that amend or extend the original brief, after reading the Codex Design prototype. The brief text below has been edited in place so no superseded sentence is left standing. The reasoning, the rejected alternatives and the "flip it if" conditions for each are in [`/DECISIONS.md`](DECISIONS.md); the record of the design bundle they came from is in [`/design/HANDOFF.md`](design/HANDOFF.md).
 
-Rules marked **[D13]**–**[D20]** are decisions taken on 2026-11-09 that turn the single-network product into a multi-organisation one. They follow the same convention: the text below is edited in place, the reasoning is in [`/DECISIONS.md`](DECISIONS.md), and the build plan is [`/TENANT_PLAN.md`](TENANT_PLAN.md). **They are decided but not yet implemented**: until steps T-1 to T-4 of that plan land, the code still follows the rules they replace.
+Rules marked **[D13]**–**[D20]** are decisions taken on 2026-11-09 that turn the single-network product into a multi-organisation one. They follow the same convention: the text below is edited in place, the reasoning is in [`/DECISIONS.md`](DECISIONS.md), and the build plan is [`/TENANT_PLAN.md`](TENANT_PLAN.md). They were implemented in steps T-0 to T-4 of that plan, 2026-11-09 to 2026-11-11; the record of each step, including what is not verified, is in its section 10.
 
 ## Repo layout
 - `/backend` — Spring Boot 3 (Java 21), PostgreSQL, Flyway, STOMP over WebSocket, FCM/APNs push.
