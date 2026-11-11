@@ -238,6 +238,21 @@ The three screens the design bundle does not have (confirm your email, the join 
 - **Open, needs Kaan:** (2) the Turkish word "organizasyon"; (3) when a remembered hint is no longer allowed, pick "First letter" automatically or leave the send button off; (4) three older strings that may now be false: `reviewFlow.bannedBody` ("Contact the event organiser" — only the super admin bans), `section.note` (a section is "a tag people put on their profile"), `section.tagNote` ("Yours only shows where you're from").
 - **Not verified:** the app on a device, in Expo, or against the real backend; the gallery visually against `/design`; pull-to-refresh and the foreground refresh (tests cover the tab-focus path, which runs the same reload); acceptance test 17's "event no longer exists" case in the mock.
 
+### T-4 — 2026-11-11, the admin page
+- One Opus agent changed `admin/index.html` and added two tests. No backend production code changed.
+- **Result (lead's own run): 356 backend tests, 0 failed.** The two new tests read the served page as text and call the API; they do not run the page's script.
+- **Tried by the lead in a real browser** against a local backend on a throwaway database (all four migrations applied to an empty database without error):
+  - Super admin: the Organisations tab lists "ESN Türkiye"; creating "Moda Bar" (approval off, no sections, admins only) worked and the list showed it.
+  - Assign admin: an email with no account showed the server's message at the email field; a valid email without a section showed "a section is required" at the section field; with a section it succeeded. The section select held the 26 sections.
+  - Organisation admin: after sign-in the page showed only the member queue, the tabs were hidden, and the only request after login was the member list. No email or phone appeared in the view. Approve worked: the database showed the member approved by the organisation admin, and one audit row each for create, assign and approve.
+  - An account that is neither: "This account is not an admin."
+- Not tried in the browser: editing an organisation, Reject, the 409 "already decided" reload, the organisation selector for an admin of several organisations, the approved / rejected filters.
+- **Gap: removing an organisation admin is not on the page.** The backend has the remove route but no way for the page to know who the admins are (the member row has no role and there is no list-admins route). It was left out rather than faked. Needs a small backend addition if wanted.
+- Left as found: the no-access message still says "Ask the super admin to promote it"; the Ban button still shows on super admin rows and the server refuses it; the page has no promote button and never had one.
+- Removed: the leftover account Approve / Reject buttons and the empty Section column in the account list.
+
+**With T-4 the plan's steps are complete.** The note at the top of `CLAUDE.md` and `AGENTS.md` still says D13–D20 are "decided but not yet implemented"; it should be updated when the branch is merged.
+
 ## 11. Not in this plan
 
 Verified badge and SMS, "verified only" writing setting, message requests, removing a member from an organisation, organiser statistics, payments. Each is its own later step.

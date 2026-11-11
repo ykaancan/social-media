@@ -555,6 +555,125 @@ class OrganisationAdminIntegrationTest extends AbstractIntegrationTest {
                 Integer.class, person.id)).isZero();
     }
 
+    /* ------------------------------------------------- T-4: the admin page */
+
+    /*
+     * Tests 37 and 38. The page is one static file with inline script, and this
+     * suite has no browser: these tests read the served page as text and check
+     * the API answers the page reads. They prove the page carries the controls
+     * and calls the routes it should, that the member-queue code never names an
+     * email or a phone, and that the data the page decides access from (the login
+     * answer's `me`) has the shape it reads. They do not run the script.
+     */
+
+    @Test
+    @DisplayName("test 37: the page has the organisations area; the routes it reads answer a super admin in the shape it reads")
+    void pageOrganisationsAreaForSuperAdmin() throws Exception {
+        String page = adminPage();
+        assertThat(page).contains("data-tab=\"organisations\"")
+                .contains("'/admin/api/organisations'")
+                .contains("method: 'PATCH'")
+                .contains("+ '/admins'")
+                .contains("+ '/sections'")
+                .contains("This cannot be changed after the organisation is created.")
+                .contains("id=\"orgCreate\"")
+                .contains("id=\"adminAssign\"");
+        // P10: the change form never sends hasSections.
+        assertThat(between(page, "el('orgEditForm').addEventListener", "el('adminForm').addEventListener"))
+                .doesNotContain("hasSections");
+        // The leftovers removed from the account list.
+        assertThat(between(page, "function render(rows)", "function action("))
+                .doesNotContain("'approve'").doesNotContain("user.section");
+
+        Account admin = superAdmin();
+        UUID orgId = organisation(admin, false, true, "admins");
+        sectionOf(orgId);
+        JsonNode list = json(mockMvc.perform(get("/admin/api/organisations")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isOk())
+                .andReturn());
+        JsonNode row = null;
+        for (JsonNode candidate : list) {
+            if (candidate.get("id").asText().equals(orgId.toString())) {
+                row = candidate;
+            }
+        }
+        assertThat(row).isNotNull();
+        assertThat(fieldNames(row)).containsExactlyInAnyOrder(
+                "id", "name", "approvalRequired", "hasSections", "eventCreation", "createdAt");
+        assertThat(row.get("eventCreation").asText()).isEqualTo("admins");
+        // The section select is filled from this route, for a super admin who is no member.
+        mockMvc.perform(get("/organisations/" + orgId + "/sections")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").exists())
+                .andExpect(jsonPath("$[0].name").exists())
+                .andExpect(jsonPath("$[0].country").exists());
+    }
+
+    @Test
+    @DisplayName("test 38: an organisation admin's login answer carries the admin membership the page reads; the queue code has no email or phone")
+    void pageMemberQueueForOrganisationAdmin() throws Exception {
+        String page = adminPage();
+        assertThat(page).contains("id=\"tab-members\"")
+                .contains("membership.status === 'approved' && membership.role === 'admin'")
+                .contains("el('tabs').hidden = true;")
+                .contains("<nav class=\"tabs\" role=\"tablist\" id=\"tabs\" hidden>");
+        // P7: neither the queue's markup nor its code names an email or a phone.
+        String queue = between(page, "<div id=\"tab-members\"", "</section>")
+                + between(page, "/* --------------------------------------------------------- member queue */",
+                        "/* ------------------------------------------------------------ shared */");
+        assertThat(queue.toLowerCase(java.util.Locale.ROOT)).doesNotContain("email").doesNotContain("phone");
+
+        Account admin = superAdmin();
+        UUID orgId = organisation(admin, true, false, "members");
+        Account orgAdmin = account();
+        assign(admin, orgId, orgAdmin, null);
+        Account plain = account();
+        insertMembership(orgId, plain.id, "approved", null, null, Instant.now());
+
+        JsonNode me = login(orgAdmin.email).get("me");
+        assertThat(me.get("role").asText()).isEqualTo("member");
+        JsonNode adminMembership = null;
+        for (JsonNode membership : me.get("memberships")) {
+            if (membership.get("organisation").get("id").asText().equals(orgId.toString())) {
+                adminMembership = membership;
+            }
+        }
+        assertThat(adminMembership).isNotNull();
+        assertThat(adminMembership.get("status").asText()).isEqualTo("approved");
+        assertThat(adminMembership.get("role").asText()).isEqualTo("admin");
+        assertThat(adminMembership.get("organisation").get("name").isTextual()).isTrue();
+
+        JsonNode plainMe = login(plain.email).get("me");
+        for (JsonNode membership : plainMe.get("memberships")) {
+            assertThat(membership.get("role").asText()).isEqualTo("member");
+        }
+    }
+
+    private String adminPage() throws Exception {
+        return mockMvc.perform(get("/admin/index.html"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    /** The text from the first {@code from} to the next {@code to}; fails if either is missing. */
+    private static String between(String text, String from, String to) {
+        int start = text.indexOf(from);
+        assertThat(start).as("marker " + from).isNotNegative();
+        int end = text.indexOf(to, start + from.length());
+        assertThat(end).as("marker " + to).isNotNegative();
+        return text.substring(start, end);
+    }
+
+    private JsonNode login(String email) throws Exception {
+        return json(mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("email", email, "password", "correct horse"))))
+                .andExpect(status().isOk())
+                .andReturn());
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private record Account(UUID id, String email, String accessToken) {
