@@ -54,6 +54,7 @@ public class AuthService {
     private final ConfirmationLinkSender confirmationLinkSender;
     private final MeMapper meMapper;
     private final BrandProperties properties;
+    private final AuthRateLimiter rateLimiter;
     private final Clock clock;
 
     public AuthService(AppUserRepository users,
@@ -67,6 +68,7 @@ public class AuthService {
                        ConfirmationLinkSender confirmationLinkSender,
                        MeMapper meMapper,
                        BrandProperties properties,
+                       AuthRateLimiter rateLimiter,
                        Clock clock) {
         this.users = users;
         this.settings = settings;
@@ -79,6 +81,7 @@ public class AuthService {
         this.confirmationLinkSender = confirmationLinkSender;
         this.meMapper = meMapper;
         this.properties = properties;
+        this.rateLimiter = rateLimiter;
         this.clock = clock;
     }
 
@@ -86,9 +89,15 @@ public class AuthService {
      * A new account is always {@code incomplete}, {@code member} and unconfirmed:
      * [D18] a confirmation link is sent in the language of this request, and until
      * it is opened the account reaches only its status-independent routes.
+     *
+     * <p>[D21] Counted per network address first, whatever it then answers (201 or
+     * 409); over the limit it is {@code 429 rate_limited} and nothing else happens —
+     * no lookup, no account, no mail. A body that fails {@code @Valid} is answered
+     * 422 by the controller before it reaches this method, so it is not counted.
      */
     @Transactional
-    public AuthResultDto register(RegisterRequest request, Locale locale) {
+    public AuthResultDto register(RegisterRequest request, Locale locale, String address) {
+        rateLimiter.checkSignUp(address);
         String email = request.email().trim();
         if (users.existsByEmailIgnoreCase(email)) {
             throw ApiException.conflict("email_in_use", "that email already has an account", "email");
@@ -181,16 +190,24 @@ public class AuthService {
     /**
      * One error for "no such account" and "wrong password": the response must not
      * let anyone probe for who has an account.
+     *
+     * <p>[D21] The limit is checked before the password is looked at: when the
+     * email's or the address's failed count is at its limit the answer is
+     * {@code 429 rate_limited}, even for the right password. Both kinds of failure
+     * count the same, so the limit reveals nothing either. A success clears the
+     * email's failed count, not the address's.
      */
     @Transactional
-    public AuthResultDto login(LoginRequest request) {
+    public AuthResultDto login(LoginRequest request, String address) {
         String email = request.email() == null ? "" : request.email().trim();
         String password = request.password() == null ? "" : request.password();
 
+        AuthRateLimiter.LoginAttempt attempt = rateLimiter.beginLogin(email, address);
         AppUser user = users.findByEmailIgnoreCase(email)
                 .filter(candidate -> !password.isEmpty()
                         && passwordEncoder.matches(password, candidate.getPasswordHash()))
                 .orElseThrow(() -> ApiException.unauthorized("invalid_credentials", "wrong email or password"));
+        rateLimiter.loginSucceeded(attempt);
 
         return new AuthResultDto(tokenService.issue(user), meMapper.toMe(user));
     }
@@ -222,9 +239,15 @@ public class AuthService {
     /**
      * Always succeeds from the caller's point of view. When the address is unknown
      * nothing is created and nothing is sent — the 202 is identical.
+     *
+     * <p>[D21] Counted first, per network address and per the email typed, before
+     * any lookup — so the count, and a {@code 429 rate_limited} over the limit, are
+     * the same for an address with an account and one without. A refused request
+     * looks nothing up and sends nothing.
      */
     @Transactional
-    public void forgotPassword(String rawEmail, Locale locale) {
+    public void forgotPassword(String rawEmail, Locale locale, String address) {
+        rateLimiter.checkPasswordReset(rawEmail, address);
         String email = rawEmail == null ? "" : rawEmail.trim();
         if (email.isEmpty()) {
             return;

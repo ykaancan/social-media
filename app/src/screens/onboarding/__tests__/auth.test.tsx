@@ -189,6 +189,58 @@ test('registering signs in and the stack swaps to profile setup on its own', asy
   await waitFor(() => expect(screen.queryByTestId('signup-submit')).toBeNull());
 });
 
+/* ---------------------------------------------------- [D21] rate limits */
+
+test('too many failed logins shows the rate-limit message, even for the right password', async () => {
+  const api = new MockApi({ latencyMs: 0, authLimits: { failedLoginsPerEmail: 1 } });
+  const session = await mount(api);
+  await act(async () => {
+    await (session.current as SessionValue).register({ email: EMAIL, password: PASSWORD });
+    await (session.current as SessionValue).logout();
+  });
+  await waitFor(() => expect(screen.getByTestId('splash-login')).toBeTruthy());
+
+  await goTo('login');
+  await type('login-email', EMAIL);
+  await type('login-password', 'not-the-password');
+  await press('login-submit');
+  await waitFor(() => expect(screen.getByText(t('onboarding.errorCredentials'))).toBeTruthy());
+
+  await type('login-password', PASSWORD);
+  await press('login-submit');
+  await waitFor(() => expect(screen.getByText(t('onboarding.errorRateLimited'))).toBeTruthy());
+  expect(session.current?.phase).toBe('signedOut');
+});
+
+test('too many sign-ups shows the rate-limit message and stays on the form', async () => {
+  // An allowance of one sign-up, spent before the screen is opened.
+  const api = new MockApi({ latencyMs: 0, authLimits: { signUps: 1 } });
+  await api.register({ email: 'first@example.com', password: PASSWORD });
+  await api.logout();
+  const session = await mount(api);
+
+  await goTo('signup');
+  await type('signup-email', EMAIL);
+  await type('signup-password', PASSWORD);
+  await press('signup-submit');
+
+  await waitFor(() => expect(screen.getByText(t('onboarding.errorRateLimited'))).toBeTruthy());
+  expect(screen.getByTestId('signup-submit')).toBeTruthy();
+  expect(session.current?.phase).toBe('signedOut');
+});
+
+test('too many reset requests says so instead of "reset link sent"', async () => {
+  await mount(new MockApi({ latencyMs: 0, authLimits: { passwordResetsPerEmail: 1 } }));
+  await goTo('login');
+  await type('login-email', 'nobody@example.com');
+
+  await press('login-forgot');
+  await waitFor(() => expect(screen.getByText(t('onboarding.resetSent'))).toBeTruthy());
+
+  await press('login-forgot');
+  await waitFor(() => expect(screen.getByText(t('onboarding.errorRateLimited'))).toBeTruthy());
+});
+
 test('forgot password answers the same way whether or not the account exists', async () => {
   await mount(new MockApi({ latencyMs: 0 }));
   await goTo('login');
