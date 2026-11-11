@@ -327,6 +327,11 @@ async function toApiError(res: Response, auth: boolean): Promise<ApiError> {
   if (res.status === 403 && body.code && FORBIDDEN_CODES.has(body.code)) {
     return new ApiError(body.code as ApiErrorCode, message, 403, body.field);
   }
+  // [D21] Only the auth routes: a 429 elsewhere (thread openings, anonymous
+  // content, section change) keeps the `unknown` it always had.
+  if (auth && res.status === 429 && body.code === 'rate_limited') {
+    return new ApiError('rate_limited', message, 429, body.field);
+  }
   if (res.status === 409) return new ApiError('email_in_use', message, 409, body.field);
   if (res.status === 422) return new ApiError('validation', message, 422, body.field);
   if (res.status === 401) {

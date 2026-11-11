@@ -9,6 +9,7 @@ import app.brand.auth.AuthDtos.RegisterRequest;
 import app.brand.auth.AuthDtos.TokensDto;
 import app.brand.security.AppPrincipal;
 import app.brand.security.CurrentUser;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
  * {@code /auth/*} — the only routes that answer 401 with "wrong credentials"
  * rather than "session gone". {@code http.ts} marks them {@code auth: true} and
  * never spends a refresh token on their 401s.
+ *
+ * <p>[D21] Register, login and forgot-password are rate limited per network
+ * address (and login and forgot-password per email too) by {@link AuthRateLimiter}.
+ * The address is {@link HttpServletRequest#getRemoteAddr()} and nothing else:
+ * {@code X-Forwarded-For} is never parsed here. In production
+ * {@code server.forward-headers-strategy: framework} makes that the forwarded
+ * client address. Refresh, logout and resend-confirmation are not limited.
  */
 @RestController
 @RequestMapping("/auth")
@@ -39,8 +47,9 @@ public class AuthController {
      */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthResultDto register(@Valid @RequestBody RegisterRequest request, Locale locale) {
-        return authService.register(request, locale);
+    public AuthResultDto register(@Valid @RequestBody RegisterRequest request, Locale locale,
+                                  HttpServletRequest http) {
+        return authService.register(request, locale, http.getRemoteAddr());
     }
 
     /**
@@ -55,8 +64,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResultDto login(@RequestBody LoginRequest request) {
-        return authService.login(request);
+    public AuthResultDto login(@RequestBody LoginRequest request, HttpServletRequest http) {
+        return authService.login(request, http.getRemoteAddr());
     }
 
     /** Spent at most once per 401, by the client, without user interaction. */
@@ -78,10 +87,11 @@ public class AuthController {
                 request == null ? null : request.refreshToken());
     }
 
-    /** Always 202, whether or not the address exists. */
+    /** Always 202, whether or not the address exists — or 429 over a [D21] limit. */
     @PostMapping("/forgot-password")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void forgotPassword(@RequestBody ForgotPasswordRequest request, Locale locale) {
-        authService.forgotPassword(request == null ? null : request.email(), locale);
+    public void forgotPassword(@RequestBody ForgotPasswordRequest request, Locale locale,
+                               HttpServletRequest http) {
+        authService.forgotPassword(request == null ? null : request.email(), locale, http.getRemoteAddr());
     }
 }

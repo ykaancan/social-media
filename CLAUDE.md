@@ -166,6 +166,7 @@ Splash → sign up → **[D18]** confirm email → profile setup (photo, name, b
 ## 5. Safety rules (server-side, stage 1)
 - **[D20]** Keyword screening on every post/message before delivery; hard-block list, soft-flag list. No model screening.
 - Per-sender rate limits on anonymous posts and thread openings.
+- **[D21]** Login, sign-up and password-reset requests are limited per email and per network address. The counts are kept in memory, never stored. The per-address sign-up limit is set high on purpose: a whole event signs up through one Wi-Fi address.
 - Report → content and sender id visible to super admin only; every identity view is audit-logged.
 - Block is absolute: blocked user cannot write to the blocker in any surface, including anonymously. **[D6]** Absolute means refused server-side, not deleted: existing content is hidden from the blocker, board posts stay on the board, and a report filed before the block still shows the admin everything. Block is issued by message id; the blocker never learns who an anonymous sender was.
 - Text only. No images or GIFs anywhere in stage 1.

@@ -387,3 +387,34 @@ Reports, sender identity views, hiding by report, warnings and bans stay with `s
 **Not verified:** whether Apple's and Google's review rules for apps with anonymous user content are satisfied by keyword filtering, reporting and blocking alone. Check before store submission.
 
 **Flip it if:** store review requires more, or abuse at a real event shows the keyword list is not enough.
+
+
+---
+
+## 21. Rate limits on login, sign-up and password reset (2026-11-11)
+
+**Before:** only anonymous content and thread openings were limited. The three public auth routes had no limit; `RELEASE.md` listed this as open.
+
+### Decision: limit them per email and per network address, counted in memory.
+
+| Limit | Default |
+|---|---|
+| Failed logins per email | 10 per 15 minutes |
+| Failed logins per network address | 100 per 15 minutes |
+| Sign-up requests per network address | 300 per hour |
+| Password-reset requests per email | 3 per hour |
+| Password-reset requests per network address | 30 per hour |
+
+A request over a limit is answered `429 rate_limited` and does nothing else. Each limit is a setting; 0 switches it off. A password reset counts the address that was typed, whether or not an account exists, so the answer still does not reveal who has an account.
+
+**The numbers are Kaan's decision on a proposal, not measurements.** There is no usage data behind them.
+
+**Why in memory:** login attempts leave no rows to count. A table would store network addresses, which are personal data, and need a migration and a clean-up job. The cost: counts reset when the backend restarts, and the limit is per backend instance. The backend is a single instance today.
+
+**Why the sign-up limit is high:** at a hotel event hundreds of people sign up through one Wi-Fi address. A low limit would stop real people at the door; 300 an hour stops a script, not a crowd.
+
+**Accepted trade-off:** anyone who knows a person's email can type wrong passwords and block that person's login for up to 15 minutes.
+
+**Not verified:** how the client's address reaches the backend depends on hosting, which is undecided. Behind the proxy in `backend/DEPLOY.md` the forwarded address is read; behind a tunnel it has not been checked. If every request appears to come from one address, the per-address limits apply to everyone together.
+
+**Flip it if:** the backend runs as more than one instance (then the counts must move to shared storage), or an event is larger than 300 sign-ups in an hour on one network.
