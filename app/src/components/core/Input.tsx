@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Platform,
   StyleSheet,
   TextInput,
   View,
@@ -82,6 +83,9 @@ export function Input({
   // .b-in__ctl is `min-height:48px` with 12px vertical padding; a textarea grows
   // by `rows` lines of the body line-height instead.
   const minHeight = multiline ? rows * text.body.lineHeight! + 24 : 48;
+  // iOS lays a one-line field's glyphs into a `lineHeight` box and clips the
+  // descenders (g, y, p). Only a textarea needs the line height.
+  const clipsDescenders = Platform.OS === 'ios' && !multiline;
 
   return (
     <View style={[styles.root, style]}>
@@ -119,6 +123,7 @@ export function Input({
             text.body,
             styles.ctl,
             { color: colors.text, minHeight },
+            clipsDescenders ? { lineHeight: undefined } : null,
             multiline ? styles.multiline : null,
             inputStyle,
           ]}
