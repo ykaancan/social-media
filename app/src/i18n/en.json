@@ -26,6 +26,7 @@
     "errorCredentials": "That email and password don't match.",
     "errorNetwork": "Couldn't reach the server. Check your connection and try again.",
     "errorGeneric": "Something went wrong. Try again.",
+    "errorRateLimited": "Too many attempts. Wait a few minutes and try again.",
     "profileTitle": "Set up your profile", "name": "Name", "photo": "Photo", "section": "Your section", "country": "Country", "bio": "One-line bio",
     "bioPlaceholder": "Where you're from, what you're into",
     "photoHint": "Shown on your wall and next to your name.",

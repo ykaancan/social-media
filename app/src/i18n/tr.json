@@ -26,6 +26,7 @@
     "errorCredentials": "Bu e-posta ve şifre eşleşmiyor.",
     "errorNetwork": "Sunucuya ulaşılamadı. Bağlantını kontrol edip tekrar dene.",
     "errorGeneric": "Bir şeyler ters gitti. Tekrar dene.",
+    "errorRateLimited": "Çok fazla deneme yaptın. Birkaç dakika bekleyip tekrar dene.",
     "profileTitle": "Profilini oluştur", "name": "İsim", "photo": "Fotoğraf", "section": "Section'ın", "country": "Ülke", "bio": "Tek satırlık bio",
     "bioPlaceholder": "Nerelisin, nelerden hoşlanırsın",
     "photoHint": "Duvarında ve adının yanında görünür.",

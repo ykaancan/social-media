@@ -25,6 +25,17 @@ brand:
   # about the frozen clock and not a race with a scheduler.
   housekeeping:
     enabled: false
+  # [D21] The auth rate limits are OFF for the suite: every test shares one
+  # context and one loopback address, and the suite registers and logs in far
+  # more than 300 times an hour. AuthRateLimitIntegrationTest switches on the
+  # limits it needs through AuthRateLimiter's package-private test seam and
+  # resets them after every test.
+  limits:
+    failed-logins-per-email: 0
+    failed-logins-per-address: 0
+    sign-ups-per-address: 0
+    password-resets-per-email: 0
+    password-resets-per-address: 0
 
 logging:
   level:

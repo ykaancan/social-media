@@ -176,7 +176,29 @@ export interface MockApiOptions {
   demoEvents?: boolean;
   /** Simulated round-trip. Tests pass 0. */
   latencyMs?: number;
+  /**
+   * [D21] The auth limits the mock mirrors; each defaults to the server's number
+   * and 0 switches one off. Tests pass small ones.
+   */
+  authLimits?: Partial<MockAuthLimits>;
 }
+
+/**
+ * [D21] The mock has no network address, so the server's per-address limits are
+ * not modelled. What it mirrors: failed logins per email (15 minutes), password
+ * resets per email (1 hour), and sign-ups (1 hour) counted over every sign-up
+ * this mock instance sees — the one-device stand-in for the server's
+ * per-address count, which is the only dimension sign-up has.
+ */
+export interface MockAuthLimits {
+  failedLoginsPerEmail: number;
+  signUps: number;
+  passwordResetsPerEmail: number;
+}
+
+const MOCK_AUTH_LIMITS: MockAuthLimits = { failedLoginsPerEmail: 10, signUps: 300, passwordResetsPerEmail: 3 };
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const HOUR_WINDOW_MS = 60 * 60_000;
 
 const cloneSettings=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
 const emailKey = (email: string) => email.trim().toLowerCase();
@@ -997,7 +1019,24 @@ export class MockApi implements ApiClient {
     this.approveAfterMs = options.approveAfterMs;
     this.confirmAfterMs = options.confirmAfterMs;
     this.latencyMs = options.latencyMs ?? 150;
+    this.authLimits = { ...MOCK_AUTH_LIMITS, ...options.authLimits };
     if (options.demoEvents) this.seedDemoEvents();
+  }
+
+  /* ---------------- [D21] auth limits (see MockAuthLimits) ---------------- */
+
+  private readonly authLimits: MockAuthLimits;
+  private readonly failedLogins = new Map<string, number[]>();
+  private readonly resetRequests = new Map<string, number[]>();
+  private signUpTimes: number[] = [];
+
+  /** Rolling window: the live entries of `times`, oldest first. */
+  private static live(times: number[] | undefined, windowMs: number, now: number): number[] {
+    return (times ?? []).filter(at => at > now - windowMs);
+  }
+
+  private static rateLimited(): ApiError {
+    return new ApiError('rate_limited', 'too many attempts', 429);
   }
 
   /**
@@ -1037,6 +1076,13 @@ export class MockApi implements ApiClient {
 
   async register(req: RegisterRequest): Promise<AuthResult> {
     await this.wait();
+    // [D21] Every sign-up counts, whatever it answers; the refused one does not.
+    const now = Date.now();
+    this.signUpTimes = MockApi.live(this.signUpTimes, HOUR_WINDOW_MS, now);
+    if (this.authLimits.signUps > 0) {
+      if (this.signUpTimes.length >= this.authLimits.signUps) throw MockApi.rateLimited();
+      this.signUpTimes.push(now);
+    }
     const email = req.email.trim();
     if (!LIMITS.emailPattern.test(email)) throw new ApiError('validation', 'invalid email', 422, 'email');
     if (req.password.length < LIMITS.passwordMin) {
@@ -1079,12 +1125,22 @@ export class MockApi implements ApiClient {
 
   async login(req: LoginRequest): Promise<AuthResult> {
     await this.wait();
-    const account = this.accounts.get(emailKey(req.email));
+    const key = emailKey(req.email);
+    // [D21] Checked before the password: at the limit even the right one is refused.
+    const now = Date.now();
+    const failures = MockApi.live(this.failedLogins.get(key), LOGIN_WINDOW_MS, now);
+    if (failures.length) this.failedLogins.set(key, failures); else this.failedLogins.delete(key);
+    const limit = this.authLimits.failedLoginsPerEmail;
+    if (limit > 0 && failures.length >= limit) throw MockApi.rateLimited();
+    const account = this.accounts.get(key);
     // Same error for "no such account" and "wrong password" — the real server
     // must not let anyone probe for who has an account.
     if (!account || !account.password || account.password !== req.password) {
+      if (limit > 0) this.failedLogins.set(key, [...failures, now]);
       throw new ApiError('invalid_credentials', 'wrong email or password', 401);
     }
+    // A success clears the email's failed count.
+    this.failedLogins.delete(key);
     return this.authResult(account);
   }
 
@@ -1093,9 +1149,19 @@ export class MockApi implements ApiClient {
     this.currentId = null;
   }
 
-  async forgotPassword(_email: string): Promise<void> {
+  async forgotPassword(email: string): Promise<void> {
     await this.wait();
-    // Always resolves, like the real 202: existence is not observable.
+    // Always resolves, like the real 202: existence is not observable. [D21] The
+    // one exception is too many requests for the email typed, account or not.
+    const key = emailKey(email);
+    if (!key || this.authLimits.passwordResetsPerEmail <= 0) return;
+    const now = Date.now();
+    const requests = MockApi.live(this.resetRequests.get(key), HOUR_WINDOW_MS, now);
+    if (requests.length >= this.authLimits.passwordResetsPerEmail) {
+      this.resetRequests.set(key, requests);
+      throw MockApi.rateLimited();
+    }
+    this.resetRequests.set(key, [...requests, now]);
   }
 
   /* ---------------- me ---------------- */

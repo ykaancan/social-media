@@ -13,9 +13,12 @@ gaps, release configuration and physical-device checks remain outstanding.
 - [ ] **Model screening (code).** Only `KeywordScreener` implements
       `ContentScreener`; the model half required by AGENTS.md is deferred in
       the backend plan. Implement and verify it before declaring compliance.
-- [ ] **Authentication abuse protection (code).** Add and test throttling for
-      login, registration and password-reset requests. Content rate limits do
-      not protect these public endpoints.
+- [x] **Authentication abuse protection (code).** Done 2026-11-11, decision 21 in
+      `DECISIONS.md`: failed logins, sign-up requests and password-reset requests are
+      limited per email and per network address, counted in memory. Not verified:
+      that the real client address reaches the backend on the chosen hosting. If
+      every request arrives from one address, the per-address limits apply to
+      everyone together.
 - [ ] **Mobile release configuration.** Replace generic app identity, configure
       Android/iOS application identifiers, EAS project ID and build profiles.
 - [ ] **Push completion (code and devices).** Verify delivery and notification
@@ -91,6 +94,10 @@ gaps, release configuration and physical-device checks remain outstanding.
   statement (`update app_user set role='member' where email=...`).
 - Rate limits: 30 anonymous wall messages and 30 anonymous room posts per
   hour per person, 20 thread openings per day, one data export per minute.
+- Auth limits (settings, 0 switches one off): 10 failed logins per email and
+  100 per network address per 15 minutes; 300 sign-up requests per network
+  address per hour; 3 password resets per email and 30 per network address
+  per hour. Counts are in memory and reset when the backend restarts.
 
 ## 5. What was verified, for the record
 

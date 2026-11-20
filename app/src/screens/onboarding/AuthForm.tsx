@@ -92,6 +92,9 @@ export function AuthForm({ mode, onBack, onSwapMode }: AuthFormProps) {
       if (isApiError(err, 'email_in_use')) setEmailError(t('onboarding.errorEmailInUse'));
       else if (isApiError(err, 'invalid_credentials')) {
         setPasswordError(t('onboarding.errorCredentials'));
+      } else if (isApiError(err, 'rate_limited')) {
+        // [D21] Too many attempts: nothing on this screen is at fault.
+        toast.show(t('onboarding.errorRateLimited'), { tone: 'warn' });
       } else if (isApiError(err, 'network')) {
         toast.show(t('onboarding.errorNetwork'), { tone: 'warn' });
       } else toast.show(t('onboarding.errorGeneric'), { tone: 'danger' });
@@ -110,6 +113,13 @@ export function AuthForm({ mode, onBack, onSwapMode }: AuthFormProps) {
       // someone waiting for an email that is never coming.
       if (isApiError(err, 'network')) {
         toast.show(t('onboarding.errorNetwork'), { tone: 'warn' });
+        return;
+      }
+      // [D21] The one other case with its own words: too many requests. It is
+      // counted against the address typed whether or not it has an account, so
+      // saying so reveals nothing about the account.
+      if (isApiError(err, 'rate_limited')) {
+        toast.show(t('onboarding.errorRateLimited'), { tone: 'warn' });
         return;
       }
     }

@@ -117,6 +117,22 @@ brand:
     # board; the feed is the only read that grows with the length of an event.
     # `postCount` is unaffected and stays the full, real count. 0 = no cap.
     board-feed: ${BRAND_BOARD_FEED:200}
+    # [D21] The public auth routes, counted in memory only (AuthRateLimiter): no
+    # table, nothing logged, reset by a restart, per instance. Rolling windows;
+    # the request past a limit answers 429 rate_limited and does nothing else.
+    # The network address is the request's remote address (forwarded by the proxy
+    # in production, application-prod.yml). 0 turns a limit off.
+    # Failed logins (wrong password or unknown email alike) in any 15 minutes; a
+    # successful login clears the email's count, not the address's.
+    failed-logins-per-email: ${BRAND_FAILED_LOGINS_PER_EMAIL:10}
+    failed-logins-per-address: ${BRAND_FAILED_LOGINS_PER_ADDRESS:100}
+    # Every POST /auth/register in any hour, whatever it answers. High on purpose:
+    # a whole event can sign up through one Wi-Fi address (DECISIONS.md §21).
+    sign-ups-per-address: ${BRAND_SIGN_UPS_PER_ADDRESS:300}
+    # Every POST /auth/forgot-password in any hour, counted against the email
+    # typed whether or not it has an account, so the answer reveals nothing.
+    password-resets-per-email: ${BRAND_PASSWORD_RESETS_PER_EMAIL:3}
+    password-resets-per-address: ${BRAND_PASSWORD_RESETS_PER_ADDRESS:30}
   # Brief §3: the entitlement layer is present from day one and switched OFF in
   # stages 1–2. These are the config flags; nothing gates on them yet, and
   # GET /me/entitlements is the only reader. Stage 3 flips them.

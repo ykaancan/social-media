@@ -239,6 +239,12 @@ export type ApiErrorCode =
   | 'email_unconfirmed'
   /** 403 on member routes: the account is `incomplete` or `banned` [D14]. */
   | 'account_not_active'
+  /**
+   * 429 `rate_limited` on login, sign-up or forgot-password [D21]: too many
+   * attempts. Only the `auth` routes map to it; a 429 anywhere else stays
+   * `unknown`, as it was.
+   */
+  | 'rate_limited'
   | 'unknown';
 
 /**
@@ -299,6 +305,10 @@ export const LIMITS = {
  *   GET  /confirm?token=…      server-rendered page, like /reset. Marks the email
  *                              confirmed; a used or expired (24 h) token says so
  *   POST /auth/login           200 AuthResult; 401 -> invalid_credentials
+ *
+ *   [D21] register, login and forgot-password answer 429 `rate_limited` over a
+ *   limit (failed logins per email / per address, sign-ups per address, resets
+ *   per email / per address); the client maps it to `rate_limited`.
  *   POST /auth/refresh         200 Tokens; spent at most once per 401, by the client
  *   POST /auth/logout          204, revokes the refresh token. Best effort: the
  *                              client signs out locally even when this fails
